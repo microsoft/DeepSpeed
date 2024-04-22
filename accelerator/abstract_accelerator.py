@@ -8,6 +8,7 @@ from abc import ABC
 from .constants import *
 from deepspeed.ops import compatible_ops as __compatible_ops__
 
+
 class DeepSpeedAccelerator(ABC):
 
     def __init__(self):
