@@ -1816,7 +1816,8 @@ class DeepSpeedEngine(Module):
         #atten_mask = kwargs.get("attention_mask", None)
 
         #for e, f  in zip(input_ids, atten_mask):
-        #    print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e.shape if e else None}, attn_mask= {f.shape if f else None}")
+        #print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e.shape if e  else None}, attn_mask= {f.shape if f else None}")
+        #    print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e if e  else None}, attn_mask= {f if f else None}")
 
         flops_profiler_active = (self.flops_profiler_enabled()
                                  and self.global_steps == self.flops_profiler_profile_step() and self.global_rank == 0)

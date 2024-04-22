@@ -131,11 +131,12 @@ def load_and_prepare_data(model_name):
 def get_loss(model, data_loader, config_dict, step=5):
     """Train the model and calculate average loss."""
     # Initialize DeepSpeed
-    model, _, _, _, spg = deepspeed.initialize(model=model,
-                                               model_parameters=model.parameters(),
-                                               config=config_dict,
-                                               dist_init_required=True,
-                                               mesh_param=(8, 1))
+    model, _, _, _ = deepspeed.initialize(model=model,
+                                          model_parameters=model.parameters(),
+                                          config=config_dict,
+                                          dist_init_required=True,
+                                          mesh_param=(8, 1))
+    spg = model.get_sequence_parallel_group()
     seq_parallel_world_size = dist.get_world_size(spg)
     seq_parallel_rank = dist.get_rank(spg)
     dist.barrier()
