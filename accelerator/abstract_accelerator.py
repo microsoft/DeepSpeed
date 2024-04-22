@@ -292,6 +292,14 @@ class DeepSpeedAccelerator(ABC):
     def export_envs(self):
         ...
 
+    @abc.abstractmethod
+    def visible_devices_envs(self):
+        ...
+
+    @abc.abstractmethod
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        ...
+
     def get_ds_feature(self, key):
         return self._ds_features[key]
 
