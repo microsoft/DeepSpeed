@@ -11,6 +11,7 @@ import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
 import importlib
 import inspect
 
+
 class XPU_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
