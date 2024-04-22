@@ -338,6 +338,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         return module
 
     def conv2d_parallel_shard_weights(model, rank, world_size):
+        # add conv policy
         shard_oc_name = ["conv1"]
         shard_ic_name = ["conv2"]
         for name, sub_m in model.named_children():
@@ -373,6 +374,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             gc.collect()
         replaced_module = set_lm_head(replaced_module)
         # conv2d tp module replace
+        # Now is for yuan model. Add model list and conv policy to decide whether to replace conv.
         if 'Yuan' in str(replaced_module):
             conv2d_parallel_shard_weights(replaced_module, dist.get_rank(), dist.get_world_size())
     else:

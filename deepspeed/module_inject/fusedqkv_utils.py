@@ -125,6 +125,10 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
     return _bloom_type_transpose(src, mp_size)
 
 
+# For share qk type:
+# q = [q1,...,q_{n/4}, q_{n/2+1},...,q_{3n/4}, k1,...,k_{n/4}, k_{n/2+1},...,k_{3n/4}]
+# k = [q_{n/4+1},...,q_{n/2}, q_{3n/4+1},...,qn, k_{n/4+1},...,k_{n/2}, k{3n/4+1},...,kn]
+# Avoid modifying the modeling code. We adjust the value and oproj weight to fit this qk type.
 def shard_value_with_share_qk(
         weight,
         bias,

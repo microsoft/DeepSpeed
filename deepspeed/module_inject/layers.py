@@ -22,6 +22,7 @@ class TensorParallelConv2d(nn.Module):
         self.shard_by_oc = shard_by_oc
         self.shard_weights(conv)
 
+    # Split along the input/output channel depending on whether it is the last conv layer.
     def shard_weights(self, conv):
         if self.shard_by_oc:
             total_size = conv.weight.shape[0]
@@ -36,10 +37,12 @@ class TensorParallelConv2d(nn.Module):
             cols_per_rank.append(cols_per_rank[-1] + cols)
         weight_data = conv.weight.data
         if self.shard_by_oc:
+            # not last conv layer, split output channel
             weight_data = weight_data[cols_per_rank[self.rank]:cols_per_rank[self.rank + 1]]
             if conv.bias is not None:
                 bias_data = conv.bias.data[cols_per_rank[self.rank]:cols_per_rank[self.rank + 1]]
         else:
+            # last conv layer, split input channel
             weight_data = weight_data[:, cols_per_rank[self.rank]:cols_per_rank[self.rank + 1]]
             if conv.bias is not None:
                 bias_data = conv.bias.data / float(self.world_size)
