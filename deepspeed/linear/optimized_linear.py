@@ -45,7 +45,7 @@ class OptimizedLinear(nn.Module):
             raise ValueError(f"Expecting QuantizationConfig but received {type(quantization_config)}")
         if lora_config is not None and not isinstance(lora_config, LoRAConfig):
             raise ValueError(f"Expecting LoRAConfig but received {type(lora_config)}")
-                    
+
         if lora_config is None and quantization_config is None:
             # Everything disabled, fall back to normal nn.Linear
             self = nn.Linear(input_dim, output_dim, bias=bias, dtype=dtype)
