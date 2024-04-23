@@ -58,8 +58,9 @@ def _create_model_parallel(tensor_model_parallel_size):
     ensure_divisibility(world_size, model_parallel_size)
     rank = dist.get_rank()
 
-    _DATA_PARALLEL_GROUP = None
-    _MODEL_PARALLEL_GROUP = None
+    global _DATA_PARALLEL_GROUP
+    global _MODEL_PARALLEL_GROUP
+    global _TENSOR_MODEL_PARALLEL_GROUP
     # Build the data parallel groups.
     for i in range(model_parallel_size):
         ranks = range(i, world_size, model_parallel_size)
@@ -73,6 +74,10 @@ def _create_model_parallel(tensor_model_parallel_size):
         group = dist.new_group(ranks)
         if i == (rank // model_parallel_size):
             _MODEL_PARALLEL_GROUP = group
+
+    # Build the tensor model-parallel groups.
+    # for only TP&DP
+    _TENSOR_MODEL_PARALLEL_GROUP = _MODEL_PARALLEL_GROUP
 
     return _DATA_PARALLEL_GROUP, _MODEL_PARALLEL_GROUP
 

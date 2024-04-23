@@ -238,6 +238,8 @@ class DeepSpeedEngine(Module):
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
+        if self.zero_autotp_size() > 0:
+            self._configure_tensor_parallel_states()
         see_memory_usage(f"DeepSpeed Engine: After args sanity test", force=self.memory_breakdown())
         if mpu is not None:
             if self.elasticity_enabled():
@@ -364,9 +366,6 @@ class DeepSpeedEngine(Module):
 
         if self._config.compile_config.enabled:
             self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
-
-        if self.zero_autotp_size() > 0:
-            self._configure_tensor_parallel_states()
 
     def _configure_tensor_parallel_states(self):
         # It should have a unified group initialization function,
