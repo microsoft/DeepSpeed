@@ -129,7 +129,9 @@ class InferenceEngineV2:
         for uid, tokens in zip(batch_uids, batch_tokens):
 
             host_seq_desc = self._state_manager.get_or_create_sequence(uid)
-            self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
+            new_block_ids = self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
+            if new_block_ids is not None:
+                self._state_manager.increment_ref_count(new_block_ids)
             host_seq_desc.pre_forward(tokens.numel())
 
             # We can disable checks since we already validated schedulability.
@@ -148,9 +150,10 @@ class InferenceEngineV2:
         # We return one set of logits per sequence in the batch (saves cost on unembedding)
         assert logits.shape[0] == self._batch.current_sequences
 
-        for uid in batch_uids:
+        for uid, tokens in zip(batch_uids, batch_tokens):
             host_seq_desc = self._state_manager.get_sequence(uid)
             host_seq_desc.post_forward()  # Updates sequence metadata.
+            self._state_manager.update_cache(uid, tokens)
             self._model.maybe_free_kv(host_seq_desc)
 
         return logits
@@ -239,6 +242,24 @@ class InferenceEngineV2:
             return 0
         return self._model.get_remaining_block_capacity(seq_desc)
 
+    def lookup_cache(self, uid: int, tokens: torch.Tensor) -> None:
+        """
+        Lookup the KV cache for a given sequence and allocate the necessary blocks.
+
+        Arguments:
+            uid (int): The UID of the sequence.
+            tokens (torch.Tensor): The tokens to allocate.
+        """
+        print(f"lookup_cache lookup_cache uid: {uid}")
+        return self._state_manager.lookup_cache(uid, tokens)
+    
+    def setup_cached_sequence(self, uid: int, cached_length:int, block_ids: torch.Tensor) -> None:
+        seq = self._state_manager.get_or_create_sequence(uid)
+        seq.pre_forward(cached_length)
+        seq.post_forward()
+        seq.extend_kv_cache(block_ids)
+        self._state_manager.increment_ref_count(block_ids)
+
     def flush(self, uid: int) -> None:
         """
         Remove all state associated with a sequence from the inference engine.
@@ -246,6 +267,9 @@ class InferenceEngineV2:
         Arguments:
             uid (int): The UID of the sequence to flush.
         """
+        seq = self._state_manager.get_sequence(uid)
+        self._state_manager.decrement_ref_count(seq.all_block_ids())
+
         self._state_manager.flush_sequence(uid)
 
     def serialize(self, save_path: str) -> None:

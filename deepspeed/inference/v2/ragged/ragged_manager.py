@@ -5,6 +5,7 @@
 
 import torch
 from typing import Any, Dict, Optional, Tuple
+from collections import defaultdict
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import RaggedUtilsBuilder
@@ -14,6 +15,7 @@ from .blocked_allocator import BlockedAllocator
 from .kv_cache import BlockedKVCache
 from .manager_configs import DSStateManagerConfig, KVCacheConfig
 from .sequence_descriptor import DSSequenceDescriptor
+from .prefix_block_tree import PrefixBlockTree
 
 
 class DSStateManager:
@@ -97,6 +99,11 @@ class DSStateManager:
                                         mp_group=base_mp_group,
                                         offload=self._config.offload)
 
+        assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
+        self._block_tree = PrefixBlockTree(self._kv_configs[0].block_size)
+        self._ref_counts = defaultdict(int)
+
+
     def get_cache(self, cache_id: int, cache_group: int = 0) -> torch.Tensor:
         """
         Return the Tensor associated with the given cache id in the specified cache group.
@@ -166,6 +173,28 @@ class DSStateManager:
         # TODO(cmikeh2): Debug call here might be unnecessary and is potentially on critical path.
         logger.debug(f"Created sequence {uid} with tracking slot {tracking_slot}.")
         return self._seqs[uid]
+
+    def lookup_cache(self, uid: int, tokens: torch.Tensor) -> int:
+
+        block_ids = self._block_tree.allocate(tokens)
+        assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
+        return len(block_ids) * self._kv_configs[0].block_size, block_ids
+
+    def update_cache(self, uid: int, tokens: torch.Tensor) -> None:
+        """
+        Update the KV cache for the given sequence id.
+        """
+        print(f"update_cache tokens={tokens.shape} numel={tokens.numel()}")
+        seq = self.get_sequence(uid)
+        self._block_tree.extend(uid, tokens, seq.all_block_ids())
+
+    def increment_ref_count(self, block_ids: torch.Tensor) -> None:
+        for block_id in block_ids:
+            self._ref_counts[block_id.item()] += 1
+
+    def decrement_ref_count(self, block_ids: torch.Tensor) -> None:
+        for block_id in block_ids:
+            self._ref_counts[block_id.item()] -= 1
 
     @property
     def tracked_sequences(self) -> Dict[int, DSSequenceDescriptor]:

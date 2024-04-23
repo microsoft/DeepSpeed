@@ -356,7 +356,7 @@ class DSTransformerModelBase(DSInferenceModelBase):
     def get_remaining_block_capacity(self, sequence: DSSequenceDescriptor) -> int:
         return sequence.seen_tokens % self.attn.kv_block_size
 
-    def maybe_allocate_kv(self, sequence: DSSequenceDescriptor, n_new_tokens: int) -> None:
+    def maybe_allocate_kv(self, sequence: DSSequenceDescriptor, n_new_tokens: int) -> Optional[torch.Tensor]:
         """
         See ``DSInferenceModelBase.maybe_allocate_kv`` for documentation.
 
@@ -369,6 +369,9 @@ class DSTransformerModelBase(DSInferenceModelBase):
         if n_needed_blocks > 0:
             new_blocks = self.state_manager.allocate_blocks(n_needed_blocks)
             sequence.extend_kv_cache(new_blocks)
+            return new_blocks
+        
+        return None
 
     def kv_cache_config(self) -> Tuple[KVCacheConfig, ...]:
         """
