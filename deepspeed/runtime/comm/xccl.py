@@ -8,6 +8,7 @@ import torch
 # import torch_npu
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.xpu import PackbitsBuilder
 
 
 class XcclBackend(object):
@@ -20,6 +21,7 @@ class XcclBackend(object):
             self.world_group = self.mpu.get_data_parallel_group()
         self.size = dist.get_world_size(group=self.world_group)
         self.rank = dist.get_rank(group=self.world_group)
+        self.packer = PackbitsBuilder().load()
 
     def my_igather(self, rank, size, group, sendbuf, recvbuf, root):
         req = []
@@ -44,22 +46,15 @@ class XcclBackend(object):
             dist.send(sendbuf, group=group, dst=root)
 
     def pack(self, buffer, size):
-        buffer = buffer.cpu() >= 0
-        print(buffer)
-        buffer = buffer.numpy()
-        buffer = np.packbits(buffer, axis=-1, bitorder='little')
-        return torch.from_numpy(buffer).reshape(size, -1).to(get_accelerator().device_name())
+        buffer = buffer.ravel().sign_().add_(1).bool()
+        packed = self.packer.packbits(buffer, buffer.numel(), self.rank)
+        return packed.reshape(size, -1)
 
     def unpack(self, buffer, size, dtype):
-        buffer = buffer.cpu().numpy()
-        buffer = np.unpackbits(buffer, axis=-1, bitorder='little')
-        buffer = torch.from_numpy(buffer).reshape(size, -1).to(dtype).to(get_accelerator().device_name())
-        return torch.where(buffer > 0, buffer, -1)
+        unpacked = self.packer.unpackbits(buffer, buffer.numel(), self.rank)
+        return unpacked.reshape(size, -1).to(dtype)
 
     def compressed_allreduce(self, buffer_m: torch.tensor, worker_error, server_error, local_rank):
-        if self.rank == 0:
-            print("==============go to compressed allreduce=============", flush=True)
-        # exit()
         original_shape = buffer_m.size()
         if len(original_shape) > 1:
             buffer_m = torch.flatten(buffer_m)
@@ -76,7 +71,6 @@ class XcclBackend(object):
 
         worker_error.set_(buffer_m - worker_scale * buffer_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
-        # sign_list_packed_tmp = torch_npu.npu_sign_bits_pack(buffer_m, self.size).type(torch.int8)
         sign_list_packed_tmp = self.pack(buffer_m, self.size).type(torch.int8)
                 
         
@@ -97,8 +91,6 @@ class XcclBackend(object):
         dist.all_gather(recvbuf_scale, worker_scale, group=self.world_group)
 
         flattened_recvbuf_sign = recvbuf_sign.type(torch.uint8).flatten()
-        # compensated_server_m = torch_npu.npu_sign_bits_unpack(flattened_recvbuf_sign, self.size, torch.float32) \
-        #     .mul_(torch.stack(recvbuf_scale).mul_(1 / self.size)).sum(0)
         compensated_server_m = self.unpack(flattened_recvbuf_sign, self.size, torch.float32) \
             .mul_(torch.stack(recvbuf_scale).mul_(1 / self.size)).sum(0)
 
@@ -109,7 +101,6 @@ class XcclBackend(object):
         server_error.set_(compensated_server_m -
                           server_scale * compensated_server_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
-        # server_sign_packed = torch_npu.npu_sign_bits_pack(compensated_server_m, 1).type(torch.int8)
         server_sign_packed = self.pack(compensated_server_m, 1).type(torch.int8)
 
         # recvbuf_sign_server
@@ -134,9 +125,6 @@ class XcclBackend(object):
 
         flattened_recvbuf_sign_server = recvbuf_sign_server.type(torch.uint8).flatten()
 
-        # buffer_m.data.copy_(
-        #     torch_npu.npu_sign_bits_unpack(flattened_recvbuf_sign_server, self.size,
-        #                                    torch.float32).mul_(recvbuf_scale_server_tmp).flatten().data)
         buffer_m.data.copy_(
             self.unpack(flattened_recvbuf_sign_server, self.size, torch.float32).mul_(recvbuf_scale_server_tmp).flatten().data)
 
