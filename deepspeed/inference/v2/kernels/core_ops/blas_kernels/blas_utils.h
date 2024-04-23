@@ -157,7 +157,7 @@ int blas_gemm_ex(void* C,
                                          C,
                                          abc_type,
                                          ldc,
-#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+#if defined(__HIP_PLATFORM_AMD__) && defined(HIPBLAS_V2)
                                          HIPBLAS_COMPUTE_32F,
 #elif defined(__HIP_PLATFORM_AMD__)
                                          HIPBLAS_R_32F,
@@ -265,7 +265,7 @@ int blas_strided_batched_gemm(void* C,
                                                        ldc,
                                                        stride_C,
                                                        batch,
-#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+#if defined(__HIP_PLATFORM_AMD__) && defined(HIPBLAS_V2)
                                                        HIPBLAS_COMPUTE_32F,
 #elif defined(__HIP_PLATFORM_AMD__)
                                                        HIPBLAS_R_32F,
