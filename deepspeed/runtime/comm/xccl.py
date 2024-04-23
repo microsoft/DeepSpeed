@@ -11,7 +11,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder.xpu import PackbitsBuilder
 
 
-class XcclBackend(object):
+class CCLBackend(object):
 
     def __init__(self, mpu=None):
         if mpu is None:
