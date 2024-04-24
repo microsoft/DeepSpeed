@@ -12,6 +12,7 @@ class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
+        self._compile_backend = None
 
     @abc.abstractmethod
     def is_synchronized_device(self):
@@ -289,5 +290,9 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def get_compile_backend(self, backend=None):
+    def get_compile_backend(self):
+        ...
+
+    @abc.abstractmethod
+    def set_compile_backend(self, backend):
         ...

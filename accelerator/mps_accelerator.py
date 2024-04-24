@@ -20,6 +20,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = "mps"
         self._communication_backend_name = None
+        self._compile_backend = "inductor"
 
     def is_synchronized_device(self):
         return False
@@ -259,12 +260,13 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def export_envs(self):
         return []
 
-    def get_compile_backend(self, backend=None):
-        supported_backends = torch._dynamo.list_backends()
-        if backend is None:
-            return "inductor"
-        elif backend in supported_backends:
-            return backend
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
         else:
             raise ValueError(
                 f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")
