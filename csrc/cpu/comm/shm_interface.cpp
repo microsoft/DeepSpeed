@@ -135,8 +135,6 @@ TORCH_LIBRARY(deepspeed, m) {
 
 torch::Tensor& myadd__meta(torch::Tensor& self_) {
     printf("[%d] myadd_ meta %d %d %d\n", world_rank, self_.device().type(), torch::DeviceType::CPU, torch::DeviceType::Meta);
-    //torch::Tensor result_ = torch::empty_like(self_);
-    //return result_;
     return self_;
 }
 
@@ -160,30 +158,20 @@ torch::Tensor& myadd__cpu(torch::Tensor& self_) {
 torch::Tensor myadd_cpu(const torch::Tensor& self_) {
   printf("[%d] myadd %d %d %d\n", world_rank, self_.device().type(), torch::DeviceType::CPU, torch::DeviceType::Meta);
   TORCH_INTERNAL_ASSERT(self_.device().type() == torch::DeviceType::CPU);
-  torch::Tensor self = self_.contiguous();
-  torch::Tensor result = torch::empty(self.sizes(), self.options());
-  const float* self_ptr = self.data_ptr<float>();
-  float* result_ptr = result.data_ptr<float>();
-  for (int64_t i = 0; i < result.numel(); i++) {
-    result_ptr[i] = self_ptr[i] * 3;
-  }
+  torch::Tensor result = self_.clone();
+  myadd__cpu(result);
   return result;
 }
 
 void inference_all_reduce_meta(torch::Tensor& self_)
 {
-      printf("[%d] jello %d %d %d\n", world_rank, self_.device().type(), torch::DeviceType::CPU, torch::DeviceType::Meta);
-      self_ = torch::empty_like(self_);
-      printf("[%d] _jello %d %d %d\n", world_rank, self_.device().type(), torch::DeviceType::CPU, torch::DeviceType::Meta);
 }
 
 void inference_all_reduce_cpu(torch::Tensor& self_)
 {
-  if (self_.device().type() == torch::DeviceType::CPU) {
-      printf("hello\n");
-      torch::Tensor self_tensor = self_.contiguous();
-      inference_all_reduce_(self_tensor, 0);
-  }
+  TORCH_INTERNAL_ASSERT(self_.device().type() == torch::DeviceType::CPU);
+  torch::Tensor self_tensor = self_.contiguous();
+  inference_all_reduce_(self_tensor, 0);
 }
 
 #include <ATen/FunctionalTensorWrapper.h>
@@ -222,11 +210,23 @@ TORCH_LIBRARY_IMPL(deepspeed, CPU, m) {
   m.impl("myadd", myadd_cpu);
   m.impl("myadd_", myadd__cpu);
 }
+
 TORCH_LIBRARY_IMPL(deepspeed, Meta, m) {
   m.impl("inference_all_reduce", inference_all_reduce_meta);
   m.impl("myadd", myadd_meta);
   m.impl("myadd_", myadd__meta);
 }
+
 TORCH_LIBRARY_IMPL(deepspeed, Functionalize, m) {
   m.impl("myadd_", myadd__functionalization_glue);
 }
+
+/*
+TORCH_LIBRARY_IMPL(deepspeed, Autograd, m) {
+  m.impl("myadd", autogradNotImplementedFallback());
+  m.impl("myadd_", autogradNotImplementedFallback());
+}
+
+TORCH_LIBRARY_IMPL(deepspeed, ADInplaceOrView, m) {
+  m.impl("myadd_", autogradNotImplementedInplaceOrViewFallback());
+}*/
