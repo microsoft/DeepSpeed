@@ -280,6 +280,13 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def export_envs(self):
         return ['ASCEND', 'HCCL', 'LD_LIBRARY', 'PATH']
 
+    def visible_devices_envs(self):
+        return ['ASCEND_RT_VISIBLE_DEVICES']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
     def get_compile_backend(self):
         return self._compile_backend
 
