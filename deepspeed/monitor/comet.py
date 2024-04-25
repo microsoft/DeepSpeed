@@ -28,8 +28,7 @@ class CometMonitor(Monitor):
         import comet_ml
 
         self.enabled = comet_config.enabled
-        self.samples_log_interval = comet_config.samples_log_interval
-
+        self._samples_log_interval = comet_config.samples_log_interval
         self._experiment: Optional["comet_ml.ExperimentBase"] = None
 
         if self.enabled and dist.get_rank() == 0:
@@ -50,6 +49,10 @@ class CometMonitor(Monitor):
     @property
     def experiment(self) -> Optional["comet_ml.ExperimentBase"]:
         return self._experiment
+
+    @property
+    def samples_log_interval(self) -> int:
+        return self._samples_log_interval
 
     def write_events(self, event_list: List[Event]) -> None:
         if not self.enabled or dist.get_rank() != 0:
