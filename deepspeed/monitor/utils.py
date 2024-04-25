@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+from packaging import version as pkg_version
 
 def check_tb_availability():
     try:
@@ -27,6 +28,9 @@ def check_wandb_availability():
 def check_comet_availability():
     try:
         import comet_ml
+        comet_version = pkg_version.parse(comet_ml.__version__)
+        if comet_version < pkg_version.Version("3.41.0"):
+            raise ImportError("`comet_ml` must have at least version 3.41.0")
     except ImportError:
         print(
             'If you want to use comet logging, please `pip install "comet_ml>=3.41.0"`'

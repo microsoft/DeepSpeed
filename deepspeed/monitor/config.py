@@ -70,7 +70,7 @@ class CometConfig(DeepSpeedConfigModel):
     """
 
     enabled: bool = False
-    """ Whether logging to Comet is enabled. Requires `comet` package is installed. """
+    """ Whether logging to Comet is enabled. Requires `comet_ml` package is installed. """
     
     samples_log_interval: int = 100
     """ Metrics will be submitted to Comet after processing every `samples_log_intervas` samples"""
@@ -107,18 +107,21 @@ class CometConfig(DeepSpeedConfigModel):
     https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
     """
 
-    online: bool = True
-    """ If True, the data will be logged to Comet server, otherwise it will be stored locally in offline experiment """
+    online: Optional[bool] = None
+    """
+    If True, the data will be logged to Comet server, otherwise it will be stored locally in offline experiment
+    Defaults to True.
+    """
     
-    mode: Literal["get_or_create", "create", "get"] = "get_or_create"
+    mode: Optional[Literal["get_or_create", "create", "get"]] = None
     """
     The strategy to obtain an experiment for logging data.
         `get_or_create` will get a running experiment instance if it exists or create a new one
         `create` will always create a new experiment (the previous one will be ended)
-        `get` will strictly use experiments which already running, the new ones will not be created 
+        `get` will strictly use experiments which already running, the new ones will not be created
+    
+    Defaults to `get_or_create`
     """
-
-
 
 
 class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
@@ -128,7 +131,7 @@ class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
     """ TensorBoard monitor, requires `tensorboard` package is installed. """
 
     comet: CometConfig = {}
-    """ Comet monitor, requires comet_ml package is installed """
+    """ Comet monitor, requires `comet_ml` package is installed """
 
     wandb: WandbConfig = {}
     """ WandB monitor, requires `wandb` package is installed. """
