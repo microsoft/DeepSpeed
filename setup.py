@@ -208,7 +208,7 @@ else:
     git_branch = "unknown"
 
 
-def create_dir_symlink(src, dest):
+def create_dir_symlink(dest,src):
     if not os.path.islink(dest):
         if os.path.exists(dest):
             os.remove(dest)
