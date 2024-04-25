@@ -102,7 +102,7 @@ class TestCSVMonitor(DistributedTest):
 
 
 class TestCometMonitor(DistributedTest):
-    world_size = 1
+    world_size = 2
 
     def test_comet_monitor(self):
         import comet_ml
@@ -143,6 +143,8 @@ class TestCometMonitor(DistributedTest):
         )
 
         mock_experiment.set_name.assert_called_once_with("some-experiment-name")
+
+        assert comet_monitor.experiment is mock_experiment
 
     def test_empty_comet(self):
         import comet_ml
