@@ -77,7 +77,7 @@ class CometConfig(DeepSpeedConfigModel):
 
     project: Optional[str] = None
     """
-    Comet workspace name. Can be set through .comet.config file or environment variable COMET_PROJECT_NAME
+    Comet project name. Can be set through .comet.config file or environment variable COMET_PROJECT_NAME
     https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
     """
 
@@ -115,12 +115,10 @@ class CometConfig(DeepSpeedConfigModel):
 
     mode: Optional[Literal["get_or_create", "create", "get"]] = None
     """
-    The strategy to obtain an experiment for logging data.
-        `get_or_create` will get a running experiment instance if it exists or create a new one
-        `create` will always create a new experiment (the previous one will be ended)
-        `get` will strictly use experiments which already running, the new ones will not be created
-
-    Defaults to `get_or_create`
+    Control how the Comet experiment is started:
+        - "get": Continue logging to an existing experiment identified by the `experiment_key` value.
+        - "create": Always creates of a new experiment, useful for HPO sweeps.
+        - "get_or_create" (default): Starts a fresh experiment if required, or persists logging to an existing one.
     """
 
 
