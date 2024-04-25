@@ -11,7 +11,7 @@ In this tutorial, we introduce the DeepSpeed Monitor and provide examples of its
 
 ## Overview
 
-Monitoring model and system metrics during training is vital to ensure hardware resources are fully utilized. The DeepSpeed Monitor enables live logging of metrics through one or more monitoring backends such as PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), and simple CSV files.
+Monitoring model and system metrics during training is vital to ensure hardware resources are fully utilized. The DeepSpeed Monitor enables live logging of metrics through one or more monitoring backends such as PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), [CometML](https://www.comet.com/docs/v2/guides/quickstart/) and simple CSV files.
 
 Below is a live monitoring view for TensorBoard:
 
@@ -20,6 +20,10 @@ Below is a live monitoring view for TensorBoard:
 Below is a live monitoring view for WandB:
 
 ![WandB Example Output](/assets/images/wandb_monitor.PNG){: .align-center}
+
+Below is a live monitoring view for CometML
+
+![CometML Example Output](/assets/images/comet_monitor.PNG){: .align-center}
 
 ## Usage
 
@@ -44,6 +48,11 @@ When using DeepSpeed for model training, the Monitor can be configured in the De
     "team": "my_team",
     "group": "my_group",
     "project": "my_project"
+  }
+  "comet": {
+    "enabled": true,
+    "project": "my_project",
+    "experiment_name": "my_experiment"
   }
   "csv_monitor": {
     "enabled": true,
