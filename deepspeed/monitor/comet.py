@@ -14,11 +14,11 @@ if TYPE_CHECKING:
     import comet_ml
     from .config import CometConfig
 
-
 Name = str
 Value = Any
 GlobalSamples = int
 Event = Tuple[Name, Value, GlobalSamples]
+
 
 class CometMonitor(Monitor):
 
@@ -43,9 +43,9 @@ class CometMonitor(Monitor):
 
             if comet_config.experiment_name is not None:
                 self._experiment.set_name(comet_config.experiment_name)
-        
+
         self._events_log_scheduler = EventsLogScheduler(comet_config.samples_log_interval)
-    
+
     @property
     def experiment(self) -> Optional["comet_ml.ExperimentBase"]:
         return self._experiment
@@ -57,7 +57,7 @@ class CometMonitor(Monitor):
     def write_events(self, event_list: List[Event]) -> None:
         if not self.enabled or dist.get_rank() != 0:
             return None
-        
+
         for event in event_list:
             name = event[0]
             value = event[1]
@@ -69,13 +69,14 @@ class CometMonitor(Monitor):
                     value=value,
                     step=engine_global_samples,
                 )
-    
+
 
 class EventsLogScheduler:
+
     def __init__(self, samples_log_interval: int):
         self._samples_log_interval = samples_log_interval
         self._last_logged_events_samples: Dict[str, int] = {}
-    
+
     def needs_logging(self, name: str, current_sample: int) -> bool:
         if name not in self._last_logged_events_samples:
             self._last_logged_events_samples[name] = current_sample
@@ -87,5 +88,5 @@ class EventsLogScheduler:
         if samples_delta >= self._samples_log_interval:
             self._last_logged_events_samples[name] = current_sample
             return True
-        
+
         return False

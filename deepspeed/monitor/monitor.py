@@ -9,6 +9,7 @@ Support different forms of monitoring such as wandb and tensorboard
 from abc import ABC, abstractmethod
 import deepspeed.comm as dist
 
+
 class Monitor(ABC):
 
     @abstractmethod
@@ -24,6 +25,7 @@ from .wandb import WandbMonitor
 from .tensorboard import TensorBoardMonitor
 from .csv_monitor import csvMonitor
 from .comet import CometMonitor
+
 
 class MonitorMaster(Monitor):
 
@@ -44,7 +46,6 @@ class MonitorMaster(Monitor):
                 self.csv_monitor = csvMonitor(monitor_config.csv_monitor)
             if monitor_config.comet.enabled:
                 self.comet_monitor = CometMonitor(monitor_config.comet)
-            
 
     def write_events(self, event_list):
         if dist.get_rank() == 0:

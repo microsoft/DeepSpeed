@@ -125,13 +125,12 @@ class TestCometMonitor(DistributedTest):
         }
 
         ds_config = DeepSpeedConfig(config_dict)
-       
+
         with patch.object(comet_ml, "start", mock_start):
             comet_monitor = CometMonitor(ds_config.monitor_config.comet)
 
         assert comet_monitor.enabled is True
         assert comet_monitor.samples_log_interval == 42
-
 
         mock_start.assert_called_once_with(
             api_key="some-api-key",
