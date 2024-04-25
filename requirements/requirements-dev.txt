@@ -18,3 +18,4 @@ tensorboard
 torchvision
 transformers>=4.39.0
 wandb
+comet_ml>=3.41.0

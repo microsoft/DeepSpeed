@@ -29,6 +29,6 @@ def check_comet_availability():
         import comet_ml
     except ImportError:
         print(
-            'If you want to use comet logging, please `pip install comet_ml`'
+            'If you want to use comet logging, please `pip install "comet_ml>=3.41.0"`'
         )
         raise

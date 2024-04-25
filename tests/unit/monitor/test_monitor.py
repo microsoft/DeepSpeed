@@ -7,8 +7,10 @@ from deepspeed.monitor.tensorboard import TensorBoardMonitor
 from deepspeed.monitor.wandb import WandbMonitor
 from deepspeed.monitor.csv_monitor import csvMonitor
 from deepspeed.monitor.config import DeepSpeedMonitorConfig
+from deepspeed.monitor.comet import CometMonitor
 
 from unit.common import DistributedTest
+from unittest.mock import Mock, patch
 from deepspeed.runtime.config import DeepSpeedConfig
 
 
@@ -97,3 +99,62 @@ class TestCSVMonitor(DistributedTest):
         assert csv_monitor.enabled == defaults.enabled
         assert csv_monitor.output_path == defaults.output_path
         assert csv_monitor.job_name == defaults.job_name
+
+
+class TestCometMonitor(DistributedTest):
+    world_size = 1
+
+    def test_comet_monitor(self):
+        import comet_ml
+        mock_experiment = Mock()
+        mock_start = Mock(return_value=mock_experiment)
+
+        config_dict = {
+            "train_batch_size": 1,
+            "comet": {
+                "enabled": True,
+                "samples_log_interval": 42,
+                "workspace": "some-workspace",
+                "project": "some-project",
+                "api_key": "some-api-key",
+                "experiment_name": "some-experiment-name",
+                "experiment_key": "some-experiment-key",
+                "mode": "get_or_create",
+                "online": True
+            }
+        }
+
+        ds_config = DeepSpeedConfig(config_dict)
+       
+        with patch.object(comet_ml, "start", mock_start):
+            comet_monitor = CometMonitor(ds_config.monitor_config.comet)
+
+        assert comet_monitor.enabled is True
+        assert comet_monitor.samples_log_interval == 42
+
+
+        mock_start.assert_called_once_with(
+            api_key="some-api-key",
+            project="some-project",
+            workspace="some-workspace",
+            experiment_key="some-experiment-key",
+            mode="get_or_create",
+            online=True,
+        )
+
+        mock_experiment.set_name.assert_called_once_with("some-experiment-name")
+
+    def test_empty_comet(self):
+        import comet_ml
+        mock_start = Mock()
+
+        config_dict = {"train_batch_size": 2, "comet": {}}
+        ds_config = DeepSpeedConfig(config_dict)
+
+        with patch.object(comet_ml, "start", mock_start):
+            comet_monitor = CometMonitor(ds_config.monitor_config.comet)
+
+        defaults = DeepSpeedMonitorConfig().comet
+        assert comet_monitor.enabled == defaults.enabled
+        assert comet_monitor.samples_log_interval == defaults.samples_log_interval
+        mock_start.assert_not_called()

@@ -63,26 +63,60 @@ class CSVConfig(DeepSpeedConfigModel):
 
 
 class CometConfig(DeepSpeedConfigModel):
-    """Sets parameters for Comet monitor."""
+    """
+    Sets parameters for Comet monitor. For logging data Comet uses
+    experiment object.
+    https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/
+    """
 
     enabled: bool = False
     """ Whether logging to Comet is enabled. Requires `comet` package is installed. """
     
     samples_log_interval: int = 100
+    """ Metrics will be submitted to Comet after processing every `samples_log_intervas` samples"""
 
     project: Optional[str] = None
-    """ Comet project name. If no name provided - 'general' will be used """
+    """
+    Comet workspace name. Can be set through .comet.config file or environment variable COMET_PROJECT_NAME
+    https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
+    """
 
     workspace: Optional[str] = None
-    """ Comet workspace name. If no provided - the default for the user will be used"""
+    """
+    Comet workspace name. Can be set through .comet.config file or environment variable COMET_WORKSPACE
+    https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
+    """
 
     api_key: Optional[str] = None
+    """
+    Comet API key. Can be set through .comet.config file or environment variable COMET_API_KEY
+    https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
+    """
+
+    experiment_name: Optional[str] = None
+    """
+    The name for comet experiment to be used for logging.
+    Can be set through .comet.config file or environment variable COMET_EXPERIMENT_NAME
+    https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
+    """
 
     experiment_key: Optional[str] = None
+    """
+    The key for comet experiment to be used for logging. Must be an alphanumeric string whose length is between 32 and 50 characters.
+    Can be set through .comet.config  or environment variable COMET_EXPERIMENT_KEY
+    https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/#explore-comet-configuration-options
+    """
 
     online: bool = True
-
-    mode: Literal["get_or_create", "create", "get"] = None
+    """ If True, the data will be logged to Comet server, otherwise it will be stored locally in offline experiment """
+    
+    mode: Literal["get_or_create", "create", "get"] = "get_or_create"
+    """
+    The strategy to obtain an experiment for logging data.
+        `get_or_create` will get a running experiment instance if it exists or create a new one
+        `create` will always create a new experiment (the previous one will be ended)
+        `get` will strictly use experiments which already running, the new ones will not be created 
+    """
 
 
 
