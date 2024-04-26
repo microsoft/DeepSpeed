@@ -13,6 +13,8 @@ from unit.common import DistributedTest
 from unittest.mock import Mock, patch
 from deepspeed.runtime.config import DeepSpeedConfig
 
+import deepspeed.comm as dist
+
 
 class TestTensorBoard(DistributedTest):
     world_size = 2
@@ -132,18 +134,21 @@ class TestCometMonitor(DistributedTest):
         assert comet_monitor.enabled is True
         assert comet_monitor.samples_log_interval == 42
 
-        mock_start.assert_called_once_with(
-            api_key="some-api-key",
-            project="some-project",
-            workspace="some-workspace",
-            experiment_key="some-experiment-key",
-            mode="get_or_create",
-            online=True,
-        )
+        # experiment should be initialized via comet_ml.start only if rank == 0
+        if dist.get_rank() == 0:
+            mock_start.assert_called_once_with(
+                api_key="some-api-key",
+                project="some-project",
+                workspace="some-workspace",
+                experiment_key="some-experiment-key",
+                mode="get_or_create",
+                online=True,
+            )
 
-        mock_experiment.set_name.assert_called_once_with("some-experiment-name")
-
-        assert comet_monitor.experiment is mock_experiment
+            mock_experiment.set_name.assert_called_once_with("some-experiment-name")
+            assert comet_monitor.experiment is mock_experiment
+        else:
+            mock_start.assert_not_called()
 
     def test_empty_comet(self):
         import comet_ml
