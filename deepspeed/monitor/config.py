@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from typing import Optional, Literal
+from typing import Optional
 
 from deepspeed.pydantic_v1 import root_validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -113,9 +113,9 @@ class CometConfig(DeepSpeedConfigModel):
     Defaults to True.
     """
 
-    mode: Optional[Literal["get_or_create", "create", "get"]] = None
+    mode: Optional[str] = None
     """
-    The strategy to obtain an experiment for logging data.
+    The strategy to obtain an experiment for logging data. 3 options are possible.
         `get_or_create` will get a running experiment instance if it exists or create a new one
         `create` will always create a new experiment (the previous one will be ended)
         `get` will strictly use experiments which already running, the new ones will not be created

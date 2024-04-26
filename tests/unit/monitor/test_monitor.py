@@ -110,7 +110,7 @@ class TestCometMonitor(DistributedTest):
         mock_start = Mock(return_value=mock_experiment)
 
         config_dict = {
-            "train_batch_size": 1,
+            "train_batch_size": 2,
             "comet": {
                 "enabled": True,
                 "samples_log_interval": 42,
