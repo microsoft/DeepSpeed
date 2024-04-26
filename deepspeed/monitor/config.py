@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from typing import Optional, Literal
+from typing import Optional
 
 from deepspeed.pydantic_v1 import root_validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -113,9 +113,9 @@ class CometConfig(DeepSpeedConfigModel):
     Defaults to True.
     """
 
-    mode: Optional[Literal["get_or_create", "create", "get"]] = None
+    mode: Optional[str] = None
     """
-    Control how the Comet experiment is started:
+    Control how the Comet experiment is started, 3 options are possible.:
         - "get": Continue logging to an existing experiment identified by the `experiment_key` value.
         - "create": Always creates of a new experiment, useful for HPO sweeps.
         - "get_or_create" (default): Starts a fresh experiment if required, or persists logging to an existing one.
