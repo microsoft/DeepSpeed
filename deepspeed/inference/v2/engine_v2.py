@@ -132,6 +132,7 @@ class InferenceEngineV2:
             new_block_ids = self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
             if new_block_ids is not None:
                 self._state_manager.increment_ref_count(new_block_ids)
+                self._state_manager._block_tree.delete(new_block_ids)
             host_seq_desc.pre_forward(tokens.numel())
 
             # We can disable checks since we already validated schedulability.
@@ -242,16 +243,14 @@ class InferenceEngineV2:
             return 0
         return self._model.get_remaining_block_capacity(seq_desc)
 
-    def lookup_cache(self, uid: int, tokens: torch.Tensor) -> None:
+    def lookup_cache(self, tokens: torch.Tensor) -> None:
         """
         Lookup the KV cache for a given sequence and allocate the necessary blocks.
 
         Arguments:
-            uid (int): The UID of the sequence.
             tokens (torch.Tensor): The tokens to allocate.
         """
-        print(f"lookup_cache lookup_cache uid: {uid}")
-        return self._state_manager.lookup_cache(uid, tokens)
+        return self._state_manager.lookup_cache(tokens)
     
     def setup_cached_sequence(self, uid: int, cached_length:int, block_ids: torch.Tensor) -> None:
         seq = self._state_manager.get_or_create_sequence(uid)
@@ -269,6 +268,8 @@ class InferenceEngineV2:
         """
         seq = self._state_manager.get_sequence(uid)
         self._state_manager.decrement_ref_count(seq.all_block_ids())
+        no_ref_blocks = [b.item() for b in seq.all_block_ids() if self._state_manager._ref_counts[b.item()] == 0]
+        self._state_manager._kv_cache.free(no_ref_blocks)
 
         self._state_manager.flush_sequence(uid)
 

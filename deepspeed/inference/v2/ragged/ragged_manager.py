@@ -15,7 +15,7 @@ from .blocked_allocator import BlockedAllocator
 from .kv_cache import BlockedKVCache
 from .manager_configs import DSStateManagerConfig, KVCacheConfig
 from .sequence_descriptor import DSSequenceDescriptor
-from .prefix_block_tree import PrefixBlockTree
+from .prefix_block_tree import PrefixBlockMap
 
 
 class DSStateManager:
@@ -100,7 +100,7 @@ class DSStateManager:
                                         offload=self._config.offload)
 
         assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
-        self._block_tree = PrefixBlockTree(self._kv_configs[0].block_size)
+        self._block_tree = PrefixBlockMap(self._kv_configs[0].block_size)
         self._ref_counts = defaultdict(int)
 
 
@@ -123,8 +123,6 @@ class DSStateManager:
             return
 
         seq = self._seqs[uid]
-        for i in range(self.n_kv_cache_groups):
-            self._kv_cache.free(seq.all_block_ids(cache_group=i), cache_group=i)
 
         self._tracking_allocator.free(seq.tracking_id)
         del self._seqs[uid]
@@ -174,9 +172,9 @@ class DSStateManager:
         logger.debug(f"Created sequence {uid} with tracking slot {tracking_slot}.")
         return self._seqs[uid]
 
-    def lookup_cache(self, uid: int, tokens: torch.Tensor) -> int:
+    def lookup_cache(self, tokens: torch.Tensor) -> int:
 
-        block_ids = self._block_tree.allocate(tokens)
+        block_ids = self._block_tree.lookup(tokens)
         assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
         return len(block_ids) * self._kv_configs[0].block_size, block_ids
 
@@ -186,7 +184,7 @@ class DSStateManager:
         """
         print(f"update_cache tokens={tokens.shape} numel={tokens.numel()}")
         seq = self.get_sequence(uid)
-        self._block_tree.extend(uid, tokens, seq.all_block_ids())
+        self._block_tree.extend(tokens, seq.all_block_ids())
 
     def increment_ref_count(self, block_ids: torch.Tensor) -> None:
         for block_id in block_ids:
