@@ -46,7 +46,7 @@ class CompressedBackend(object):
             dist.send(sendbuf, group=group, dst=root)
 
     def pack(self, buffer, size):
-        buffer = buffer.ravel().sign_().add_(1).bool() # convert buffer to bool, element set to True if its value >=0
+        buffer = buffer.ravel().sign_().add_(1).bool()  # convert buffer to bool, element set to True if its value >=0
         packed = self.packer.packbits(buffer, buffer.numel(), self.rank)
         return packed.reshape(size, -1)
 
@@ -72,8 +72,7 @@ class CompressedBackend(object):
         worker_error.set_(buffer_m - worker_scale * buffer_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
         sign_list_packed_tmp = self.pack(buffer_m, self.size).type(torch.int8)
-                
-        
+
         recvbuf_sign = torch.zeros([self.size, len(sign_list_packed_tmp[self.rank])],
                                    dtype=sign_list_packed_tmp[0].dtype,
                                    device=sign_list_packed_tmp.device)
@@ -81,7 +80,8 @@ class CompressedBackend(object):
         sign_list_packed = [sign_list_packed_tmp[idx] for idx in range(self.size)]
 
         recvbuf_scale = [
-            torch.zeros(1, dtype=worker_scale.dtype, device=get_accelerator().current_device_name()) for _ in range(self.size)
+            torch.zeros(1, dtype=worker_scale.dtype, device=get_accelerator().current_device_name())
+            for _ in range(self.size)
         ]
 
         # communication phase 1
@@ -126,7 +126,8 @@ class CompressedBackend(object):
         flattened_recvbuf_sign_server = recvbuf_sign_server.type(torch.uint8).flatten()
 
         buffer_m.data.copy_(
-            self.unpack(flattened_recvbuf_sign_server, self.size, torch.float32).mul_(recvbuf_scale_server_tmp).flatten().data)
+            self.unpack(flattened_recvbuf_sign_server, self.size,
+                        torch.float32).mul_(recvbuf_scale_server_tmp).flatten().data)
 
         if original_size != worker_error_size:
             buffer_m = buffer_m[0:original_size]

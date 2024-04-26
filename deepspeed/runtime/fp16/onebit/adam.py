@@ -78,7 +78,7 @@ class OnebitAdam(torch.optim.Optimizer):
         self.deepspeed = deepspeed
         self.adam_freeze_key = False
         self.initialize = False
-        self.freeze_step = 5
+        self.freeze_step = freeze_step
         self.cuda_aware = cuda_aware
         self.using_pipeline = False
 
