@@ -33,7 +33,7 @@ void unpackbitskernel(const uint8_t* input,
     output[i] = (input[i / 8] >> (7 - i % 8)) & 1;
 }
 
-sycl::queue get_queue(at::Device device)
+sycl::queue get_current_queue(at::Device device)
 {
     c10::impl::VirtualGuardImpl impl(device.type());
     c10::Stream _stream = impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
@@ -43,8 +43,15 @@ sycl::queue get_queue(at::Device device)
 
 at::Tensor packbits(at::Tensor tensor, int input_size, int rank)
 {
+    /* 
+    pack bool tensor into uint8 tensor. Every eight bool elements get packed into one uint8
+    Arguments:
+        tensor: A bool tensor that get packed.
+        input_size: numel of input tensor
+        rank: device id in order to get corresponding stream
+    */
     at::Device device = "xpu:" + std::to_string(rank);
-    sycl::queue q = get_queue(device);
+    sycl::queue q = get_current_queue(device);
 
     int packed_size = (input_size + 7) / 8;
     auto unit8_options = at::TensorOptions().dtype(at::kByte).device(at::kXPU);
@@ -64,8 +71,15 @@ at::Tensor packbits(at::Tensor tensor, int input_size, int rank)
 
 at::Tensor unpackbits(at::Tensor tensor, int input_size, int rank)
 {
+    /* 
+    unpack uint8 tensor into float tensor. Every uint8 element get unpacked into eight float
+    Arguments:
+        tensor: A uint8 tensor that get unpacked.
+        input_size: numel of input tensor
+        rank: device id in order to get corresponding stream
+    */
     at::Device device = "xpu:" + std::to_string(rank);
-    sycl::queue q = get_queue(device);
+    sycl::queue q = get_current_queue(device);
 
     auto float_options = at::TensorOptions().dtype(at::kFloat).device(at::kXPU);
     at::Tensor unpacked = torch::empty({input_size*8}, float_options);

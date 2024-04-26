@@ -8,10 +8,10 @@ import torch
 # import torch_npu
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.xpu import PackbitsBuilder
+from deepspeed.ops.op_builder import PackbitsBuilder
 
 
-class CCLBackend(object):
+class CompressedBackend(object):
 
     def __init__(self, mpu=None):
         if mpu is None:
@@ -46,7 +46,7 @@ class CCLBackend(object):
             dist.send(sendbuf, group=group, dst=root)
 
     def pack(self, buffer, size):
-        buffer = buffer.ravel().sign_().add_(1).bool()
+        buffer = buffer.ravel().sign_().add_(1).bool() # convert buffer to bool, element set to True if its value >=0
         packed = self.packer.packbits(buffer, buffer.numel(), self.rank)
         return packed.reshape(size, -1)
 
