@@ -426,7 +426,9 @@ def get_flattened_grad_norm(parameters, norm_type=2, mpu=None, grad_norm_mask=No
                 # #   mask_tensor_[mask_idx[0]:mask_idx[1]] = True
                 cum_sum_pairs = torch.tensor([1, -1], device=get_accelerator().current_device_name(),
                                              dtype=p.dtype).repeat(grad_norm_mask[idx].shape[0], 1)
-                mask_tensor = torch.zeros(p.shape[0] + 1, device=get_accelerator().current_device_name(), dtype=p.dtype)
+                mask_tensor = torch.zeros(p.shape[0] + 1,
+                                          device=get_accelerator().current_device_name(),
+                                          dtype=p.dtype)
                 mask_tensor = mask_tensor.scatter_(0, grad_norm_mask[idx].view(-1),
                                                    cum_sum_pairs.view(-1)).cumsum(0).bool()[:-1]
 
