@@ -5,7 +5,6 @@
 
 #include <ipex.h>
 #include <torch/extension.h>
-#include <cmath>
 #include <iostream>
 #include <sycl/sycl.hpp>
 
