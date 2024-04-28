@@ -5,26 +5,29 @@
 
 #include <ipex.h>
 #include <torch/extension.h>
+#include <cmath>
 #include <iostream>
 #include <sycl/sycl.hpp>
 
 using namespace sycl;
 using namespace xpu;
 
-void packbitskernel(const bool* input, uint8_t* output, const int input_size, id<1> item_ct1)
+void packbitskernel(const float* input, uint8_t* output, const int input_size, id<1> item_ct1)
 {
+    // get the sign bit of each float and pack them into byte
     int i = item_ct1;
     for (int j = 0; j < 8; ++j) {
         int k = i * 8 + j;
-        int bit = k < input_size && input[k] != 0;
+        int bit = k < input_size && (!sycl::signbit(input[k]));
         output[i] |= bit << (7 - j);
     }
 }
 
 void unpackbitskernel(const uint8_t* input, float* output, id<1> item_ct1)
 {
+    // use the bit value to set float, bit 0 -> float -1, bit 1 -> float 1
     int i = item_ct1;
-    output[i] = (input[i / 8] >> (7 - i % 8)) & 1;
+    output[i] = (float((input[i / 8] >> (7 - i % 8)) & 1) - 0.5) * 2;
 }
 
 sycl::queue get_current_queue(at::Device device)
@@ -38,7 +41,8 @@ sycl::queue get_current_queue(at::Device device)
 at::Tensor packbits(at::Tensor tensor, int input_size, int rank)
 {
     /*
-    pack bool tensor into uint8 tensor. Every eight bool elements get packed into one uint8
+    pack float tensor into uint8 tensor. Every eight float elements get packed into one uint8
+    if float x >= 0, will be packed as a '1' bit, or will be packed as '0'
     Arguments:
         tensor: A bool tensor that get packed.
         input_size: numel of input tensor
@@ -49,9 +53,9 @@ at::Tensor packbits(at::Tensor tensor, int input_size, int rank)
 
     int packed_size = (input_size + 7) / 8;
     auto unit8_options = at::TensorOptions().dtype(at::kByte).device(at::kXPU);
-    at::Tensor packed = torch::empty({packed_size}, unit8_options);
+    at::Tensor packed = torch::zeros({packed_size}, unit8_options);
 
-    bool* input = (bool*)tensor.data_ptr();
+    float* input = (float*)tensor.data_ptr();
     uint8_t* output = (uint8_t*)packed.data_ptr();
 
     auto event = q.submit([&](sycl::handler& cgh) {
@@ -67,6 +71,7 @@ at::Tensor unpackbits(at::Tensor tensor, int input_size, int rank)
 {
     /*
     unpack uint8 tensor into float tensor. Every uint8 element get unpacked into eight float
+    a '1' bit will be converted to a float(1), a '0' bit will be converted to a float(-1).
     Arguments:
         tensor: A uint8 tensor that get unpacked.
         input_size: numel of input tensor

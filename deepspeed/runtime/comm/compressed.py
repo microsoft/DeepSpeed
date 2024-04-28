@@ -5,7 +5,6 @@
 
 import numpy as np
 import torch
-# import torch_npu
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import PackbitsBuilder
@@ -46,11 +45,12 @@ class CompressedBackend(object):
             dist.send(sendbuf, group=group, dst=root)
 
     def pack(self, buffer, size):
-        buffer = buffer.ravel().sign_().add_(1).bool()  # convert buffer to bool, element set to True if its value >=0
-        packed = self.packer.packbits(buffer, buffer.numel(), self.rank)
+        # pack float tensor into uint8 tensor
+        packed = self.packer.packbits(buffer.float(), buffer.numel(), self.rank)
         return packed.reshape(size, -1)
 
     def unpack(self, buffer, size, dtype):
+        # unpack uint8 to float tensor
         unpacked = self.packer.unpackbits(buffer, buffer.numel(), self.rank)
         return unpacked.reshape(size, -1).to(dtype)
 
