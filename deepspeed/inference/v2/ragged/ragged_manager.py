@@ -182,7 +182,6 @@ class DSStateManager:
         """
         Update the KV cache for the given sequence id.
         """
-        print(f"update_cache tokens={tokens.shape} numel={tokens.numel()}")
         seq = self.get_sequence(uid)
         self._block_tree.extend(tokens, seq.all_block_ids())
 

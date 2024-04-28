@@ -92,7 +92,7 @@ class BlockedAllocator:
             if self._blocks[block] != -1:
                 raise ValueError(f'Block {block} is already free')
 
-        for block in blocks:
+        for block in reversed(blocks):
             self._blocks[block] = self._head
             self._head = block
             self._free_blocks += 1
