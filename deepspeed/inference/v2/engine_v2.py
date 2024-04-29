@@ -130,7 +130,7 @@ class InferenceEngineV2:
 
             host_seq_desc = self._state_manager.get_or_create_sequence(uid)
             new_block_ids = self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
-            if new_block_ids is not None:
+            if self._config.enable_prefix_cache and new_block_ids is not None:
                 self._state_manager.increment_ref_count(new_block_ids)
                 self._state_manager._block_tree.delete(new_block_ids)
             host_seq_desc.pre_forward(tokens.numel())
@@ -154,7 +154,8 @@ class InferenceEngineV2:
         for uid, tokens in zip(batch_uids, batch_tokens):
             host_seq_desc = self._state_manager.get_sequence(uid)
             host_seq_desc.post_forward()  # Updates sequence metadata.
-            self._state_manager.update_cache(uid, tokens)
+            if self._config.enable_prefix_cache:
+                self._state_manager.update_cache(uid, tokens)
             self._model.maybe_free_kv(host_seq_desc)
 
         return logits
@@ -243,21 +244,24 @@ class InferenceEngineV2:
             return 0
         return self._model.get_remaining_block_capacity(seq_desc)
 
-    def lookup_cache(self, tokens: torch.Tensor) -> None:
+    def lookup_cache(self, tokens: torch.Tensor) -> Tuple[int, torch.Tensor]:
         """
         Lookup the KV cache for a given sequence and allocate the necessary blocks.
 
         Arguments:
-            tokens (torch.Tensor): The tokens to allocate.
+            block IDs (torch.Tensor): The tokens to allocate.
         """
-        return self._state_manager.lookup_cache(tokens)
+        if self._config.enable_prefix_cache:
+            return self._state_manager.lookup_cache(tokens)
+        return 0, torch.tensor([])
     
     def setup_cached_sequence(self, uid: int, cached_length:int, block_ids: torch.Tensor) -> None:
-        seq = self._state_manager.get_or_create_sequence(uid)
-        seq.pre_forward(cached_length)
-        seq.post_forward()
-        seq.extend_kv_cache(block_ids)
-        self._state_manager.increment_ref_count(block_ids)
+        if self._config.enable_prefix_cache:
+            seq = self._state_manager.get_or_create_sequence(uid)
+            seq.pre_forward(cached_length)
+            seq.post_forward()
+            seq.extend_kv_cache(block_ids)
+            self._state_manager.increment_ref_count(block_ids)
 
     def flush(self, uid: int) -> None:
         """
@@ -267,9 +271,13 @@ class InferenceEngineV2:
             uid (int): The UID of the sequence to flush.
         """
         seq = self._state_manager.get_sequence(uid)
-        self._state_manager.decrement_ref_count(seq.all_block_ids())
-        no_ref_blocks = [b.item() for b in seq.all_block_ids() if self._state_manager._ref_counts[b.item()] == 0]
-        self._state_manager._kv_cache.free(no_ref_blocks)
+
+        if self._config.enable_prefix_cache:
+            self._state_manager.decrement_ref_count(seq.all_block_ids())
+            blocks_to_free = [b.item() for b in seq.all_block_ids() if self._state_manager._ref_counts[b.item()] == 0]
+        else:
+            blocks_to_free = seq.all_block_ids()
+        self._state_manager._kv_cache.free(blocks_to_free)
 
         self._state_manager.flush_sequence(uid)
 
