@@ -278,8 +278,7 @@ class PipelineEngine(DeepSpeedEngine):
         weight_group_list = self.module.get_tied_weights_and_groups()
         for weight, group in weight_group_list:
             grad = weight._hp_grad if self.using_bf16_optimizer else weight.grad
-            if grad:
-                dist.all_reduce(grad, group=group)
+            dist.all_reduce(grad, group=group)
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
