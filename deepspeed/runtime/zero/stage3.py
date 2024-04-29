@@ -2671,6 +2671,22 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             else:
                 optim_sd[OPTIMIZER_STATE_DICT]['state'][0][key] = key_tensor
 
+        if self.swap_optimizer or self.params_in_nvme_and_cpu:
+            # Purge the swapped optimizer state, it was initialized to the freshly created model and not the checkpoint
+            for swap_info in self.optimizer_swapper.swap_params_info.values():
+                swap_info.tensors = [swap_info.tensors[0]]
+                swap_info.has_state_tensors = False
+
+        if self.swap_optimizer:
+            # Touch all parameters to synchronize all buffers
+            timer_names = set()
+            self._partition_all_parameters()
+            for sub_group_id, group in enumerate(self.fp16_groups):
+                self._prepare_sub_group(sub_group_id, timer_names)
+                self._reassign_or_swap_out_partitioned_parameters(sub_group_id)
+                self._release_sub_group(sub_group_id, timer_names)
+            self._post_step(timer_names)
+
         self.optimizer.load_state_dict(optim_sd[OPTIMIZER_STATE_DICT])
         for param_group in self.optimizer.param_groups:
             param_group['params'] = []
