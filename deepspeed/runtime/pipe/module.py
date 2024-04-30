@@ -117,6 +117,7 @@ class PipelineModule(nn.Module):
         activation_checkpoint_interval (int, optional): The granularity activation checkpointing in terms of number of layers. 0 disables activation checkpointing.
         activation_checkpoint_func (callable, optional): The function to use for activation checkpointing. Defaults to ``deepspeed.checkpointing.checkpoint``.
         checkpointable_layers(list, optional): Checkpointable layers may not be checkpointed. Defaults to None which does not additional filtering.
+        dynamic_shape: Allows dynamic shapes of inputs. This might have a performance impact.
     """
 
     def __init__(self,
@@ -130,7 +131,8 @@ class PipelineModule(nn.Module):
                  partition_method='parameters',
                  activation_checkpoint_interval=0,
                  activation_checkpoint_func=checkpointing.checkpoint,
-                 checkpointable_layers=None):
+                 checkpointable_layers=None,
+                 dynamic_shape=False):
 
         super().__init__()
 
@@ -207,6 +209,8 @@ class PipelineModule(nn.Module):
 
         self.activation_checkpoint_func = activation_checkpoint_func
         # if configuration use_reentrant = False, self.activation_checkpoint_func will be set to ``checkpointing.non_reentrant_checkpoint``
+
+        self.dynamic_shape = dynamic_shape
 
     def _build(self):
         specs = self._layer_specs

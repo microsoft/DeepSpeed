@@ -249,6 +249,8 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers(STEP_MICRO_TIMER).start()
             self.timers(STEP_MICRO_TIMER).stop()
 
+        self.dynamic_shape = self.module.dynamic_shape
+
     def set_has_attention_mask(self, value):
         assert isinstance(value, bool)
         self.has_attention_mask = value
@@ -1046,7 +1048,7 @@ class PipelineEngine(DeepSpeedEngine):
             outputs[-1] = outputs[-1].half()
             outputs = tuple(outputs)
 
-        if self.first_output_send:
+        if self.dynamic_shape or self.first_output_send:
             self.first_output_send = False
             self._send_tensor_meta(outputs, self.next_stage)
 
@@ -1131,7 +1133,7 @@ class PipelineEngine(DeepSpeedEngine):
         recvd = None
 
         # Allocate the buffer if necessary
-        if self.pipe_recv_buf is None:
+        if self.dynamic_shape or self.pipe_recv_buf is None:
             self.pipe_recv_buf = self._recv_tensor_meta(self.prev_stage)
 
         if isinstance(self.pipe_recv_buf, torch.Tensor):
@@ -1186,7 +1188,7 @@ class PipelineEngine(DeepSpeedEngine):
             self.pipe_buffers['outputs'][buffer_id] = outputs
 
         # Allocate gradient if necessary
-        if self.grad_layer is None:
+        if self.dynamic_shape or self.grad_layer is None:
             if isinstance(outputs, torch.Tensor):
                 s = list(outputs.size())
                 self.grad_layer = self._allocate_buffer(s, dtype=outputs.dtype, num_buffers=1)[0]
