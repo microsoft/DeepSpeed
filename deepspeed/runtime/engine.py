@@ -104,6 +104,8 @@ from deepspeed.accelerator import get_accelerator
 
 from deepspeed.runtime.config import DtypeEnum
 
+from deepspeed.sequence.layer_v2 import DistributedAttention
+
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
 DeepSpeedOptimizerCallable = \
@@ -192,7 +194,7 @@ class DeepSpeedEngine(Module):
                  collate_fn=None,
                  config=None,
                  config_class=None,
-                 mesh_param=None,
+                 mesh_device=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -232,19 +234,22 @@ class DeepSpeedEngine(Module):
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
         self.losses = None
-        self.mesh_param = mesh_param
+        self.mesh_device = mesh_device
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
         #mesh_device = dist.initialize_mesh_device((dist.get_world_size(), ), ("data_parallel", ))
         ##TODO: pass name of the device to the mesh_device
+        ##SAGE
+        '''
         self.mesh_device = None
         if self.mesh_param:
             print(f"mesh_param to Initialize mesh device: {self.mesh_param}")
             self.mesh_device = dist.initialize_mesh_device(self.mesh_param, ("data_parallel", "sequence_parallel"))
-
-        groups.mesh_device = self.mesh_device
+        '''
+        if self.mesh_device:
+            groups.mesh_device = self.mesh_device  ##mpu is set to mesh_device in init.py
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -1163,6 +1168,23 @@ class DeepSpeedEngine(Module):
         if dist.get_rank() == 0:
             print(f"DS Engine SP group size : {self.sequence_parallel_size}")
         ###DistAttn
+        #self.ds_dist_attn = None
+        if self.sequence_parallel_size > 1:
+            #replace module attention with deespeed dist attention
+            for _, module in self.module.named_modules():
+                if all(hasattr(module, attr) for attr in ['k_proj', 'v_proj', 'q_proj', 'out_proj']):
+
+                    attn = module
+                    compute_attn_sp = DistributedAttention(
+                        attn.forward,
+                        self.get_sequence_parallel_group(),
+                        2,
+                        1,
+                        hidden_size_per_attention_head=attn.embed_dim // attn.num_heads,
+                        num_q_per_kv=attn.num_q_per_kv if hasattr(attn, 'num_q_per_kv') else -1)
+
+                    module.forward = lambda hidden_states, *args, **kwargs: compute_attn_sp.forward(
+                        hidden_states, *args, **kwargs)
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()

@@ -144,7 +144,12 @@ def initialize(args=None,
     dist.init_distributed(dist_backend=dist_backend,
                           distributed_port=distributed_port,
                           dist_init_required=dist_init_required)
+    mesh_device = None
+    if mesh_param:
+        print(f"mesh_param to Initialize mesh device: {mesh_param}")
+        mesh_device = dist.initialize_mesh_device(mesh_param, ("data_parallel", "sequence_parallel"))
 
+    ##TODO: combine reuse mpu as mesh device and vice versa
     # Set config using config_params for backwards compat
     if config is None and config_params is not None:
         config = config_params
@@ -163,9 +168,8 @@ def initialize(args=None,
         assert config is None, "Not sure how to proceed, we were given deepspeed configs in the deepspeed arguments and deepspeed.initialize() function call"
         config = args.deepspeed_config
     assert config is not None, "DeepSpeed requires --deepspeed_config to specify configuration file"
-
     if not isinstance(model, PipelineModule):
-        config_class = DeepSpeedConfig(config, mpu)
+        config_class = DeepSpeedConfig(config, mpu, mesh_device=mesh_device)
         if config_class.hybrid_engine.enabled:
             engine = DeepSpeedHybridEngine(args=args,
                                            model=model,
@@ -189,7 +193,7 @@ def initialize(args=None,
                                      dist_init_required=dist_init_required,
                                      collate_fn=collate_fn,
                                      config=config,
-                                     mesh_param=mesh_param,
+                                     mesh_device=mesh_device,
                                      config_class=config_class)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"

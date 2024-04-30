@@ -401,13 +401,13 @@ def _get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     assert dist.is_initialized(), 'dist is not initialized'
     global mpu
-    if mpu is not None:
-        return mpu.get_data_parallel_group()
-
     if mesh_device is not None:
         if dist.get_rank() == 0:
             print(f"Using mesh device for data parallel group")
         return mesh_device.get_group(mesh_dim="data_parallel")
+    if mpu is not None:
+        return mpu.get_data_parallel_group()
+
     # Return the clone of dist world group
     return _clone_world_group()
 
@@ -450,6 +450,10 @@ def _get_expert_data_parallel_rank(group_name):
 
 def _get_data_parallel_world_size():
     """Return world size for the data parallel group."""
+    ##TODO combine mpu and mesh since mpu== mesh in ds initialize
+    #self.world_size = mpu.mesh.size(0) if hasattr(mpu, "mesh") else mpu.get_data_parallel_world_size()
+    if mesh_device is not None:
+        return dist.get_world_size(mesh_device.get_group(mesh_dim="data_parallel"))
     global mpu
     if mpu is not None:
         return mpu.get_data_parallel_world_size()
@@ -472,6 +476,8 @@ def _get_data_parallel_rank():
 def _get_sequence_parallel_world_size():
     """Return world size for the model parallel group."""
     global mpu
+    if mesh_device is not None:
+        return dist.get_world_size(mesh_device.get_group(mesh_dim="sequence_parallel"))
     if mpu is not None and hasattr(mpu, 'get_sequence_parallel_world_size'):
         return mpu.get_sequence_parallel_world_size()
     return 1
