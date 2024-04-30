@@ -22,7 +22,8 @@
                                                        stochastic_rounding);             \
     }
 
-at::Tensor quantize(torch::Tensor& val,
+at::Tensor quantize(torch::Tensor& out,
+                    torch::Tensor& val,
                     int group_size,
                     int stochastic_rounding,
                     int q_bits,
@@ -40,14 +41,14 @@ at::Tensor quantize(torch::Tensor& val,
                                   6.0));  // fp4 range (using power 2); TODO (Reza): add the power-4
                                           // in case accuracy is not matching!
     int num_groups = total_elems / group_size;
-    auto out = torch::empty({num_groups, group_size * q_bits / 8 + 4}, options);
 
     DISPATCH_QUANTIZE(kHalf, __half, 23, 8);
 #ifdef BF16_AVAILABLE
     DISPATCH_QUANTIZE(kBFloat16, __nv_bfloat16, 23, 8);
 #endif
 
-    return out;
+    auto out_q = torch::from_blob(out.data_ptr(), val.sizes(), out.options());
+    return out_q;
 }
 
 #define DISPATCH_DEQUANTIZE(T_TYPE, C_TYPE, mantisa)                              \
