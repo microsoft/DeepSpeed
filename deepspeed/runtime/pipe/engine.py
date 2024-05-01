@@ -1321,7 +1321,7 @@ class PipelineEngine(DeepSpeedEngine):
 
     def _allocate_or_extend_buffers(self, idx, shape, dtype):
         numel = reduce(mul, shape) if len(shape) > 0 else 1
-        if len(self._grad_layer_buf) <= idx or self._grad_layer_buf[idx].numel() > numel:
+        if len(self._grad_layer_buf) <= idx or self._grad_layer_buf[idx].numel() < numel:
             new_buf = self._allocate_buffer(shape, dtype=dtype, num_buffers=1)[0]
             if len(self._grad_layer_buf) <= idx:
                 self._grad_layer_buf.append(new_buf)
