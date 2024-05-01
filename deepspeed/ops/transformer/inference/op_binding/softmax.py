@@ -49,9 +49,6 @@ class SoftmaxOp(BaseOp):
         if attn_mask is not None:
             # expand atten_mask from two dim into 4 dim, insert two dims in the middle
             if len(attn_mask.shape) == 2:
-                # The above if statement was added because the mask was already 4D so this
-                # expansion should be avoided as it expands to 6D and crashes later (in bloom
-                # HE KI FB)
                 attn_mask = attn_mask[:, None, None, :]
             attn_scores += attn_mask
         if triangular:
