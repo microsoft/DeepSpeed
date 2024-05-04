@@ -22,19 +22,14 @@
                                                        stochastic_rounding);             \
     }
 
-at::Tensor quantize(torch::Tensor& out,
-                    torch::Tensor& val,
-                    int group_size,
-                    int stochastic_rounding,
-                    int q_bits,
-                    int q_mantisa_bits)
+std::vector<at::Tensor> quantize(torch::Tensor& out,
+                                 torch::Tensor& val,
+                                 int group_size,
+                                 int stochastic_rounding,
+                                 int q_bits,
+                                 int q_mantisa_bits)
 {
     int total_elems = at::numel(val);
-    auto options = at::TensorOptions()
-                       .dtype(torch::kInt8)
-                       .layout(val.layout())
-                       .device(val.device())
-                       .requires_grad(false);
     float q_range = q_bits == 8 ? (q_mantisa_bits == 3 ? 480.0 : 114688.0) :  // fp8 ranges
                         (q_bits == 12 ? 510.0 :                               // fp12 range
                              (q_bits == 6 ? 28.0 :                            // fp6 range
@@ -48,7 +43,20 @@ at::Tensor quantize(torch::Tensor& out,
 #endif
 
     auto out_q = torch::from_blob(out.data_ptr(), val.sizes(), out.options());
-    return out_q;
+
+    return {out_q, out_q};
+}
+
+at::Tensor get_scales(torch::Tensor& out, int group_size)
+{
+    auto options = at::TensorOptions()
+                       .dtype(torch::kFloat)
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+    int num_groups = at::numel(out) / group_size;
+    auto scales = torch::from_blob(out.data_ptr(), {num_groups, group_size / 4 + 1}, options);
+    return scales;
 }
 
 #define DISPATCH_DEQUANTIZE(T_TYPE, C_TYPE, mantisa)                              \
@@ -113,5 +121,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quantize", &quantize, "quantize function");
     m.def("dequantize", &dequantize, "dequantize function");
+    m.def("get_scales", &get_scales, "get scales function");
     m.def("selective_dequantize", &selective_dequantize, "selective dequantize function");
 }
