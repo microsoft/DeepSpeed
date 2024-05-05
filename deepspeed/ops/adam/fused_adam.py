@@ -91,7 +91,7 @@ class FusedAdam(torch.optim.Optimizer):
         self.adam_w_mode = 1 if adam_w_mode else 0
         self.set_grad_none = set_grad_none
 
-        fused_adam_cuda = FusedAdamBuilder().set_dtype(self.param_groups[0]['params'][0].dtype).load()
+        fused_adam_cuda = FusedAdamBuilder(self.param_groups[0]['params'][0].dtype).load()
         # Skip buffer
         self._dummy_overflow_buf = get_accelerator().IntTensor([0])
         self.multi_tensor_adam = fused_adam_cuda.multi_tensor_adam

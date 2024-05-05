@@ -10,15 +10,9 @@ class CPULionBuilder(NPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_LION"
     NAME = "cpu_lion"
 
-    def __init__(self):
+    def __init__(self, dtype=None):
         super().__init__(name=self.NAME)
-        self.dtype = None
-
-    def set_dtype(self, dtype):
-        import torch
-        assert (dtype in [torch.bfloat16, torch.half, torch.float32])
         self.dtype = dtype
-        return self
 
     def absolute_name(self):
         return f'deepspeed.ops.lion.{self.NAME}_op'
