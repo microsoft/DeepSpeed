@@ -28,7 +28,7 @@
 #include "acl/acl.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #else
-typedef unsigned short ds_half_precision_t;
+#include <cmath>
 #endif
 
 typedef HALF_DTYPE ds_half_precision_t;
