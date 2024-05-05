@@ -19,30 +19,33 @@
 
 #if defined(__ENABLE_CUDA__)
 #include <cuda_fp16.h>
-#ifdef BF16_AVAILABLE
-#include <cuda_bf16.h>
-#endif
 #include <cuda_runtime_api.h>
 #include "cuda.h"
 #include "custom_cuda_layers.h"
+#define DEVICE_FP16_DTYPE __half
+#ifdef BF16_AVAILABLE
+#include <cuda_bf16.h>
+#define DEVICE_BF16_DTYPE __nv_bfloat16
+#endif
 #elif defined(__ENABLE_CANN__)
 #include "acl/acl.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
+#define DEVICE_FP16_DTYPE c10::Half
+#define DEVICE_BF16_DTYPE c10::BFloat16
 #else
 #include <cmath>
+#define DEVICE_FP16_DTYPE c10::Half
+#define DEVICE_BF16_DTYPE c10::BFloat16
 #endif
 
-typedef HALF_DTYPE ds_half_precision_t;
-
 #define STEP(SPAN)                                             \
-    template <typename T>                                      \
-    void Step_##SPAN(float* _params,                           \
-                     float* grads,                             \
+    template <typename T, typename ds_device_precision_t>      \
+    void Step_##SPAN(T* _params,                           \
+                     T* grads,                             \
                      float* _exp_avg,                          \
                      float* _exp_avg_sq,                       \
                      size_t _param_size,                       \
-                     ds_half_precision_t* dev_param = nullptr, \
-                     bool half_precision = false);
+                     ds_device_precision_t* dev_param = nullptr);
 
 class Adam_Optimizer {
 public:
@@ -88,15 +91,14 @@ public:
     }
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span, typename T>
+    template <int span, typename T, typename ds_device_precision_t>
     void Step_AVX(size_t* rounded_size,
-                  float* _params,
-                  float* grads,
+                  T* _params,
+                  T* grads,
                   float* _exp_avg,
                   float* _exp_avg_sq,
                   size_t param_size,
-                  ds_half_precision_t* dev_param = nullptr,
-                  bool half_precision = false);
+                  ds_device_precision_t* dev_param = nullptr);
 #endif
     STEP(1)
     STEP(4)
@@ -175,21 +177,19 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span, typename T>
+template <int span, typename T, typename ds_device_precision_t>
 void Adam_Optimizer::Step_AVX(size_t* rounded_size,
-                              float* _params,
-                              float* grads,
+                              T* _params,
+                              T* grads,
                               float* _exp_avg,
                               float* _exp_avg_sq,
                               size_t _param_size,
-                              ds_half_precision_t* dev_params,
-                              bool half_precision)
+                              ds_device_precision_t* dev_params)
 {
 #if !defined(__AVX512__)
     if (std::is_same_v<T, c10::BFloat16>) { return; }
 #endif
     size_t new_rounded_size = 0;
-    int rshft = half_precision ? 1 : 0;
 
     AVX_Data betta1_4;
     betta1_4.data = SIMD_SET(_betta1);
@@ -230,7 +230,7 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
-            simd_load<span, T>(grad_4, grads + (i >> rshft));
+            simd_load<span, T>(grad_4, grads + i);
 
             AVX_Data momentum_4[span];
             simd_load<span, float>(momentum_4, _exp_avg + i);
@@ -239,7 +239,7 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
             simd_load<span, float>(variance_4, _exp_avg_sq + i);
 
             AVX_Data param_4[span];
-            simd_load<span, T>(param_4, _params + (i >> rshft));
+            simd_load<span, T>(param_4, _params + i);
 
             if (_weight_decay > 0 && !_adamw_mode) {
                 simd_fma<span>(grad_4, param_4, weight_decay4, grad_4);
@@ -260,16 +260,16 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
 
             simd_fma<span>(param_4, grad_4, step_size_4, param_4);
 
-            simd_store<span, T>(_params + (i >> rshft), param_4);
+            simd_store<span, T>(_params + i , param_4);
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
-            if (dev_params) { simd_store<span, T>(_doubled_buffer[_buf_index] + (i - t), param_4); }
+            if (dev_params) { simd_store<span, T>((T*)(_doubled_buffer[_buf_index] + (i - t)), param_4); }
 #endif
             simd_store<span, float>(_exp_avg + i, momentum_4);
             simd_store<span, float>(_exp_avg_sq + i, variance_4);
         }
 #if defined(__ENABLE_CUDA__)
         if (dev_params) {
-            if (half_precision)
+            if (sizeof(T) == 2)
                 launch_param_update_half(
                     _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             else
@@ -280,8 +280,8 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
         }
 #elif defined(__ENABLE_CANN__)
         if (dev_params) {
-            size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);
-            if (half_precision) memcpy_size /= 2;
+            size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);  //TODO: sizeof(T), remove next line
+            if (sizeof(T) == 2) memcpy_size /= 2;
             aclrtMemcpy(dev_params + t,
                         memcpy_size,
                         _doubled_buffer[_buf_index],

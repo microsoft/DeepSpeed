@@ -125,29 +125,29 @@ union AVX_Data {
 };
 
 template <int span, typename T>
-inline typename std::enable_if_t<std::is_same_v<T, c10::Half>, void> simd_store(float* dst,
+inline typename std::enable_if_t<std::is_same_v<T, c10::Half>, void> simd_store(T* dst,
                                                                                 AVX_Data* src)
 {
-    size_t width = SIMD_WIDTH / 2;
+    size_t width = SIMD_WIDTH;
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) { SIMD_STORE_FP16(dst + width * i, src[i].data); }
+    for (size_t i = 0; i < span; ++i) { SIMD_STORE_FP16((float*)(dst + width * i), src[i].data); }
 }
 
 template <int span, typename T>
-inline typename std::enable_if_t<std::is_same_v<T, c10::BFloat16>, void> simd_store(float* dst,
+inline typename std::enable_if_t<std::is_same_v<T, c10::BFloat16>, void> simd_store(T* dst,
                                                                                     AVX_Data* src)
 {
 #ifdef __AVX512__
-    size_t width = SIMD_WIDTH / 2;
+    size_t width = SIMD_WIDTH;
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) { SIMD_STORE_BF16(dst + width * i, src[i].data); }
+    for (size_t i = 0; i < span; ++i) { SIMD_STORE_BF16((float*)(dst + width * i), src[i].data); }
 #else
-    assert(false && "AVX512 required for BFloat16");
+    throw std::runtime_error()"AVX512 required for BFloat16");
 #endif
 }
 
 template <int span, typename T>
-inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_store(float* dst,
+inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_store(T* dst,
                                                                             AVX_Data* src)
 {
     size_t width = SIMD_WIDTH;
@@ -157,29 +157,29 @@ inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_store(floa
 
 template <int span, typename T>
 inline typename std::enable_if_t<std::is_same_v<T, c10::Half>, void> simd_load(AVX_Data* dst,
-                                                                               float* src)
+                                                                               T* src)
 {
-    size_t width = SIMD_WIDTH / 2;
+    size_t width = SIMD_WIDTH;
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) { dst[i].data = SIMD_LOAD_FP16(src + width * i); }
+    for (size_t i = 0; i < span; ++i) { dst[i].data = SIMD_LOAD_FP16((float*)(src + width * i)); }
 }
 
 template <int span, typename T>
 inline typename std::enable_if_t<std::is_same_v<T, c10::BFloat16>, void> simd_load(AVX_Data* dst,
-                                                                                   float* src)
+                                                                                   T* src)
 {
 #ifdef __AVX512__
-    size_t width = SIMD_WIDTH / 2;
+    size_t width = SIMD_WIDTH;
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) { dst[i].data = SIMD_LOAD_BF16(src + width * i); }
+    for (size_t i = 0; i < span; ++i) { dst[i].data = SIMD_LOAD_BF16((float*)(src + width * i)); }
 #else
-    assert(false && "AVX512 required for BFloat16");
+    throw std::runtime_error("AVX512 required for BFloat16");
 #endif
 }
 
 template <int span, typename T>
 inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_load(AVX_Data* dst,
-                                                                           float* src)
+                                                                           T* src)
 {
     size_t width = SIMD_WIDTH;
 #pragma unroll
