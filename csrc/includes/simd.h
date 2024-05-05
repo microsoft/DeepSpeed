@@ -13,6 +13,19 @@
 #define TILE (128 * 1024 * 1024)
 #if defined(__AVX512__) or defined(__AVX256__)
 
+template <typename T>
+inline T readAs(const void* src)
+{
+    T res;
+    std::memcpy(&res, src, sizeof(T));
+    return res;
+}
+template <typename T>
+inline void writeAs(void* dst, const T& val)
+{
+    std::memcpy(dst, &val, sizeof(T));
+}
+
 #define ROUND_DOWN(size, step) ((size) & ~((step)-1))
 
 #if defined(__AVX512__)
