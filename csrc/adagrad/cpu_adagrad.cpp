@@ -91,7 +91,7 @@ void Adagrad_Optimizer::Step_1(T* _params,
 template <typename T, typename ds_device_precision_t>
 void Adagrad_Optimizer::Step_4(T* _params,
                                T* grads,
-                               float* _exp_avsg_sq,
+                               float* _exp_avg_sq,
                                size_t _param_size,
                                ds_device_precision_t* dev_params)
 {

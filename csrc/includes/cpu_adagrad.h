@@ -9,6 +9,7 @@
                   // https://stackoverflow.com/questions/4913922/possible-problems-with-nominmax-on-visual-c
 
 #include <stdio.h>
+#include <torch/extension.h>
 #include <cassert>
 #include "simd.h"
 
@@ -164,7 +165,7 @@ void Adagrad_Optimizer::Step_AVX(size_t* rounded_size,
             simd_load<span, T>(grad_4, grads + i);
 
             AVX_Data momentum_4[span];
-            simd_load<span, float>(momentum_4, grads + i);
+            simd_load<span, T>(momentum_4, grads + i);
 
             AVX_Data variance_4[span];
             simd_load<span, float>(variance_4, _exp_avg_sq + i);

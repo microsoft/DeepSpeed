@@ -163,7 +163,7 @@ void Lion_Optimizer::Step_8(T* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8(
+    Step_AVX<8>(
         &rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
 #endif
     if (_param_size > rounded_size)
