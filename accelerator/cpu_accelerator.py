@@ -20,6 +20,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
         self._name = 'cpu'
+        self._compile_backend = "inductor"
         if oneccl_imported_p:
             self._communication_backend_name = 'ccl'
         else:
@@ -300,12 +301,14 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
+            from op_builder.cpu import CCLCommBuilder, ShareMemCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
+            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, ShareMemCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
 
         if class_name == "CCLCommBuilder":
             return CCLCommBuilder
+        elif class_name == "ShareMemCommBuilder":
+            return ShareMemCommBuilder
         elif class_name == "FusedAdamBuilder":
             return FusedAdamBuilder
         elif class_name == "CPUAdamBuilder":
@@ -320,3 +323,22 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    # TODO: cpu's visible envs is confirmed, keep as CUDA_VISIBLE_DEVICES
+    def visible_devices_envs(self):
+        return ['CUDA_VISIBLE_DEVICES']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")
