@@ -142,7 +142,7 @@ inline typename std::enable_if_t<std::is_same_v<T, c10::BFloat16>, void> simd_st
 #pragma unroll
     for (size_t i = 0; i < span; ++i) { SIMD_STORE_BF16((float*)(dst + width * i), src[i].data); }
 #else
-    throw std::runtime_error()"AVX512 required for BFloat16");
+    throw std::runtime_error("AVX512 required for BFloat16");
 #endif
 }
 
