@@ -276,7 +276,7 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
         }
 #elif defined(__ENABLE_CANN__)
         if (dev_params) {
-            size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);  //TODO: sizeof(T), remove next line
+            size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);
             if (sizeof(T) == 2) memcpy_size /= 2;
             aclrtMemcpy(dev_params + t,
                         memcpy_size,
