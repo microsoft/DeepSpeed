@@ -29,8 +29,7 @@ void Lion_Optimizer::Step_1(T* _params,
                             T* grads,
                             float* _exp_avg,
                             size_t _param_size,
-                            ds_device_precision_t* dev_params,
-                            bool half_precision)
+                            ds_device_precision_t* dev_params)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)

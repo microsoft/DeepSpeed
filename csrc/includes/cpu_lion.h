@@ -144,7 +144,6 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
     if (std::is_same_v<T, c10::BFloat16>) { return; }
 #endif
     size_t new_rounded_size = 0;
-    int rshft = half_precision ? 1 : 0;
 
     constexpr float neg1 = -1.0f;
     AVX_Data neg1_4;
@@ -183,13 +182,13 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
-            simd_load<span, T>(grad_4, grads + (i >> rshft));
+            simd_load<span, T>(grad_4, grads + i);
 
             AVX_Data momentum_4[span];
             simd_load<span, float>(momentum_4, _exp_avg + i);
 
             AVX_Data param_4[span];
-            simd_load<span, T>(param_4, _params + (i >> rshft));
+            simd_load<span, T>(param_4, _params + i);
 
             AVX_Data tmp_4[span];
 
@@ -207,7 +206,7 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
             simd_mul<span>(momentum_4, momentum_4, betta2_4);
             simd_fma<span>(momentum_4, grad_4, betta2_minus1_4, momentum_4);
 
-            simd_store<span, T>(_params + (i >> rshft), param_4);
+            simd_store<span, T>(_params + i, param_4);
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
             if (dev_params) { simd_store<span, T>((T*)(_doubled_buffer[_buf_index] + (i - t)), param_4); }
 #endif
