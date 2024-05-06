@@ -11,9 +11,8 @@ class CPUAdamBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
 
-    def __init__(self, dtype=None):
+    def __init__(self):
         super().__init__(name=self.NAME)
-        self.dtype = dtype
 
     def absolute_name(self):
         return f'deepspeed.ops.adam.{self.NAME}_op'
@@ -32,18 +31,6 @@ class CPUAdamBuilder(TorchCPUOpBuilder):
         if not self.is_rocm_pytorch():
             args += ['curand']
 
-        return args
-
-    def cxx_args(self):
-        import torch
-        assert self.dtype is not None, "dype not set"
-        args = super().cxx_args()
-        if self.dtype == torch.bfloat16:
-            args += ['-DHALF_DTYPE=__nv_bfloat16']
-        elif self.dtype == torch.half:
-            args += ['-DHALF_DTYPE=__half']
-        else:
-            args += ['-DHALF_DTYPE=float']
         return args
 
     def include_paths(self):

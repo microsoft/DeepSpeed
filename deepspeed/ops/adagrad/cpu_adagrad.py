@@ -19,7 +19,7 @@ class DeepSpeedCPUAdagrad(torch.optim.Optimizer):
         self.opt_id = DeepSpeedCPUAdagrad.optimizer_id
         DeepSpeedCPUAdagrad.optimizer_id = DeepSpeedCPUAdagrad.optimizer_id + 1
         self.fp32_optimizer_states = fp32_optimizer_states
-        self.ds_opt_adagrad = CPUAdagradBuilder(self.param_groups[0]['params'][0].dtype).load()
+        self.ds_opt_adagrad = CPUAdagradBuilder().load()
 
         self.ds_opt_adagrad.create_adagrad(self.opt_id, lr, eps, weight_decay, should_log_le("info"))
 

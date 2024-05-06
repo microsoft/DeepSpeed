@@ -11,9 +11,8 @@ class CPUAdagradBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAGRAD"
     NAME = "cpu_adagrad"
 
-    def __init__(self, dtype=None):
+    def __init__(self):
         super().__init__(name=self.NAME)
-        self.dtype = dtype
 
     def absolute_name(self):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
@@ -42,15 +41,3 @@ class CPUAdagradBuilder(TorchCPUOpBuilder):
         else:
             CUDA_INCLUDE = []
         return ['csrc/includes'] + CUDA_INCLUDE
-
-    def cxx_args(self):
-        import torch
-        args = super().cxx_args()
-        assert self.dtype is not None, "dype not set"
-        if self.dtype == torch.bfloat16:
-            args += ['-DHALF_DTYPE=c10::BFloat16']
-        elif self.dtype == torch.half:
-            args += ['-DHALF_DTYPE=c10::Half']
-        else:
-            args += ['-DHALF_DTYPE=float']
-        return args

@@ -13,10 +13,6 @@
 #include <cassert>
 #include "simd.h"
 
-#ifndef HALF_DTYPE
-#error Must provide compiler option -DHALF_DTYPE=<half data type>
-#endif
-
 #if defined(__ENABLE_CUDA__)
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>

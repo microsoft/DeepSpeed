@@ -86,9 +86,8 @@ class FusedAdamBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_FUSED_ADAM"
     NAME = "fused_adam"
 
-    def __init__(self, dtype=None):
+    def __init__(self):
         super().__init__(name=self.NAME)
-        self.dtype = dtype
 
     def absolute_name(self):
         return f'deepspeed.ops.adam.{self.NAME}_op'
