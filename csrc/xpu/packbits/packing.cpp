@@ -37,16 +37,16 @@ sycl::queue get_current_queue(at::Device device)
     return queue;
 }
 
+/*
+pack float tensor into uint8 tensor. Every eight float elements get packed into one uint8
+if float x >= 0, will be packed as a '1' bit, or will be packed as '0'
+Arguments:
+    tensor: A bool tensor that get packed.
+    input_size: numel of input tensor
+    rank: device id in order to get corresponding stream
+*/
 at::Tensor packbits(at::Tensor tensor, int input_size, int rank)
 {
-    /*
-    pack float tensor into uint8 tensor. Every eight float elements get packed into one uint8
-    if float x >= 0, will be packed as a '1' bit, or will be packed as '0'
-    Arguments:
-        tensor: A bool tensor that get packed.
-        input_size: numel of input tensor
-        rank: device id in order to get corresponding stream
-    */
     at::Device device = "xpu:" + std::to_string(rank);
     sycl::queue q = get_current_queue(device);
 
@@ -66,16 +66,16 @@ at::Tensor packbits(at::Tensor tensor, int input_size, int rank)
     return packed;
 }
 
+/*
+unpack uint8 tensor into float tensor. Every uint8 element get unpacked into eight float
+a '1' bit will be converted to a float(1), a '0' bit will be converted to a float(-1).
+Arguments:
+    tensor: A uint8 tensor that get unpacked.
+    input_size: numel of input tensor
+    rank: device id in order to get corresponding stream
+*/
 at::Tensor unpackbits(at::Tensor tensor, int input_size, int rank)
 {
-    /*
-    unpack uint8 tensor into float tensor. Every uint8 element get unpacked into eight float
-    a '1' bit will be converted to a float(1), a '0' bit will be converted to a float(-1).
-    Arguments:
-        tensor: A uint8 tensor that get unpacked.
-        input_size: numel of input tensor
-        rank: device id in order to get corresponding stream
-    */
     at::Device device = "xpu:" + std::to_string(rank);
     sycl::queue q = get_current_queue(device);
 
