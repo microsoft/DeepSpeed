@@ -258,7 +258,7 @@ int ds_lion_step_plus_copy(int optimizer_id,
                     params_c.numel(),
                     (DEVICE_BF16_DTYPE*)gpu_params_c.data_ptr());
 #else
-        throw std::runtime_error("BF16 not suppoted on device");
+        throw std::runtime_error("BF16 not supported on device");
 #endif
     else if (gpu_params_c.options().dtype() == at::kHalf)
         opt->Step_8(params_ptr,
@@ -274,7 +274,7 @@ int ds_lion_step_plus_copy(int optimizer_id,
                     params_c.numel(),
                     (DEVICE_BF16_DTYPE*)gpu_params_c.data_ptr());
 #else
-        throw std::runtime_error("BF16 not suppoted on device");
+        throw std::runtime_error("BF16 not supported on device");
 #endif
 
     opt->SynchronizeStreams();
