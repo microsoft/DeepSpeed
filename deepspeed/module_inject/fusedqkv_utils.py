@@ -4,7 +4,7 @@
 # DeepSpeed Team
 import torch
 from deepspeed.utils.logging import warning_once
-from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads, get_n_embd
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads, get_n_embd, get_num_attention_heads
 
 
 def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
@@ -42,6 +42,7 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
         "FalconDecoderLayer": 'bloomtype',
         "GPTBigCodeBlock": 'bigcodetype',
         "DecoderLayer": 'glmtype',
+        "Phi3DecoderLayer": "phi3type"
     }
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
@@ -93,6 +94,20 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
         split_q = q.split(get_shard_size_list(shape[0], mp_size), dim=0)
         return torch.cat((split_q[gpu_index], kv), dim=0)
 
+    def _phi3_type_transpose(input, mp_size):
+        num_kv_heads = get_num_kv_heads()
+        num_heads = get_num_attention_heads()
+        hidden_size = input.shape[1]
+        head_dim = hidden_size // num_heads
+        q_pos = input.shape[0] - 2 * num_kv_heads * head_dim
+        q = input[:q_pos]
+        k = input[q_pos:q_pos + num_kv_heads * head_dim]
+        v = input[q_pos + num_kv_heads * head_dim:]
+        split_q = q.split(get_shard_size_list(q.shape[0], mp_size), dim=0)
+        split_k = k.split(get_shard_size_list(k.shape[0], mp_size), dim=0)
+        split_v = v.split(get_shard_size_list(v.shape[0], mp_size), dim=0)
+        return torch.cat((split_q[gpu_index], split_k[gpu_index], split_v[gpu_index]), dim=0)
+
     def _transpose_fused_qkvw(src, mp_size, fused_qkv_type=None, module=None):
 
         # suppose num_heads=n, q(n)_w means the n-th q head linear weight, the weight format are as following
@@ -110,6 +125,8 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
             return _qwen_type_transpose(src, mp_size, module)
         elif fused_qkv_type == 'bigcodetype':
             return _bigcode_type_transpose(src, mp_size)
+        elif fused_qkv_type == 'phi3type':
+            return _phi3_type_transpose(src, mp_size)
 
         raise ValueError("unknown fused_qkv_type")
 
