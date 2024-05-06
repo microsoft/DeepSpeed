@@ -33,8 +33,7 @@ void Lion_Optimizer::Step_1(T* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<1>(
-        &rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
+    Step_AVX<1>(&rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
 #endif
     if (_param_size > rounded_size) {
         float betta1_minus1 = 1 - _betta1;
@@ -107,15 +106,14 @@ void Lion_Optimizer::Step_4(T* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<4>(
-        &rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
+    Step_AVX<4>(&rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
 #endif
     if (_param_size > rounded_size)
         Step_1((_params + rounded_size),
-                  (grads + rounded_size),
-                  (_exp_avg + rounded_size),
-                  (_param_size - rounded_size),
-                  (dev_params != nullptr ? (dev_params + rounded_size) : dev_params));
+               (grads + rounded_size),
+               (_exp_avg + rounded_size),
+               (_param_size - rounded_size),
+               (dev_params != nullptr ? (dev_params + rounded_size) : dev_params));
 }
 
 int create_lion_optimizer(int optimizer_id,
@@ -163,15 +161,14 @@ void Lion_Optimizer::Step_8(T* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8>(
-        &rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
+    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
 #endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
-                  (grads + rounded_size),
-                  (_exp_avg + rounded_size),
-                  (_param_size - rounded_size),
-                  (dev_params != nullptr ? (dev_params + rounded_size) : dev_params));
+               (grads + rounded_size),
+               (_exp_avg + rounded_size),
+               (_param_size - rounded_size),
+               (dev_params != nullptr ? (dev_params + rounded_size) : dev_params));
 }
 
 int ds_lion_step(int optimizer_id,
@@ -200,12 +197,20 @@ int ds_lion_step(int optimizer_id,
     opt->update_state(lr, weight_decay);
 
     if (params.options().dtype() == at::kHalf)
-        opt->Step_8((c10::Half*)params_ptr, (c10::Half*)grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_FP16_DTYPE*)nullptr);
+        opt->Step_8((c10::Half*)params_ptr,
+                    (c10::Half*)grads_ptr,
+                    exp_avg_ptr,
+                    params_c.numel(),
+                    (DEVICE_FP16_DTYPE*)nullptr);
     else if (params.options().dtype() == at::kBFloat16)
-        opt->Step_8(
-            (c10::BFloat16*)params_ptr, (c10::BFloat16*)grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_FP16_DTYPE*)nullptr);
+        opt->Step_8((c10::BFloat16*)params_ptr,
+                    (c10::BFloat16*)grads_ptr,
+                    exp_avg_ptr,
+                    params_c.numel(),
+                    (DEVICE_FP16_DTYPE*)nullptr);
     else
-        opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_FP16_DTYPE*)nullptr);
+        opt->Step_8(
+            params_ptr, grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_FP16_DTYPE*)nullptr);
 
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
     opt->SynchronizeStreams();
@@ -240,25 +245,36 @@ int ds_lion_step_plus_copy(int optimizer_id,
     opt->update_state(lr, weight_decay);
 
     if (params.options().dtype() == at::kHalf)
-        opt->Step_8(
-            (c10::Half*)params_ptr, (c10::Half*)grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_FP16_DTYPE*)gpu_params_c.data_ptr());
+        opt->Step_8((c10::Half*)params_ptr,
+                    (c10::Half*)grads_ptr,
+                    exp_avg_ptr,
+                    params_c.numel(),
+                    (DEVICE_FP16_DTYPE*)gpu_params_c.data_ptr());
     else if (params.options().dtype() == at::kBFloat16)
 #if defined(DEVICE_BF16_DTYPE)
-        opt->Step_8(
-            (c10::BFloat16*)params_ptr, (c10::BFloat16*)grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_BF16_DTYPE*)gpu_params_c.data_ptr());
-#else   
+        opt->Step_8((c10::BFloat16*)params_ptr,
+                    (c10::BFloat16*)grads_ptr,
+                    exp_avg_ptr,
+                    params_c.numel(),
+                    (DEVICE_BF16_DTYPE*)gpu_params_c.data_ptr());
+#else
         throw std::runtime_error("BF16 not suppoted on device");
 #endif
+    else if (gpu_params_c.options().dtype() == at::kHalf)
+        opt->Step_8(params_ptr,
+                    grads_ptr,
+                    exp_avg_ptr,
+                    params_c.numel(),
+                    (DEVICE_FP16_DTYPE*)gpu_params_c.data_ptr());
     else
-        if (gpu_params_c.options().dtype() == at::kHalf)
-            opt->Step_8(
-                params_ptr, grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_FP16_DTYPE*)gpu_params_c.data_ptr());
-        else
 #if defined(DEVICE_BF16_DTYPE)
-            opt->Step_8(
-                params_ptr, grads_ptr, exp_avg_ptr, params_c.numel(), (DEVICE_BF16_DTYPE*)gpu_params_c.data_ptr());
-#else   
-            throw std::runtime_error("BF16 not suppoted on device");
+        opt->Step_8(params_ptr,
+                    grads_ptr,
+                    exp_avg_ptr,
+                    params_c.numel(),
+                    (DEVICE_BF16_DTYPE*)gpu_params_c.data_ptr());
+#else
+        throw std::runtime_error("BF16 not suppoted on device");
 #endif
 
     opt->SynchronizeStreams();

@@ -147,8 +147,7 @@ inline typename std::enable_if_t<std::is_same_v<T, c10::BFloat16>, void> simd_st
 }
 
 template <int span, typename T>
-inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_store(T* dst,
-                                                                            AVX_Data* src)
+inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_store(T* dst, AVX_Data* src)
 {
     size_t width = SIMD_WIDTH;
 #pragma unroll
@@ -178,8 +177,7 @@ inline typename std::enable_if_t<std::is_same_v<T, c10::BFloat16>, void> simd_lo
 }
 
 template <int span, typename T>
-inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_load(AVX_Data* dst,
-                                                                           T* src)
+inline typename std::enable_if_t<std::is_same_v<T, float>, void> simd_load(AVX_Data* dst, T* src)
 {
     size_t width = SIMD_WIDTH;
 #pragma unroll

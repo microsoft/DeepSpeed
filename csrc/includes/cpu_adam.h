@@ -34,13 +34,13 @@
 #define DEVICE_BF16_DTYPE c10::BFloat16
 #endif
 
-#define STEP(SPAN)                                             \
-    template <typename T, typename ds_device_precision_t>      \
-    void Step_##SPAN(T* _params,                           \
-                     T* grads,                             \
-                     float* _exp_avg,                          \
-                     float* _exp_avg_sq,                       \
-                     size_t _param_size,                       \
+#define STEP(SPAN)                                        \
+    template <typename T, typename ds_device_precision_t> \
+    void Step_##SPAN(T* _params,                          \
+                     T* grads,                            \
+                     float* _exp_avg,                     \
+                     float* _exp_avg_sq,                  \
+                     size_t _param_size,                  \
                      ds_device_precision_t* dev_param = nullptr);
 
 class Adam_Optimizer {
@@ -256,9 +256,11 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
 
             simd_fma<span>(param_4, grad_4, step_size_4, param_4);
 
-            simd_store<span, T>(_params + i , param_4);
+            simd_store<span, T>(_params + i, param_4);
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
-            if (dev_params) { simd_store<span, T>((T*)(_doubled_buffer[_buf_index] + (i - t)), param_4); }
+            if (dev_params) {
+                simd_store<span, T>((T*)(_doubled_buffer[_buf_index] + (i - t)), param_4);
+            }
 #endif
             simd_store<span, float>(_exp_avg + i, momentum_4);
             simd_store<span, float>(_exp_avg_sq + i, variance_4);
