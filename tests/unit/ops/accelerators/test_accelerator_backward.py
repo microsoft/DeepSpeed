@@ -18,10 +18,6 @@ from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from unit.common import DistributedTest, is_rocm_pytorch
 from deepspeed.ops.op_builder import TransformerBuilder
 
-#if not deepspeed.ops.__installed_ops__['transformer']:
-#pytest.skip(
-#    "transformer kernels are temporarily disabled because of unexplained failures",
-#    allow_module_level=True)
 if torch.half not in get_accelerator().supported_dtypes():
     pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
 
