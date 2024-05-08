@@ -12,7 +12,7 @@
 #include <sys/mman.h>
 #include "shm.h"
 
-// #define DO_PROFILE
+#define DO_PROFILE
 #ifdef DO_PROFILE
 #include <cfloat>
 #include <chrono>
@@ -544,9 +544,26 @@ void naive_all_reduce(char* data_ptr,
                       size_t chunk_size,
                       size_t chunk_el)
 {
+#ifdef DO_PROFILE
+    static double total_t1_t0 = 0.0;
+    static double total_t2_t1 = 0.0;
+    static double total_t3_t2 = 0.0;
+    static double total_t4_t3 = 0.0;
+    static double total_t5_t4 = 0.0;
+    static int count = -16;  // warmup
+    auto t0 = std::chrono::system_clock::now();
+    auto t2 = t0;
+    auto t3 = t0;
+    auto t4 = t0;
+#endif
+
     parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__copy_in_done;
+
+#ifdef DO_PROFILE
+    auto t1 = std::chrono::system_clock::now();
+#endif
 
     if (world_rank == 0) {
         // compute allreduce result on rank 0
@@ -554,10 +571,19 @@ void naive_all_reduce(char* data_ptr,
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
         }
+#ifdef DO_PROFILE
+        t2 = std::chrono::system_clock::now();
+#endif
         reduce_all_buffers(workspace, 0, chunk_el, scalar_type, world_size, 0);
         std::atomic_thread_fence(std::memory_order_release);
+#ifdef DO_PROFILE
+        t3 = std::chrono::system_clock::now();
+#endif
         workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
         parallel_memcpy(data_ptr, workspace[0]->buffer, chunk_size);
+#ifdef DO_PROFILE
+        t4 = std::chrono::system_clock::now();
+#endif
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
@@ -571,6 +597,25 @@ void naive_all_reduce(char* data_ptr,
         }
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank]->state = coll_begin;
+#ifdef DO_PROFILE
+        auto t5 = std::chrono::system_clock::now();
+        count++;
+        if (count > 0) {
+            total_t1_t0 += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            total_t2_t1 += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+            total_t3_t2 += std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+            total_t4_t3 += std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count();
+            total_t5_t4 += std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count();
+            if (world_rank == 0 && count == 1000) {
+                printf("naive_all_reduce time breakdown:\n");
+                printf("\tcopy input buffer: %.2f\n", total_t1_t0 / count);
+                printf("\twait for copy: %.2f\n", total_t2_t1 / count);
+                printf("\treduce: %.2f\n", total_t3_t2 / count);
+                printf("\tcopy buffer to output: %.2f\n", total_t4_t3 / count);
+                printf("\twait finish: %.2f\n", total_t5_t4 / count);
+            }
+        }
+#endif
     }
     if (world_rank != 0) {
         // if rank 0 spin too fast it could be in state 1 of next allreduce
