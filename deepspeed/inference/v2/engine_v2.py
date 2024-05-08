@@ -154,8 +154,6 @@ class InferenceEngineV2:
         for uid, tokens in zip(batch_uids, batch_tokens):
             host_seq_desc = self._state_manager.get_sequence(uid)
             host_seq_desc.post_forward()  # Updates sequence metadata.
-            if self._config.enable_prefix_cache:
-                self._state_manager.update_cache(uid, tokens)
             self._model.maybe_free_kv(host_seq_desc)
 
         return logits
@@ -262,6 +260,11 @@ class InferenceEngineV2:
             seq.post_forward()
             seq.extend_kv_cache(block_ids)
             self._state_manager.increment_ref_count(block_ids)
+            self._state_manager._kv_cache.allocate_blocks(block_ids)
+
+    def update_prefix_cache(self, uid: int, tokens: torch.Tensor) -> None:
+        if self._config.enable_prefix_cache:
+            self._state_manager.update_cache(uid, tokens)
 
     def flush(self, uid: int) -> None:
         """

@@ -176,7 +176,14 @@ class DSStateManager:
 
         block_ids = self._block_tree.lookup(tokens)
         assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
-        return len(block_ids) * self._kv_configs[0].block_size, block_ids
+
+        cache_hit_length = len(block_ids) * self._kv_configs[0].block_size
+
+        if cache_hit_length == tokens.numel():
+            # we don't keep logits in the cache, so we need to recompute
+            block_ids = block_ids[:-1]
+            return len(block_ids) * self._kv_configs[0].block_size, block_ids
+        return cache_hit_length, block_ids
 
     def update_cache(self, uid: int, tokens: torch.Tensor) -> None:
         """
@@ -212,7 +219,7 @@ class DSStateManager:
         """
         Return the block size of the KV cache.
         """
-        return self._kv_config.block_size
+        return self._kv_configs[0].block_size
 
     @property
     def n_kv_cache_groups(self) -> int:

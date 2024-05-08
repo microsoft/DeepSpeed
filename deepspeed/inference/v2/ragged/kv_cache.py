@@ -152,6 +152,9 @@ class BlockedKVCache:
         """
         return self._allocators[cache_group].allocate(num_blocks)
 
+    def allocate_blocks(self, blocks: Iterable[int], cache_group: int = 0) -> None:
+        return self._allocators[cache_group].allocate_blocks(blocks)
+
     def free(self, blocks: Iterable[int], cache_group: int = 0) -> None:
         """
         Free a set of blocks from the cache. This will mark the blocks as free in the

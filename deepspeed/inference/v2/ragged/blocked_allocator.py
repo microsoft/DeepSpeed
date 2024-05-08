@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from typing import Iterable, Union
+from typing import Iterable, Union, List
 
 import torch
 
@@ -70,6 +70,24 @@ class BlockedAllocator:
             self._free_blocks -= 1
 
         return allocated_blocks
+
+    def allocate_blocks(self, blocks: List[int]) -> None:
+
+        for block in blocks:
+            if self._blocks[block] != -1:
+                self._blocks[block] = -1
+                self._free_blocks -= 1
+
+        self._head = -1
+        for i, b in enumerate(self._blocks):
+            next_available = b.item()
+            if next_available == -1:
+                while self._blocks[next_available].item() == -1:
+                    next_available += 1
+                self._blocks[i] = next_available
+            else:
+                if self._head == -1:
+                    self._head = i
 
     def free(self, blocks: Union[Iterable[int], int]) -> None:
         """
