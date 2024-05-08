@@ -321,42 +321,8 @@ int ds_adam_step_plus_copy(int optimizer_id,
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step, beta1, beta2);
     opt->update_state(lr, epsilon, weight_decay, bias_correction);
-    if (params.options().dtype() == at::kHalf)
-        opt->Step_8((c10::Half*)params_ptr,
-                    (c10::Half*)grads_ptr,
-                    exp_avg_ptr,
-                    exp_avg_sq_ptr,
-                    params_c.numel(),
-                    (DEVICE_FP16_DTYPE*)device_params_c.data_ptr());
-    else if (params.options().dtype() == at::kBFloat16)
-#if defined(DEVICE_BF16_DTYPE)
-        opt->Step_8((c10::BFloat16*)params_ptr,
-                    (c10::BFloat16*)grads_ptr,
-                    exp_avg_ptr,
-                    exp_avg_sq_ptr,
-                    params_c.numel(),
-                    (DEVICE_BF16_DTYPE*)device_params_c.data_ptr());
-#else
-        throw std::runtime_error("BF16 not supported on device");
-#endif
-    else if (device_params_c.options().dtype() == at::kHalf)
-        opt->Step_8(params_ptr,
-                    grads_ptr,
-                    exp_avg_ptr,
-                    exp_avg_sq_ptr,
-                    params_c.numel(),
-                    (DEVICE_FP16_DTYPE*)device_params_c.data_ptr());
-    else
-#if defined(DEVICE_BF16_DTYPE)
-        opt->Step_8(params_ptr,
-                    grads_ptr,
-                    exp_avg_ptr,
-                    exp_avg_sq_ptr,
-                    params_c.numel(),
-                    (DEVICE_BF16_DTYPE*)device_params_c.data_ptr());
-#else
-        throw std::runtime_error("BF16 not supported on device");
-#endif
+
+    invoke(opt, params_c, grads_c, exp_avg_c, exp_avg_sq_c, params_c.numel(), device_params_c);
 
     opt->SynchronizeStreams();
 #else
