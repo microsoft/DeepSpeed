@@ -32,7 +32,7 @@ template <typename ds_params_percision_t,
           typename ds_device_precision_t>
 void Lion_Optimizer::Step_1(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
-                            fds_state_precision_tloat* _exp_avg,
+                            ds_state_precision_t* _exp_avg,
                             size_t _param_size,
                             ds_device_precision_t* dev_params)
 {
@@ -214,7 +214,7 @@ c10::ScalarType DeviceCppTypeToScalarType<DEVICE_BF16_DTYPE>()
 #endif
 
 std::map<std::tuple<c10::ScalarType, c10::ScalarType, c10::ScalarType>,
-         std::function<void(std::shared_ptr<Adam_Optimizer>, void*, void*, void*, size_t, void*)>>
+         std::function<void(std::shared_ptr<Lion_Optimizer>, void*, void*, void*, size_t, void*)>>
     invokers;
 
 // Fill map with template functions for each type
@@ -290,7 +290,7 @@ int ds_lion_step(int optimizer_id,
     opt->IncrementStep(step, beta1, beta2);
     opt->update_state(lr, weight_decay);
 
-    invoke(opt, params_c, grads_c, exp_avg_c, exp_avg_c, params_c.numel());
+    invoke(opt, params_c, grads_c, exp_avg_c, params_c.numel());
 
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
     opt->SynchronizeStreams();
@@ -324,7 +324,7 @@ int ds_lion_step_plus_copy(int optimizer_id,
     opt->IncrementStep(step, beta1, beta2);
     opt->update_state(lr, weight_decay);
 
-    invoke(opt, params_c, grads_c, exp_avg_c, params_c.numel(), device_params_c);
+    invoke(opt, params_c, grads_c, exp_avg_c, params_c.numel(), gpu_params_c);
 
     opt->SynchronizeStreams();
 #else
