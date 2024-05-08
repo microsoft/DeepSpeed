@@ -143,7 +143,7 @@ int create_adagrad_optimizer(int optimizer_id,
 
     return 0;
 }
- 
+
 template <typename ds_params_percision_t,
           typename ds_state_precision_t,
           typename ds_device_precision_t>
@@ -247,10 +247,10 @@ void invoke(std::shared_ptr<Adagrad_Optimizer> opt,
 
     auto it = invokers.find(std::tuple(params_type, state_type, device_type));
     if (it == invokers.end()) {
-        throw std::runtime_error("Adagrad optimizer with param type "s + c10::toString(params_type) +
-                                 ", state type "s + c10::toString(state_type) +
-                                 " and device type "s + c10::toString(device_type) +
-                                 " is not supported on current hardware"s);
+        throw std::runtime_error(
+            "Adagrad optimizer with param type "s + c10::toString(params_type) + ", state type "s +
+            c10::toString(state_type) + " and device type "s + c10::toString(device_type) +
+            " is not supported on current hardware"s);
     }
 
     it->second(opt,
@@ -313,7 +313,7 @@ int ds_adagrad_step_plus_copy(int optimizer_id,
     opt->update_state(lr, epsilon, weight_decay);
 
     invoke(opt, params_c, grads_c, exp_avg_sq_c, params_c.numel(), gpu_params_c);
- 
+
     opt->SynchronizeStreams();
 #else
     assert(false);

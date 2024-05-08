@@ -213,9 +213,8 @@ c10::ScalarType DeviceCppTypeToScalarType<DEVICE_BF16_DTYPE>()
 };
 #endif
 
-std::map<
-    std::tuple<c10::ScalarType, c10::ScalarType, c10::ScalarType>,
-    std::function<void(std::shared_ptr<Adam_Optimizer>, void*, void*, void*, size_t, void*)>>
+std::map<std::tuple<c10::ScalarType, c10::ScalarType, c10::ScalarType>,
+         std::function<void(std::shared_ptr<Adam_Optimizer>, void*, void*, void*, size_t, void*)>>
     invokers;
 
 // Fill map with template functions for each type
@@ -268,12 +267,8 @@ void invoke(std::shared_ptr<Lion_Optimizer> opt,
                                  " is not supported on current hardware"s);
     }
 
-    it->second(opt,
-               params.data_ptr(),
-               grads.data_ptr(),
-               exp_avg.data_ptr(),
-               param_size,
-               dev_params_ptr);
+    it->second(
+        opt, params.data_ptr(), grads.data_ptr(), exp_avg.data_ptr(), param_size, dev_params_ptr);
 }
 
 int ds_lion_step(int optimizer_id,
@@ -295,7 +290,7 @@ int ds_lion_step(int optimizer_id,
     opt->IncrementStep(step, beta1, beta2);
     opt->update_state(lr, weight_decay);
 
-invoke(opt, params_c, grads_c, exp_avg_c, exp_avg_c, params_c.numel());
+    invoke(opt, params_c, grads_c, exp_avg_c, exp_avg_c, params_c.numel());
 
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
     opt->SynchronizeStreams();
