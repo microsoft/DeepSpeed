@@ -34,13 +34,15 @@
 #define DEVICE_BF16_DTYPE c10::BFloat16
 #endif
 
-#define STEP(SPAN)                                        \
-template <typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t> \
-    void Step_##SPAN(ds_params_percision_t* _params,                          \
-                     ds_params_percision_t* grads,                            \
-                     ds_state_precision_t* _exp_avg,                     \
-                     ds_state_precision_t* _exp_avg_sq,                  \
-                     size_t _param_size,                  \
+#define STEP(SPAN)                                      \
+    template <typename ds_params_percision_t,           \
+              typename ds_state_precision_t,            \
+              typename ds_device_precision_t>           \
+    void Step_##SPAN(ds_params_percision_t* _params,    \
+                     ds_params_percision_t* grads,      \
+                     ds_state_precision_t* _exp_avg,    \
+                     ds_state_precision_t* _exp_avg_sq, \
+                     size_t _param_size,                \
                      ds_device_precision_t* dev_param = nullptr);
 
 class Adam_Optimizer {
@@ -87,7 +89,10 @@ public:
     }
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span, typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t>
+    template <int span,
+              typename ds_params_percision_t,
+              typename ds_state_precision_t,
+              typename ds_device_precision_t>
     void Step_AVX(size_t* rounded_size,
                   ds_params_percision_t* _params,
                   ds_params_percision_t* grads,
@@ -173,7 +178,10 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span, typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t>
+template <int span,
+          typename ds_params_percision_t,
+          typename ds_state_precision_t,
+          typename ds_device_precision_t>
 void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               ds_params_percision_t* _params,
                               ds_params_percision_t* grads,
@@ -183,7 +191,10 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               ds_device_precision_t* dev_params)
 {
 #if !defined(__AVX512__)
-    if (std::is_same_v<ds_params_percision_t, c10::BFloat16> || std::is_same_v<ds_state_precision_t, c10::BFloat16>) { return; }
+    if (std::is_same_v<ds_params_percision_t, c10::BFloat16> ||
+        std::is_same_v<ds_state_precision_t, c10::BFloat16>) {
+        return;
+    }
 #endif
     size_t new_rounded_size = 0;
 
@@ -259,7 +270,8 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
             simd_store<span>(_params + i, param_4);
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
             if (dev_params) {
-                simd_store<span>((ds_params_percision_t*)(_doubled_buffer[_buf_index] + (i - t)), param_4);
+                simd_store<span>((ds_params_percision_t*)(_doubled_buffer[_buf_index] + (i - t)),
+                                 param_4);
             }
 #endif
             simd_store<span>(_exp_avg + i, momentum_4);

@@ -6,10 +6,10 @@
 #include <torch/extension.h>
 #include <cassert>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
-#include <map>
 #include "cpu_adam.h"
 
 #if defined(__ENABLE_CUDA__)
@@ -25,7 +25,9 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
-template <typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t>
+template <typename ds_params_percision_t,
+          typename ds_state_precision_t,
+          typename ds_device_precision_t>
 void Adam_Optimizer::Step_1(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -102,7 +104,9 @@ void Adam_Optimizer::Step_1(ds_params_percision_t* _params,
     }
 }
 
-template <typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t>
+template <typename ds_params_percision_t,
+          typename ds_state_precision_t,
+          typename ds_device_precision_t>
 void Adam_Optimizer::Step_4(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -163,7 +167,9 @@ int create_adam_optimizer(int optimizer_id,
     return 0;
 }
 
-template <typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t>
+template <typename ds_params_percision_t,
+          typename ds_state_precision_t,
+          typename ds_device_precision_t>
 void Adam_Optimizer::Step_8(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -185,47 +191,66 @@ void Adam_Optimizer::Step_8(ds_params_percision_t* _params,
 }
 
 #include <functional>
-template <typename ds_params_percision_t, typename ds_state_precision_t, typename ds_device_precision_t>
-void step_invoker(std::shared_ptr<Adam_Optimizer> opt, 
-                            void* _params,
-                            void* grads,
-                            void* _exp_avg,
-                            void* _exp_avg_sq,
-                            size_t _param_size,
-                            void* dev_params)
+template <typename ds_params_percision_t,
+          typename ds_state_precision_t,
+          typename ds_device_precision_t>
+void step_invoker(std::shared_ptr<Adam_Optimizer> opt,
+                  void* _params,
+                  void* grads,
+                  void* _exp_avg,
+                  void* _exp_avg_sq,
+                  size_t _param_size,
+                  void* dev_params)
 {
-    opt->Step_8((ds_params_percision_t*) (_params),
-                (ds_params_percision_t*) (grads),
-                (ds_state_precision_t* )(_exp_avg),
-                (ds_state_precision_t* )(_exp_avg_sq),
+    opt->Step_8((ds_params_percision_t*)(_params),
+                (ds_params_percision_t*)(grads),
+                (ds_state_precision_t*)(_exp_avg),
+                (ds_state_precision_t*)(_exp_avg_sq),
                 _param_size,
                 (ds_device_precision_t*)(dev_params));
 }
 
-//Function to translate device specific dtype to torch ScalarType
-template<class T> c10::ScalarType DeviceCppTypeToScalarType();
-template<> c10::ScalarType DeviceCppTypeToScalarType<DEVICE_FP16_DTYPE>() { return c10::ScalarType::Half; };
+// Function to translate device specific dtype to torch ScalarType
+template <class T>
+c10::ScalarType DeviceCppTypeToScalarType();
+template <>
+c10::ScalarType DeviceCppTypeToScalarType<DEVICE_FP16_DTYPE>()
+{
+    return c10::ScalarType::Half;
+};
 #ifdef DEVICE_BF16_DTYPE
-template<> c10::ScalarType DeviceCppTypeToScalarType<DEVICE_BF16_DTYPE>() { return c10::ScalarType::BFloat16; };
+template <>
+c10::ScalarType DeviceCppTypeToScalarType<DEVICE_BF16_DTYPE>()
+{
+    return c10::ScalarType::BFloat16;
+};
 #endif
 
-std::map<std::tuple<c10::ScalarType, c10::ScalarType, c10::ScalarType>, std::function<void (std::shared_ptr<Adam_Optimizer>, void*, void*, void*, void*, size_t, void*)>> invokers;
+std::map<
+    std::tuple<c10::ScalarType, c10::ScalarType, c10::ScalarType>,
+    std::function<void(std::shared_ptr<Adam_Optimizer>, void*, void*, void*, void*, size_t, void*)>>
+    invokers;
 
-//Fill map with template functions for each type
-template<class ds_params_percision_t, class ds_state_precision_t, class ds_device_precision_t>
-void create_invoker() {
-    invokers[std::tuple(c10::CppTypeToScalarType<ds_params_percision_t>(), c10::CppTypeToScalarType<ds_state_precision_t>(), DeviceCppTypeToScalarType<ds_device_precision_t>())] = step_invoker<ds_params_percision_t, ds_state_precision_t, ds_device_precision_t>;
+// Fill map with template functions for each type
+template <class ds_params_percision_t, class ds_state_precision_t, class ds_device_precision_t>
+void create_invoker()
+{
+    invokers[std::tuple(c10::CppTypeToScalarType<ds_params_percision_t>(),
+                        c10::CppTypeToScalarType<ds_state_precision_t>(),
+                        DeviceCppTypeToScalarType<ds_device_precision_t>())] =
+        step_invoker<ds_params_percision_t, ds_state_precision_t, ds_device_precision_t>;
 }
-struct InvokerInitializer{
-    InvokerInitializer(){
+struct InvokerInitializer {
+    InvokerInitializer()
+    {
         create_invoker<c10::Half, float, DEVICE_FP16_DTYPE>();
         create_invoker<c10::Half, c10::Half, DEVICE_FP16_DTYPE>();
         create_invoker<float, float, DEVICE_FP16_DTYPE>();
-        #ifdef DEVICE_BF16_DTYPE
+#ifdef DEVICE_BF16_DTYPE
         create_invoker<c10::BFloat16, float, DEVICE_BF16_DTYPE>();
         create_invoker<c10::BFloat16, c10::BFloat16, DEVICE_BF16_DTYPE>();
         create_invoker<float, float, DEVICE_BF16_DTYPE>();
-        #endif
+#endif
     }
 } _invoker_initializer;
 
@@ -235,28 +260,35 @@ void invoke(std::shared_ptr<Adam_Optimizer> opt,
             torch::Tensor& params,
             torch::Tensor& grads,
             torch::Tensor& exp_avg,
-            torch::Tensor& exp_avg_sq, 
+            torch::Tensor& exp_avg_sq,
             size_t param_size,
             torch::Tensor& dev_params = empty_tensor)
 {
     c10::ScalarType params_type = at::typeMetaToScalarType(params.options().dtype());
-    c10::ScalarType state_type  = at::typeMetaToScalarType(exp_avg.options().dtype());
-    c10::ScalarType device_type = params_type == c10::ScalarType::Float ? c10::ScalarType::Half : params_type;
+    c10::ScalarType state_type = at::typeMetaToScalarType(exp_avg.options().dtype());
+    c10::ScalarType device_type = params_type == c10::ScalarType::Float ? c10::ScalarType::Half
+                                                                        : params_type;
     void* dev_params_ptr = nullptr;
-    if (dev_params.has_storage())
-    {
+    if (dev_params.has_storage()) {
         device_type = at::typeMetaToScalarType(dev_params.options().dtype());
         dev_params_ptr = dev_params.data_ptr();
     }
-  
+
     auto it = invokers.find(std::tuple(params_type, state_type, device_type));
-    if (it == invokers.end())
-    {
-        throw std::runtime_error("Adam optimizer with param type "s + c10::toString(params_type) + ", state type "s + c10::toString(state_type) +
-                                 " and device type "s + c10::toString(device_type) + " is not supported on current hardware"s);
+    if (it == invokers.end()) {
+        throw std::runtime_error("Adam optimizer with param type "s + c10::toString(params_type) +
+                                 ", state type "s + c10::toString(state_type) +
+                                 " and device type "s + c10::toString(device_type) +
+                                 " is not supported on current hardware"s);
     }
 
-    it->second(opt, params.data_ptr(), grads.data_ptr(), exp_avg.data_ptr(), exp_avg_sq.data_ptr(), param_size, dev_params_ptr);
+    it->second(opt,
+               params.data_ptr(),
+               grads.data_ptr(),
+               exp_avg.data_ptr(),
+               exp_avg_sq.data_ptr(),
+               param_size,
+               dev_params_ptr);
 }
 
 int ds_adam_step(int optimizer_id,
@@ -282,7 +314,7 @@ int ds_adam_step(int optimizer_id,
     opt->IncrementStep(step, beta1, beta2);
     opt->update_state(lr, epsilon, weight_decay, bias_correction);
 
-    invoke(opt, params_c, grads_c, exp_avg_c, exp_avg_sq_c, params_c.numel() );
+    invoke(opt, params_c, grads_c, exp_avg_c, exp_avg_sq_c, params_c.numel());
 
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
     opt->SynchronizeStreams();
