@@ -47,14 +47,13 @@ std::vector<at::Tensor> quantize(torch::Tensor& out,
     return {out_q, out_q};
 }
 
-at::Tensor get_scales(torch::Tensor& out, int group_size)
+at::Tensor get_scales(torch::Tensor& out, int group_size, int num_groups)
 {
     auto options = at::TensorOptions()
                        .dtype(torch::kFloat)
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    int num_groups = at::numel(out) / group_size;
     auto scales = torch::from_blob(out.data_ptr(), {num_groups, group_size / 4 + 1}, options);
     return scales;
 }
