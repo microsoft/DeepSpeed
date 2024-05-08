@@ -5,6 +5,7 @@
 
 #include <torch/extension.h>
 #include <cassert>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -190,7 +191,6 @@ void Adam_Optimizer::Step_8(ds_params_percision_t* _params,
                (dev_params != nullptr ? (dev_params + rounded_size) : dev_params));
 }
 
-#include <functional>
 template <typename ds_params_percision_t,
           typename ds_state_precision_t,
           typename ds_device_precision_t>

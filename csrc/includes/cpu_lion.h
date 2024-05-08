@@ -4,7 +4,7 @@
 // DeepSpeed Team
 
 #pragma once
-
+ 
 #define NOMINMAX  // Windows idiosyncrasy
                   // https://stackoverflow.com/questions/4913922/possible-problems-with-nominmax-on-visual-c
 
@@ -27,17 +27,20 @@
 #include "acl/acl.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #define DEVICE_FP16_DTYPE c10::Half
-#define DEVICE_BF16_DTYPE c10::BFloat16 #else
+#define DEVICE_BF16_DTYPE c10::BFloat16 
+#else
 #include <cmath>
 #define DEVICE_FP16_DTYPE c10::Half
 #define DEVICE_BF16_DTYPE c10::BFloat16
 #endif
 
 #define STEP(SPAN)                                        \
-    template <typename T, typename ds_device_precision_t> \
-    void Step_##SPAN(T* _params,                          \
-                     T* grads,                            \
-                     float* _exp_avg,                     \
+    template <typename ds_params_percision_t,           \
+              typename ds_state_precision_t,            \
+              typename ds_device_precision_t>           \
+    void Step_##SPAN(ds_params_percision_t* _params,                          \
+                     ds_params_percision_t* grads,                            \
+                     ds_state_precision_t* _exp_avg,                     \
                      size_t _param_size,                  \
                      ds_device_precision_t* dev_param = nullptr);
 
@@ -75,11 +78,14 @@ public:
     }
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span, typename T, typename ds_device_precision_t>
+    template <int span,
+              typename ds_params_percision_t,
+              typename ds_state_precision_t,
+              typename ds_device_precision_t>
     void Step_AVX(size_t* rounded_size,
-                  T* _params,
-                  T* grads,
-                  float* _exp_avg,
+                  ds_params_percision_t* _params,
+                  ds_params_percision_t* grads,
+                  ds_state_precision_t* _exp_avg,
                   size_t param_size,
                   ds_device_precision_t* dev_param = nullptr);
 #endif
@@ -132,16 +138,22 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span, typename T, typename ds_device_precision_t>
+template <int span,
+          typename ds_params_percision_t,
+          typename ds_state_precision_t,
+          typename ds_device_precision_t>
 void Lion_Optimizer::Step_AVX(size_t* rounded_size,
-                              T* _params,
-                              T* grads,
-                              float* _exp_avg,
+                              ds_params_percision_t* _params,
+                              ds_params_percision_t* grads,
+                              ds_state_precision_t* _exp_avg,
                               size_t _param_size,
                               ds_device_precision_t* dev_params)
 {
 #if !defined(__AVX512__)
-    if (std::is_same_v<T, c10::BFloat16>) { return; }
+    if (std::is_same_v<ds_params_percision_t, c10::BFloat16> ||
+        std::is_same_v<ds_state_precision_t, c10::BFloat16>) {
+        return;
+    }
 #endif
     size_t new_rounded_size = 0;
 
@@ -182,13 +194,13 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
-            simd_load<span, T>(grad_4, grads + i);
+            simd_load<span>(grad_4, grads + i);
 
             AVX_Data momentum_4[span];
-            simd_load<span, float>(momentum_4, _exp_avg + i);
+            simd_load<span>(momentum_4, _exp_avg + i);
 
             AVX_Data param_4[span];
-            simd_load<span, T>(param_4, _params + i);
+            simd_load<span>(param_4, _params + i);
 
             AVX_Data tmp_4[span];
 
@@ -206,17 +218,17 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
             simd_mul<span>(momentum_4, momentum_4, betta2_4);
             simd_fma<span>(momentum_4, grad_4, betta2_minus1_4, momentum_4);
 
-            simd_store<span, T>(_params + i, param_4);
+            simd_store<span>(_params + i, param_4);
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
             if (dev_params) {
-                simd_store<span, T>((T*)(_doubled_buffer[_buf_index] + (i - t)), param_4);
+                simd_store<span>((ds_params_percision_t*)(_doubled_buffer[_buf_index] + (i - t)), param_4);
             }
 #endif
-            simd_store<span, float>(_exp_avg + i, momentum_4);
+            simd_store<span>(_exp_avg + i, momentum_4);
         }
 #if defined(__ENABLE_CUDA__)
         if (dev_params) {
-            if (sizeof(T) == 2)
+            if (sizeof(ds_params_percision_t) == 2)
                 launch_param_update_half(
                     _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             else
@@ -228,7 +240,7 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
 #elif defined(__ENABLE_CANN__)
         if (dev_params) {
             size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);
-            if (sizeof(T) == 2) memcpy_size /= 2;
+            if (sizeof(ds_params_percision_t) == 2) memcpy_size /= 2;
             aclrtMemcpy(dev_params + t,
                         memcpy_size,
                         _doubled_buffer[_buf_index],
