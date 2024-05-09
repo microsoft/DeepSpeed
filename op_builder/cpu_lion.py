@@ -21,7 +21,7 @@ class CPULionBuilder(TorchCPUOpBuilder):
         if self.build_for_cpu:
             return ['csrc/lion/cpu_lion.cpp', 'csrc/lion/cpu_lion_impl.cpp']
 
-        return ['csrc/lion/cpu_lion.cpp', 'csrc/lion/cpu_lion_impl.cpp', 'csrc/common/custom_cuda_kernel.cu']
+        return ['csrc/lion/cpu_lion.cpp', 'csrc/lion/cpu_lion_impl.cpp']
 
     def libraries_args(self):
         args = super().libraries_args()

@@ -21,7 +21,7 @@ class CPUAdagradBuilder(TorchCPUOpBuilder):
         if self.build_for_cpu:
             return ['csrc/adagrad/cpu_adagrad.cpp']
 
-        return ['csrc/adagrad/cpu_adagrad.cpp', 'csrc/common/custom_cuda_kernel.cu']
+        return ['csrc/adagrad/cpu_adagrad.cpp']
 
     def libraries_args(self):
         args = super().libraries_args()
