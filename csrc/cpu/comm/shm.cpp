@@ -518,6 +518,18 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     for (int i = aligned_bytes; i < n_bytes; i++) { *((char*)to + i) = *((char*)from + i); }
 }
 
+size_t slice_size(size_t chunk_el, int slice_idx);
+char* slice_data(char* data_ptr, size_t chunk_el, int el_size, int slice_idx);
+static void parallel_multi_memcpy(int world_size, char *data_ptr, size_t chunk_el, size_t chunk_size, int data_size)
+{
+    for (int i = 0; i < world_size; i++) {
+        int rank = (i + world_rank) % world_size;
+        parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
+                        slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
+                        slice_size(chunk_el, rank) * data_size);
+    }
+}
+
 #define positive_mod(num, mod) ((((num) % (mod)) + (mod)) % (mod))
 #define rank_mod(rank) positive_mod(rank, world_size)
 size_t slice_size(size_t chunk_el, int slice_idx)
@@ -678,10 +690,14 @@ void distributed_naive_reduce(char* data_ptr,
         int rank = (i + world_rank) % world_size;
         // wait until the other rank reduce the buffer
         wait_buffer_state_until_range(rank, coll_allreduce_naive__reduce_done, 2);
-        parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-                        slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
-                        slice_size(chunk_el, rank) * data_size);
     }
+    parallel_multi_memcpy(world_size, data_ptr, chunk_el, chunk_size, data_size);
+    //for (int i = 0; i < world_size; i++) {
+        //int rank = (i + world_rank) % world_size;
+        //parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
+                        //slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
+                        //slice_size(chunk_el, rank) * data_size);
+    //}
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__copy_out_done;
 
