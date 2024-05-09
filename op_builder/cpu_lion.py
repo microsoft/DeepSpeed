@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from .builder import CPUOpBuilder
+from .builder import TorchCPUOpBuilder
 
 
-class CPULionBuilder(CPUOpBuilder):
+class CPULionBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_LION"
     NAME = "cpu_lion"
 

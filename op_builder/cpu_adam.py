@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from .builder import CPUOpBuilder
+from .builder import TorchCPUOpBuilder
 
 
-class CPUAdamBuilder(CPUOpBuilder):
+class CPUAdamBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
 

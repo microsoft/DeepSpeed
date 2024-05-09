@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from .builder import CPUOpBuilder
+from .builder import TorchCPUOpBuilder
 
 
-class CPUAdagradBuilder(CPUOpBuilder):
+class CPUAdagradBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAGRAD"
     NAME = "cpu_adagrad"
 
