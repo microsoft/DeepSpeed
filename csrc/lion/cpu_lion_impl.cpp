@@ -125,7 +125,7 @@ void Lion_Optimizer::Step_8(ds_params_percision_t* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _param_size, dev_params);
+    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _param_size);
 #endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
@@ -179,7 +179,7 @@ void invoke(std::shared_ptr<Lion_Optimizer> opt,
     c10::ScalarType params_type = at::typeMetaToScalarType(params.options().dtype());
     c10::ScalarType state_type = at::typeMetaToScalarType(exp_avg.options().dtype());
 
-    auto it = invokers.find(std::tuple(params_type, state_type, device_type));
+    auto it = invokers.find(std::tuple(params_type, state_type));
     if (it == invokers.end()) {
         throw std::runtime_error("Lion optimizer with param type "s + c10::toString(params_type) +
                                  " and state type "s + c10::toString(state_type) +
