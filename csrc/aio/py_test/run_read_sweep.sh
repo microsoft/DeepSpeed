@@ -1,13 +1,13 @@
 #!/bin/bash
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <input file> <output log dir>"
+if [[ $# -lt 2 ]]; then
+    echo "Usage: $0 <io_size> <output log dir> <target_gpu>"
     exit 1
 fi
 
 
 function validate_environment()
 {
-    validate_cmd="python ./validate_async_io.py"
+    validate_cmd="TORCH_EXTENSIONS_DIR=./torch_extentions python ./validate_async_io.py"
     eval ${validate_cmd}
     res=$?
     if [[ $res != 0 ]]; then
@@ -20,15 +20,11 @@ function validate_environment()
 
 validate_environment
 
-INPUT_FILE=$1
-if [[ ! -f ${INPUT_FILE} ]]; then
-    echo "Input file not found: ${INPUT_FILE}"
-    exit 1
-fi
-
+IO_SIZE=$1
 LOG_DIR=$2/aio_perf_sweep
+GPU_MEM=$3
 RUN_SCRIPT=./test_ds_aio.py
-READ_OPT="--read_file ${INPUT_FILE}"
+READ_OPT="--read"
 
 if [[ -d ${LOG_DIR} ]]; then
     rm -f ${LOG_DIR}/*
@@ -36,34 +32,41 @@ else
     mkdir -p ${LOG_DIR}
 fi
 
-DISABLE_CACHE="sync; sudo bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
+if [[ ${GPU_MEM} == "gpu" ]]; then
+    gpu_opt="--gpu"
+else
+    gpu_opt=""
+fi
+
+DISABLE_CACHE="sync; bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
 SYNC="sync"
 
 for sub in single block; do
+    ftd_map="--folder_to_device_mapping \
+             /workspace/nvme01/aio:0 "
     if [[ $sub == "single" ]]; then
         sub_opt="--single_submit"
     else
         sub_opt=""
     fi
     for ov in overlap sequential; do
-        if [[ $ov == "overlap" ]]; then
-            ov_opt="--overlap_events"
+        if [[ $ov == "sequential" ]]; then
+            ov_opt="--sequential_requests"
         else
             ov_opt=""
         fi
-        for t in 1 2 4 8; do
-            for p in 1 ; do
-                for d in 1 2 4 8 16 32; do
-                    for bs in 128K 256K 512K 1M; do
-                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle --threads ${t}"
-                        OPTS="--io_parallel ${p} --queue_depth ${d} --block_size ${bs}"
+        for p in 1 ; do
+            for t in 1 2 4 8; do
+                for d in 8 16 32; do
+                    for bs in 256K 512K 1M; do
+                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} ${ftd_map}"
+                        OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE}"
                         LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
                         cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
                         echo ${DISABLE_CACHE}
                         echo ${cmd}
                         echo ${SYNC}
 
-                        eval ${DISABLE_CACHE}
                         eval ${cmd}
                         eval ${SYNC}
                         sleep 2
