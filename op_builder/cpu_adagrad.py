@@ -4,10 +4,9 @@
 # DeepSpeed Team
 
 import os
-from .builder import TorchCPUOpBuilder
+from .builder import CPUOpBuilder
 
-
-class CPUAdagradBuilder(TorchCPUOpBuilder):
+class CPUAdagradBuilder(CPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAGRAD"
     NAME = "cpu_adagrad"
 
@@ -18,26 +17,11 @@ class CPUAdagradBuilder(TorchCPUOpBuilder):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
 
     def sources(self):
-        if self.build_for_cpu:
-            return ['csrc/adagrad/cpu_adagrad.cpp']
-
         return ['csrc/adagrad/cpu_adagrad.cpp']
 
     def libraries_args(self):
         args = super().libraries_args()
-        if self.build_for_cpu:
-            return args
-
-        if not self.is_rocm_pytorch():
-            args += ['curand']
         return args
 
     def include_paths(self):
-        import torch
-        if self.build_for_cpu:
-            CUDA_INCLUDE = []
-        elif not self.is_rocm_pytorch():
-            CUDA_INCLUDE = [os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")]
-        else:
-            CUDA_INCLUDE = []
-        return ['csrc/includes'] + CUDA_INCLUDE
+        return ['csrc/includes']
