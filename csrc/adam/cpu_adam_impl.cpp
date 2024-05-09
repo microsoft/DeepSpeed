@@ -18,8 +18,7 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Adam_Optimizer::Step_1(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -68,8 +67,7 @@ void Adam_Optimizer::Step_1(ds_params_percision_t* _params,
     }
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Adam_Optimizer::Step_4(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -128,8 +126,7 @@ int create_adam_optimizer(int optimizer_id,
     return 0;
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Adam_Optimizer::Step_8(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -148,8 +145,7 @@ void Adam_Optimizer::Step_8(ds_params_percision_t* _params,
                (_param_size - rounded_size));
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void step_invoker(std::shared_ptr<Adam_Optimizer> opt,
                   void* _params,
                   void* grads,
@@ -164,9 +160,8 @@ void step_invoker(std::shared_ptr<Adam_Optimizer> opt,
                 _param_size);
 }
 
-std::map<
-    std::tuple<c10::ScalarType, c10::ScalarType>,
-    std::function<void(std::shared_ptr<Adam_Optimizer>, void*, void*, void*, void*, size_t)>>
+std::map<std::tuple<c10::ScalarType, c10::ScalarType>,
+         std::function<void(std::shared_ptr<Adam_Optimizer>, void*, void*, void*, void*, size_t)>>
     invokers;
 
 // Fill map with template functions for each type
@@ -185,7 +180,6 @@ struct InvokerInitializer {
         create_invoker<c10::BFloat16, float>();
         create_invoker<c10::BFloat16, c10::BFloat16>();
         create_invoker<float, float>();
-
     }
 } _invoker_initializer;
 

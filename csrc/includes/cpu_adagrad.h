@@ -13,25 +13,22 @@
 #include <cassert>
 #include "simd.h"
 
-#define STEP(SPAN)                                      \
-    template <typename ds_params_percision_t,           \
-              typename ds_state_precision_t>           \
-    void Step_##SPAN(ds_params_percision_t* _params,    \
-                     ds_params_percision_t* grads,      \
-                     ds_state_precision_t* _exp_avg_sq, \
+#define STEP(SPAN)                                                           \
+    template <typename ds_params_percision_t, typename ds_state_precision_t> \
+    void Step_##SPAN(ds_params_percision_t* _params,                         \
+                     ds_params_percision_t* grads,                           \
+                     ds_state_precision_t* _exp_avg_sq,                      \
                      size_t _param_size);
 
 class Adagrad_Optimizer {
 public:
     Adagrad_Optimizer(float alpha = 1e-2, float eps = 1e-8, float weight_decay = 0)
         : _alpha(alpha), _eps(eps), _weight_decay(weight_decay)
-    { }
-    ~Adagrad_Optimizer()
-    { }
+    {
+    }
+    ~Adagrad_Optimizer() {}
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span,
-              typename ds_params_percision_t,
-              typename ds_state_precision_t>
+    template <int span, typename ds_params_percision_t, typename ds_state_precision_t>
     void Step_AVX(size_t* rounded_size,
                   ds_params_percision_t* _params,
                   ds_params_percision_t* grads,
@@ -64,9 +61,7 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span,
-          typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <int span, typename ds_params_percision_t, typename ds_state_precision_t>
 void Adagrad_Optimizer::Step_AVX(size_t* rounded_size,
                                  ds_params_percision_t* _params,
                                  ds_params_percision_t* grads,

@@ -3,8 +3,8 @@
 
 # DeepSpeed Team
 
-import os
 from .builder import CPUOpBuilder
+
 
 class CPULionBuilder(CPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_LION"

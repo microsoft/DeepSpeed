@@ -13,12 +13,11 @@
 #include <cassert>
 #include "simd.h"
 
-#define STEP(SPAN)                                   \
-    template <typename ds_params_percision_t,        \
-              typename ds_state_precision_t>        \
-    void Step_##SPAN(ds_params_percision_t* _params, \
-                     ds_params_percision_t* grads,   \
-                     ds_state_precision_t* _exp_avg, \
+#define STEP(SPAN)                                                           \
+    template <typename ds_params_percision_t, typename ds_state_precision_t> \
+    void Step_##SPAN(ds_params_percision_t* _params,                         \
+                     ds_params_percision_t* grads,                           \
+                     ds_state_precision_t* _exp_avg,                         \
                      size_t _param_size);
 
 class Lion_Optimizer {
@@ -28,14 +27,12 @@ public:
                    float betta2 = 0.999,
                    float weight_decay = 0)
         : _alpha(alpha), _betta1(betta1), _betta2(betta2), _weight_decay(weight_decay), _step(0)
-    { }
-    ~Lion_Optimizer()
-    { }
+    {
+    }
+    ~Lion_Optimizer() {}
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span,
-              typename ds_params_percision_t,
-              typename ds_state_precision_t>
+    template <int span, typename ds_params_percision_t, typename ds_state_precision_t>
     void Step_AVX(size_t* rounded_size,
                   ds_params_percision_t* _params,
                   ds_params_percision_t* grads,
@@ -70,9 +67,7 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span,
-          typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <int span, typename ds_params_percision_t, typename ds_state_precision_t>
 void Lion_Optimizer::Step_AVX(size_t* rounded_size,
                               ds_params_percision_t* _params,
                               ds_params_percision_t* grads,

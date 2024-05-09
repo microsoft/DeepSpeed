@@ -3,7 +3,6 @@
 
 # DeepSpeed Team
 
-import os
 from .builder import CPUOpBuilder
 
 

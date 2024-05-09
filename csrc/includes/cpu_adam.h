@@ -13,13 +13,12 @@
 #include <cassert>
 #include "simd.h"
 
-#define STEP(SPAN)                                      \
-    template <typename ds_params_percision_t,           \
-              typename ds_state_precision_t >           \
-    void Step_##SPAN(ds_params_percision_t* _params,    \
-                     ds_params_percision_t* grads,      \
-                     ds_state_precision_t* _exp_avg,    \
-                     ds_state_precision_t* _exp_avg_sq, \
+#define STEP(SPAN)                                                           \
+    template <typename ds_params_percision_t, typename ds_state_precision_t> \
+    void Step_##SPAN(ds_params_percision_t* _params,                         \
+                     ds_params_percision_t* grads,                           \
+                     ds_state_precision_t* _exp_avg,                         \
+                     ds_state_precision_t* _exp_avg_sq,                      \
                      size_t _param_size);
 
 class Adam_Optimizer {
@@ -39,14 +38,12 @@ public:
           _betta2_t(1.0),
           _step(0),
           _adamw_mode(adamw_mode)
-    {}
-    ~Adam_Optimizer()
-    {}
+    {
+    }
+    ~Adam_Optimizer() {}
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span,
-              typename ds_params_percision_t,
-              typename ds_state_precision_t>
+    template <int span, typename ds_params_percision_t, typename ds_state_precision_t>
     void Step_AVX(size_t* rounded_size,
                   ds_params_percision_t* _params,
                   ds_params_percision_t* grads,
@@ -109,9 +106,7 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span,
-          typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <int span, typename ds_params_percision_t, typename ds_state_precision_t>
 void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               ds_params_percision_t* _params,
                               ds_params_percision_t* grads,

@@ -123,5 +123,5 @@ class DeepSpeedCPULion(torch.optim.Optimizer):
                 beta1, beta2 = group['betas']
 
                 self.ds_opt_lion.lion_update(self.opt_id, state['step'], group['lr'], beta1, beta2,
-                                            group['weight_decay'], p.data, p.grad.data, state['exp_avg'])
+                                             group['weight_decay'], p.data, p.grad.data, state['exp_avg'])
         return loss

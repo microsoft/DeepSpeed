@@ -163,6 +163,6 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 beta1, beta2 = group['betas']
 
                 self.ds_opt_adam.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
-                                                 group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
-                                                 state['exp_avg'], state['exp_avg_sq'])
+                                             group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
+                                             state['exp_avg'], state['exp_avg_sq'])
         return loss

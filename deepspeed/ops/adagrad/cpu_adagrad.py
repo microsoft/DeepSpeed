@@ -96,6 +96,5 @@ class DeepSpeedCPUAdagrad(torch.optim.Optimizer):
                     state['exp_avg_sq'][sparse_exp_avg_sq.indices()] = sparse_exp_avg_sq.values()
                 else:
                     self.ds_opt_adagrad.adagrad_update(self.opt_id, state['step'], group['lr'], group['eps'],
-                                                           group['weight_decay'], p.data, p.grad.data,
-                                                           state['exp_avg_sq'])
+                                                       group['weight_decay'], p.data, p.grad.data, state['exp_avg_sq'])
         return loss

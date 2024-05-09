@@ -19,8 +19,7 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Lion_Optimizer::Step_1(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -65,8 +64,7 @@ void Lion_Optimizer::Step_1(ds_params_percision_t* _params,
     }
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Lion_Optimizer::Step_4(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -119,8 +117,7 @@ int create_lion_optimizer(int optimizer_id,
     return 0;
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Lion_Optimizer::Step_8(ds_params_percision_t* _params,
                             ds_params_percision_t* grads,
                             ds_state_precision_t* _exp_avg,
@@ -137,8 +134,7 @@ void Lion_Optimizer::Step_8(ds_params_percision_t* _params,
                (_param_size - rounded_size));
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void step_invoker(std::shared_ptr<Lion_Optimizer> opt,
                   void* _params,
                   void* grads,
@@ -190,8 +186,7 @@ void invoke(std::shared_ptr<Lion_Optimizer> opt,
                                  " is not supported on current hardware"s);
     }
 
-    it->second(
-        opt, params.data_ptr(), grads.data_ptr(), exp_avg.data_ptr(), param_size);
+    it->second(opt, params.data_ptr(), grads.data_ptr(), exp_avg.data_ptr(), param_size);
 }
 
 int ds_lion_step(int optimizer_id,

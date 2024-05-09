@@ -17,8 +17,7 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Adagrad_Optimizer::Step_1(ds_params_percision_t* _params,
                                ds_params_percision_t* grads,
                                ds_state_precision_t* _exp_avg_sq,
@@ -57,8 +56,7 @@ void Adagrad_Optimizer::Step_1(ds_params_percision_t* _params,
     }
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Adagrad_Optimizer::Step_4(ds_params_percision_t* _params,
                                ds_params_percision_t* grads,
                                ds_state_precision_t* _exp_avg_sq,
@@ -106,8 +104,7 @@ int create_adagrad_optimizer(int optimizer_id,
     return 0;
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void Adagrad_Optimizer::Step_8(ds_params_percision_t* _params,
                                ds_params_percision_t* grads,
                                ds_state_precision_t* _exp_avg_sq,
@@ -124,8 +121,7 @@ void Adagrad_Optimizer::Step_8(ds_params_percision_t* _params,
                (_param_size - rounded_size));
 }
 
-template <typename ds_params_percision_t,
-          typename ds_state_precision_t>
+template <typename ds_params_percision_t, typename ds_state_precision_t>
 void step_invoker(std::shared_ptr<Adagrad_Optimizer> opt,
                   void* _params,
                   void* grads,
@@ -138,9 +134,8 @@ void step_invoker(std::shared_ptr<Adagrad_Optimizer> opt,
                 _param_size);
 }
 
-std::map<
-    std::tuple<c10::ScalarType, c10::ScalarType>,
-    std::function<void(std::shared_ptr<Adagrad_Optimizer>, void*, void*, void*, size_t)>>
+std::map<std::tuple<c10::ScalarType, c10::ScalarType>,
+         std::function<void(std::shared_ptr<Adagrad_Optimizer>, void*, void*, void*, size_t)>>
     invokers;
 
 // Fill map with template functions for each type
@@ -173,16 +168,13 @@ void invoke(std::shared_ptr<Adagrad_Optimizer> opt,
 
     auto it = invokers.find(std::tuple(params_type, state_type));
     if (it == invokers.end()) {
-        throw std::runtime_error(
-            "Adagrad optimizer with param type "s + c10::toString(params_type) + " and state type "s +
-            c10::toString(state_type) + " is not supported on current hardware"s);
+        throw std::runtime_error("Adagrad optimizer with param type "s +
+                                 c10::toString(params_type) + " and state type "s +
+                                 c10::toString(state_type) +
+                                 " is not supported on current hardware"s);
     }
 
-    it->second(opt,
-               params.data_ptr(),
-               grads.data_ptr(),
-               exp_avg_sq.data_ptr(),
-               param_size);
+    it->second(opt, params.data_ptr(), grads.data_ptr(), exp_avg_sq.data_ptr(), param_size);
 }
 
 int ds_adagrad_step(int optimizer_id,
