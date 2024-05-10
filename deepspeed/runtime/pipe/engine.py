@@ -1206,9 +1206,7 @@ class PipelineEngine(DeepSpeedEngine):
                 # branches on is_grad_partitioned so we don't filter out the
                 # metadata tensor.
                 if self.is_grad_partitioned:
-                    sizes_and_dtypes = [(list(t.size()), t.dtype)
-                                        for t in outputs[:2]] + [(list(t.size()), t.dtype)
-                                                                 for t in outputs[2:] if t.is_floating_point()]
+                    sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs[:2]]
                 else:
                     sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs if t.is_floating_point()]
                 self.grad_layer = self._allocate_buffers(sizes_and_dtypes, num_buffers=1)[0]
