@@ -22,8 +22,8 @@ pytest.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
-    x = first.detach().numpy()
-    y = second.detach().numpy()
+    x = first.detach().float().numpy()
+    y = second.detach().float().numpy()
     print("ATOL", atol)
     if verbose:
         print("x = {}".format(x.flatten()))
