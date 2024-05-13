@@ -2646,7 +2646,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 # self.persistent_parameters[0].all_gather(self.persistent_parameters) # this will be done in checkpoint_event_epilogue() so remove it to prevent double all_gather
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights, param_shapes):
-        self.load_checkpoint_state_from_checkpoint_dir_stage3(checkpoint_folder, param_shapes)
+        self.load_hp_checkpoint_state_from_checkpoint_dir_stage3(checkpoint_folder, param_shapes)
 
     def load_hp_checkpoint_state_from_checkpoint_dir_stage3(self, checkpoint_dir, param_shapes):
         """ Load optimizer and model states from the checkpoint directory. """
