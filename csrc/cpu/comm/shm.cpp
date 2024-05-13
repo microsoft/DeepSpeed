@@ -83,8 +83,12 @@ struct allreduce_workspace {
     sem_t turnstile1;
     sem_t turnstile2;
     int counter;
-    char buffer[MAX_BUF_SIZE];
+    // double buffer to avoid syncing between rounds
+    char buffer[2][MAX_BUF_SIZE];
 };
+
+static int current_buffer = 0;
+
 struct allreduce_workspace** workspace;
 
 void wait_buffer_state_until(int index, enum coll_state state)
@@ -209,9 +213,9 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
                     if (i == to_buffer_idx) continue;
                     reduce_2_bf16_buffers_iio(
                         num_elements,
-                        workspace[i]->buffer + start_elements * 2,
-                        workspace[to_buffer_idx]->buffer + start_elements * 2,
-                        workspace[to_buffer_idx]->buffer + start_elements * 2);
+                        workspace[i]->buffer[current_buffer] + start_elements * 2,
+                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 2,
+                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 2);
                 }
             }
             break;
@@ -224,9 +228,9 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
                     if (i == to_buffer_idx) continue;
                     reduce_2_fp32_buffers_iio(
                         num_elements,
-                        workspace[i]->buffer + start_elements * 4,
-                        workspace[to_buffer_idx]->buffer + start_elements * 4,
-                        workspace[to_buffer_idx]->buffer + start_elements * 4);
+                        workspace[i]->buffer[current_buffer] + start_elements * 4,
+                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 4,
+                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 4);
                 }
             }
             break;
@@ -282,7 +286,7 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
 #define CVT_ADD_BF16(x)                                                                 \
     do {                                                                                \
         auto in##x##_val =                                                              \
-            cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x]->buffer + i))); \
+            cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x]->buffer[current_buffer] + i))); \
         inout_val = _mm512_add_ps(inout_val, in##x##_val);                              \
     } while (0)
 
@@ -307,7 +311,7 @@ void reduce_bf16_buffers(int start_elements,
 #pragma omp parallel for
     for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
          i += VECTOR_LENGTH_IN_BYTES) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + i)));
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer[current_buffer] + i)));
         switch (num_buffers) {
             case 16: REPEAT(15, CVT_ADD_BF16); break;
             case 15: REPEAT(14, CVT_ADD_BF16); break;
@@ -325,7 +329,7 @@ void reduce_bf16_buffers(int start_elements,
             case 3: REPEAT(2, CVT_ADD_BF16); break;
             default: assert(!"Should not get here.");
         }
-        _mm256_storeu_si256((__m256i*)(workspace[to_buffer_idx]->buffer + i),
+        _mm256_storeu_si256((__m256i*)(workspace[to_buffer_idx]->buffer[current_buffer] + i),
                             cvt_fp32_to_bf16(inout_val));
     }
 
@@ -333,8 +337,8 @@ void reduce_bf16_buffers(int start_elements,
     int i = (start_elements + main_elements) * element_size;
     while (remain_elements > 0) {
         float val = 0.0f;
-        for (int j = 0; j < num_buffers; j++) { val += *(at::BFloat16*)(workspace[j]->buffer + i); }
-        *(at::BFloat16*)(workspace[to_buffer_idx]->buffer + i) = val;
+        for (int j = 0; j < num_buffers; j++) { val += *(at::BFloat16*)(workspace[j]->buffer[current_buffer] + i); }
+        *(at::BFloat16*)(workspace[to_buffer_idx]->buffer[current_buffer] + i) = val;
         remain_elements--;
         i += element_size;
     }
@@ -369,7 +373,7 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
 
 #define CVT_ADD_F32(x)                                                          \
     do {                                                                        \
-        auto in##x##_val = _mm256_loadu_ps((float*)(workspace[x]->buffer + i)); \
+        auto in##x##_val = _mm256_loadu_ps((float*)(workspace[x]->buffer[current_buffer] + i)); \
         inout_val = _mm256_add_ps(inout_val, in##x##_val);                      \
     } while (0)
 
@@ -388,7 +392,7 @@ void reduce_fp32_buffers(int start_elements,
 #pragma omp parallel for
     for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
          i += VECTOR_LENGTH_IN_BYTES) {
-        auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer + i));
+        auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer[current_buffer] + i));
         switch (num_buffers) {
             case 16: REPEAT(15, CVT_ADD_F32); break;
             case 15: REPEAT(14, CVT_ADD_F32); break;
@@ -406,15 +410,15 @@ void reduce_fp32_buffers(int start_elements,
             case 3: REPEAT(2, CVT_ADD_F32); break;
             default: assert(!"Should not get here.");
         }
-        _mm256_storeu_ps((float*)(workspace[to_buffer_idx]->buffer + i), inout_val);
+        _mm256_storeu_ps((float*)(workspace[to_buffer_idx]->buffer[current_buffer] + i), inout_val);
     }
 
     // process remaining part
     int i = (start_elements + main_elements) * element_size;
     while (remain_elements > 0) {
         float val = 0.0f;
-        for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer + i); }
-        *(float*)(workspace[to_buffer_idx]->buffer + i) = val;
+        for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer[current_buffer] + i); }
+        *(float*)(workspace[to_buffer_idx]->buffer[current_buffer] + i) = val;
         remain_elements--;
         i += element_size;
     }
@@ -534,7 +538,7 @@ static void parallel_multi_memcpy(int world_size,
 #if 1
     for (int rank = 0; rank < world_size; rank++) {
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-                        slice_data(workspace[rank]->buffer, chunk_el, data_size, rank),
+                        slice_data(workspace[rank]->buffer[current_buffer], chunk_el, data_size, rank),
                         slice_size(chunk_el, rank) * data_size);
     }
 #else
@@ -546,7 +550,7 @@ static void parallel_multi_memcpy(int world_size,
     for (int i = 0; i < aligned_bytes; i += VECTOR_LENGTH_IN_BYTES) {
         auto to = data_ptr;
         for (int rank = 0; rank < world_size; rank++) {
-            auto from = workspace[rank]->buffer + step * rank;
+            auto from = workspace[rank]->buffer[current_buffer] + step * rank;
             auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
             _mm256_storeu_si256((__m256i*)((char*)to + i), val);
             to += step;
@@ -594,7 +598,7 @@ void naive_all_reduce(char* data_ptr,
     auto t4 = t0;
 #endif
 
-    parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
+    parallel_memcpy(workspace[world_rank]->buffer[current_buffer], data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__copy_in_done;
 
@@ -617,21 +621,24 @@ void naive_all_reduce(char* data_ptr,
         t3 = std::chrono::system_clock::now();
 #endif
         workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
-        parallel_memcpy(data_ptr, workspace[0]->buffer, chunk_size);
+        parallel_memcpy(data_ptr, workspace[0]->buffer[current_buffer], chunk_size);
 #ifdef DO_PROFILE
         t4 = std::chrono::system_clock::now();
 #endif
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
-        parallel_memcpy(data_ptr, workspace[0]->buffer, chunk_size);
+        parallel_memcpy(data_ptr, workspace[0]->buffer[current_buffer], chunk_size);
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank]->state = coll_allreduce_naive__copy_out_done;
+        //workspace[world_rank]->state = coll_allreduce_naive__copy_out_done;
     }
     if (world_rank == 0) {
+        /*
+        // Remove this sync because double buffer do not reqire tail sync
         for (int i = 1; i < world_size; i++) {
             wait_buffer_state_until(i, coll_allreduce_naive__copy_out_done);
         }
+        */
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank]->state = coll_begin;
 #ifdef DO_PROFILE
@@ -658,7 +665,8 @@ void naive_all_reduce(char* data_ptr,
         // if rank 0 spin too fast it could be in state 1 of next allreduce
         // in this case wait_buffer_state_until(0, 0) may cause deadlock
         // what we are certain is when rank 0 finishes the state won't be 2
-        wait_buffer_state_until_not(0, coll_allreduce_naive__reduce_done);
+        // Remove this sync because double buffer do not reqire tail sync
+        //wait_buffer_state_until_not(0, coll_allreduce_naive__reduce_done);
         workspace[world_rank]->state = coll_begin;
     }
 }
@@ -680,7 +688,7 @@ void distributed_naive_reduce(char* data_ptr,
 #endif
 
     int data_size = chunk_size / chunk_el;
-    parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
+    parallel_memcpy(workspace[world_rank]->buffer[current_buffer], data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__copy_in_done;
 
@@ -720,7 +728,7 @@ void distributed_naive_reduce(char* data_ptr,
     // for (int i = 0; i < world_size; i++) {
     // int rank = (i + world_rank) % world_size;
     // parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-    // slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
+    // slice_data(workspace[rank]->buffer[current_buffer], chunk_el, chunk_size / chunk_el, rank),
     // slice_size(chunk_el, rank) * data_size);
     //}
     std::atomic_thread_fence(std::memory_order_release);
@@ -768,5 +776,8 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
             naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
         else
             distributed_naive_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+
+        // switch buffer
+        current_buffer = 1-current_buffer;
     }
 }
