@@ -5,6 +5,6 @@ packaging>=20.0
 psutil
 py-cpuinfo
 pydantic
-pynvml
+nvidia-ml-py
 torch
 tqdm
