@@ -92,6 +92,8 @@ class TestCPUAdam(DistributedTest):
 
     def test_torch_adamw_equal(self, dtype, model_size):
         if get_accelerator().is_available():
+            if dtype == torch.half:
+                pytest.skip("torch.optim.AdamW with half precision inf/nan output.")
             if ("amd" in pytest.cpu_vendor) and (dtype == torch.half):
                 pytest.skip("cpu-adam with half precision not supported on AMD CPUs")
             ref_param_device = get_accelerator().device_name()
