@@ -11,7 +11,7 @@ from deepspeed import comm as dist
 from deepspeed.utils import groups
 
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from deepspeed.runtime import ZeROOptimizer
+from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced, all_to_all_quant_reduce
@@ -21,7 +21,7 @@ from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.runtime.zero.utils import apply_to_tensors_only
-from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.optimizer_utils import OptimizerSwapper
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
@@ -201,13 +201,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             backup_gpu_tensor = torch.randn(1, device=get_accelerator().device_name()).to(self.dtype)
             backup_gpu_param = torch.nn.Parameter(backup_gpu_tensor)
             assert type(init_optimizer) == DeepSpeedCPUAdam, 'Hybrid Optimizer Only Supports DeepSpeedCPUAdam'
-            self.backup_optimizer = FusedAdam([backup_gpu_param],
-                                              lr=self.optimizer.param_groups[0]["lr"],
-                                              bias_correction=self.optimizer.param_groups[0]["bias_correction"],
-                                              betas=self.optimizer.param_groups[0]["betas"],
-                                              eps=self.optimizer.param_groups[0]["eps"],
-                                              weight_decay=self.optimizer.param_groups[0]["weight_decay"],
-                                              amsgrad=self.optimizer.param_groups[0]["amsgrad"])
+            self.backup_optimizer = torch.optim.AdamW([backup_gpu_param],
+                                                      lr=self.optimizer.param_groups[0]["lr"],
+                                                      betas=self.optimizer.param_groups[0]["betas"],
+                                                      eps=self.optimizer.param_groups[0]["eps"],
+                                                      weight_decay=self.optimizer.param_groups[0]["weight_decay"],
+                                                      amsgrad=self.optimizer.param_groups[0]["amsgrad"])
             # Multiple param_groups configs for back-up optimizer
             if len(self.optimizer.param_groups) > 1:
                 for i in range(1, len(self.optimizer.param_groups)):
@@ -865,7 +864,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                             self.device).clone().float().detach())
 
             self.fp32_partitioned_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
-            self.fp32_partitioned_groups_flat[i].ds_id = '_'.join(map(str, self.fp16_partitioned_groups_flat_id[i]))
+            ds_id_begin = str(self.fp16_partitioned_groups_flat_id[i][0])
+            ds_id_end = str(self.fp16_partitioned_groups_flat_id[i][-1])
+            self.fp32_partitioned_groups_flat[i].ds_id = ds_id_begin + '_' + ds_id_end
 
         if len(swappable_fp32_tensors) > 0:
             self.optimizer_swapper.initialize_parameters(parameters=swappable_fp32_tensors,
@@ -1014,10 +1015,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.fp32_partitioned_groups_flat[i].grad = subgroup_gradient_buffer.to(self.subgroup_to_device[i])
             else:
                 self.fp32_partitioned_groups_flat[i].grad = gradient_buffer.narrow(0, 0, num_elements)
-
-            # Initialize the optimizer states with the flattened fp32 partition.
-            if not is_adagrad:
-                self._optimizer_step(i)
 
             if swappable_param_subgroup:
                 self._partitioned_params_swap_out(i)
@@ -1412,7 +1409,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         norm_is_nan = total_norm.isnan()
         inf_or_nan = norm_is_nan.logical_or(norm_is_inf)
 
-        err = torch.tensor(-1.0, device=self.device, dtype=torch.float)
+        err = torch.tensor(-1.0, device=inf_or_nan.device, dtype=torch.float)
         total_norm = inf_or_nan * err + inf_or_nan.logical_not() * total_norm
 
         return total_norm

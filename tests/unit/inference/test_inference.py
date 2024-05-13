@@ -36,16 +36,16 @@ if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
 
 _bert_models = [
-    "bert-base-cased",
-    "bert-base-uncased",
-    "bert-large-cased",
-    "bert-large-uncased",
-    "bert-base-multilingual-cased",
-    "bert-base-multilingual-uncased",
+    "google-bert/bert-base-cased",
+    "google-bert/bert-base-uncased",
+    "google-bert/bert-large-cased",
+    "google-bert/bert-large-uncased",
+    "google-bert/bert-base-multilingual-cased",
+    "google-bert/bert-base-multilingual-uncased",
     "deepset/minilm-uncased-squad2",
     "cross-encoder/ms-marco-MiniLM-L-12-v2",
     "dslim/bert-base-NER",
-    "bert-large-uncased-whole-word-masking-finetuned-squad",
+    "google-bert/bert-large-uncased-whole-word-masking-finetuned-squad",
     "distilbert/distilbert-base-cased-distilled-squad",
 ]
 _roberta_models = [
@@ -653,8 +653,15 @@ class TestLMCorrectness(DistributedTest):
             setattr(lm, model_family, getattr(lm, model_family).half().to(device))
             lm._device = device
         else:
-            lm = lm_eval.models.get_model(model_family).create_from_arg_string(
-                f"pretrained={model_name}", {"device": get_accelerator().device_name()})
+            if get_accelerator().device_name() == 'hpu':
+                #lm_eval not supporting HPU device, so get model with CPU and move it to HPU.
+                lm = lm_eval.models.get_model(model_family).create_from_arg_string(f"pretrained={model_name}",
+                                                                                   {"device": "cpu"})
+                setattr(lm, model_family, getattr(lm, model_family).to(device))
+                lm._device = device
+            else:
+                lm = lm_eval.models.get_model(model_family).create_from_arg_string(
+                    f"pretrained={model_name}", {"device": get_accelerator().device_name()})
 
         get_accelerator().synchronize()
         start = time.time()

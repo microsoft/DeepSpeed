@@ -6,14 +6,15 @@ future
 importlib-metadata>=4
 mup
 pre-commit>=2.20.0
-pytest
+pytest>=7.2.0
 pytest-forked
 pytest-randomly
 pytest-xdist
+qtorch==0.3.0
 recommonmark
 sphinx
 sphinx-rtd-theme
 tensorboard
 torchvision
-transformers>=4.32.1
+transformers>=4.39.0
 wandb

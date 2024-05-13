@@ -10,9 +10,10 @@ import pytest
 from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
 try:
     from apex import amp  # noqa: F401 # type: ignore
@@ -26,6 +27,8 @@ class TestLambFP32GradClip(DistributedTest):
     world_size = 2
 
     def test(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -56,6 +59,8 @@ class TestLambFP16(DistributedTest):
     world_size = 2
 
     def test__basic(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -81,6 +86,8 @@ class TestLambFP16(DistributedTest):
             model.step()
 
     def test_empty_grad(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -143,6 +150,8 @@ class TestAdamwFP16Basic(DistributedTest):
     world_size = 1
 
     def test(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {"train_batch_size": 1, "steps_per_print": 1, "fp16": {"enabled": True}}
         hidden_dim = 10
 
@@ -160,6 +169,8 @@ class TestFP16OptimizerForMoE(DistributedTest):
     world_size = 2
 
     def test_unfused_gradnorm(self, monkeypatch):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -188,6 +199,8 @@ class TestFP16OptimizerForMoE(DistributedTest):
             engine.step()
 
     def test_fused_gradnorm(self, monkeypatch):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -203,8 +216,10 @@ class TestFP16OptimizerForMoE(DistributedTest):
 
         # initialize MoE
         model = SimpleMoEModel(hidden_dim, ep_size=2)
+        param_group = {'params': [p for p in model.parameters()], 'name': 'random-unique-name'}
+        params = split_params_into_different_moe_groups_for_optimizer(param_group)
         # optimizer = torch.optim.AdamW(params=model.parameters())
-        optimizer = FusedAdam(params=model.parameters())
+        optimizer = FusedAdam(params=params)
         engine, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                        model=model,
                                                        optimizer=optimizer,
@@ -218,6 +233,8 @@ class TestFP16OptimizerForMoE(DistributedTest):
 
     @pytest.mark.parametrize("fused_lamb_legacy", [(False), (True)])
     def test_lamb_gradnorm(self, monkeypatch, fused_lamb_legacy: bool):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -262,6 +279,8 @@ class TestAdamwFP16EmptyGrad(DistributedTest):
     world_size = 1
 
     def test(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {"train_batch_size": 1, "steps_per_print": 1, "fp16": {"enabled": True}}
         hidden_dim = 10
 
@@ -281,6 +300,8 @@ class TestAdamFP16ZeroOneCycleCompatibility(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, use_cpu_offload):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
@@ -332,6 +353,8 @@ class TestZeroStaticScale(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, use_cpu_offload, hidden_dim=4):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
@@ -375,6 +398,8 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, use_cpu_offload):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
@@ -408,6 +433,8 @@ class TestZeroEmptyPartition(DistributedTest):
     world_size = 3
 
     def test(self, zero_stage, use_cpu_offload):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
@@ -454,6 +481,8 @@ class TestAmp(DistributedTest):
     world_size = 2
 
     def test_adam_basic(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {"train_batch_size": 2, "steps_per_print": 1, "amp": {"enabled": True}}
         hidden_dim = 10
 
@@ -467,6 +496,8 @@ class TestAmp(DistributedTest):
             model.step()
 
     def test_lamb_basic(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -492,6 +523,8 @@ class TestAmp(DistributedTest):
             model.step()
 
     def test_adam_O2(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -518,6 +551,8 @@ class TestAmp(DistributedTest):
             model.step()
 
     def test_adam_O2_empty_grad(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -550,6 +585,8 @@ class TestZeroSupportedClientOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, optimizer_constructor):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -571,6 +608,8 @@ class TestZero2ReduceScatterOff(DistributedTest):
     world_size = 2
 
     def test(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -610,6 +649,8 @@ class TestFP16AdamTypes(DistributedTest):
     world_size = 1
 
     def test(self, adam_type, torch_impl):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 1,
             "steps_per_print": 1,
@@ -642,6 +683,8 @@ class TestZero3LazyScatter(DistributedTest):
     world_size = 1
 
     def test(self):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 1,
             "steps_per_print": 1,
@@ -677,6 +720,8 @@ class TestZeroEmptyGrad(DistributedTest):
     world_size = 1
 
     def test(self, stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 1,
             "steps_per_print": 1,

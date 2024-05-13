@@ -9,8 +9,12 @@ import torch
 from unit.simple_model import SimpleModel
 import deepspeed
 from deepspeed.accelerator import get_accelerator
+from deepspeed.utils.torch import required_torch_version
 
 from unit.common import DistributedTest
+
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=2.1),
+                                reason="Compile tests requires Pytorch version 2.1 or above")
 
 custom_backend_called = False
 custom_compler_fn_called = False
@@ -43,9 +47,10 @@ def base_config():
         },
         "compile": {
             "enabled": True,
-            "backend": "inductor"
+            "backend": get_accelerator().get_compile_backend()
         }
     }
+
     return config_dict
 
 
@@ -70,12 +75,16 @@ class TestConfigLoad(DistributedTest):
 
     @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_compile(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         engine = self._init_engine(base_config)
         self._run_model(engine)
         assert engine.is_compiled
 
     @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_custom_backend(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         global custom_backend_called
         custom_backend_called = False
 
@@ -85,12 +94,16 @@ class TestConfigLoad(DistributedTest):
         assert custom_backend_called
 
     def test_compile_disabled(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         base_config["compile"]["enabled"] = False
         engine = self._init_engine(base_config)
         self._run_model(engine)
 
     @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_compile_kwargs(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         base_config["compile"]["kwargs"] = {"mode": "default"}
         engine = self._init_engine(base_config)
         self._run_model(engine)
@@ -98,6 +111,8 @@ class TestConfigLoad(DistributedTest):
 
     @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_set_compile_kwargs(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         engine = self._init_engine(base_config)
         engine.set_torch_compile_kwargs({"mode": "default"})
         self._run_model(engine)
@@ -105,6 +120,8 @@ class TestConfigLoad(DistributedTest):
 
     @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_set_compiler_fn(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         global custom_compler_fn_called
         custom_compler_fn_called = False
 
