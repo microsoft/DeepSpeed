@@ -59,6 +59,7 @@ from deepspeed.compression.constants import \
     WEIGHT_QUANTIZE_VERBOSE, \
     WEIGHT_QUANTIZE_KERNEL
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FROZEN_PARAM_FRAGMENTS
+from deepspeed.checkpoint.utils import inject_universal_info
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
 from deepspeed.runtime import lr_schedules
@@ -3319,6 +3320,7 @@ class DeepSpeedEngine(Module):
                      ds_config=self.config,
                      ds_version=version)
         state.update(client_state)
+        inject_universal_info(state)
 
         if self.save_non_zero_checkpoint:
             log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])

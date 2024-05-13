@@ -5,7 +5,7 @@
 
 import os
 import torch
-from .constants import (MODEL_FILE_PREFIX, MODEL_FILE_SUFFIX, OPTIM_FILE_SUFFIX, ZERO_FILE_PREFIX)
+from .constants import (MODEL_FILE_PREFIX, MODEL_FILE_SUFFIX, OPTIM_FILE_SUFFIX, ZERO_FILE_PREFIX, UNIVERSAL_CHECKPOINT_INFO, UNIVERSAL_CHECKPOINT_VERSION_KEY, UNIVERSAL_CHECKPOINT_VERSION_VALUE)
 
 
 def get_model_ckpt_name_for_rank(base_folder, mp_rank_str):
@@ -60,3 +60,16 @@ def clone_tensors_for_torch_save(item, device=torch.device('cpu')):
         return type(item)({k: clone_tensors_for_torch_save(v, device) for k, v in item.items()})
     else:
         return item
+
+
+def inject_universal_info(state_dict):
+    """
+    Ensure the universal checkpoint information is present in the config dictionary.
+    Adds a version key if it doesn't exist.
+
+    Args:
+    config_dict (dict): The dictionary to inject universal checkpoint information into.
+    """
+    if UNIVERSAL_CHECKPOINT_INFO not in state_dict:
+        state_dict[UNIVERSAL_CHECKPOINT_INFO] = {}
+        state_dict[UNIVERSAL_CHECKPOINT_INFO][UNIVERSAL_CHECKPOINT_VERSION_KEY] = UNIVERSAL_CHECKPOINT_VERSION_VALUE
