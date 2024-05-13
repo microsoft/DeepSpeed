@@ -507,6 +507,7 @@ def main(args):
         param_shapes = _parse_model_states_stage3(model_files)
         world_size = _parse_optim_states_stage3(optim_files)
 
+        print('*** 1. Merging slices .....')
         for key in ['fp32', 'exp_avg', 'exp_avg_sq']:
             key_tensors = _parse_optim_states_stage3(optim_files, key)
             key_state_dict = OrderedDict()
@@ -515,11 +516,12 @@ def main(args):
             for layer, value in key_state_dict.items():
                 os.makedirs(os.path.join(args.output_folder, "zero", layer), exist_ok=True)
                 torch.save(value, os.path.join(args.output_folder, "zero", layer, f"{key}.pt"))
-        
+
+        print('*** 2. Saving common optimizer states')
         _save_optimizer_state_stage3(args, optim_files)
 
 
-       # Copy mp* files into output folder
+       # Copy *model_states files into output folder
         for f in glob.glob(os.path.join(args.input_folder, '*model_states.pt')):
             shutil.copy2(f, args.output_folder)
 
