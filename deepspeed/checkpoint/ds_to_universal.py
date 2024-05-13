@@ -372,7 +372,6 @@ def _merge_zero3_slice_tensors(key_tensors, key_state_dict, world_size, param_sh
         total_params += 1
 
         partitioned_numel, _ = _zero_partitioned_param_info(unpartitioned_numel, world_size)
-        print(key_tensors[0])
         key_state_dict[name] = torch.cat(
             tuple(key_tensors[i].narrow(0, offset, partitioned_numel) for i in range(world_size)),
             0).narrow(0, 0, unpartitioned_numel).view(shape)
