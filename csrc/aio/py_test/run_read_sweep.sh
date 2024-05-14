@@ -22,6 +22,7 @@ validate_environment
 
 IO_SIZE=$1
 LOG_DIR=$2/aio_perf_sweep
+MAP_DIR=$2/aio
 GPU_MEM=$3
 RUN_SCRIPT=./test_ds_aio.py
 READ_OPT="--read"
@@ -42,8 +43,6 @@ DISABLE_CACHE="sync; bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
 SYNC="sync"
 
 for sub in single block; do
-    ftd_map="--folder_to_device_mapping \
-             /workspace/nvme01/aio:0 "
     if [[ $sub == "single" ]]; then
         sub_opt="--single_submit"
     else
@@ -55,21 +54,22 @@ for sub in single block; do
         else
             ov_opt=""
         fi
-        for p in 1 ; do
+        for p in 1 2 4 8; do
             for t in 1 2 4 8; do
-                for d in 8 16 32; do
+                for d in 16 32 64; do
                     for bs in 256K 512K 1M; do
-                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} ${ftd_map}"
-                        OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE}"
+                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} --folder ${MAP_DIR}"
+                        OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
                         LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
                         cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
                         echo ${DISABLE_CACHE}
                         echo ${cmd}
                         echo ${SYNC}
 
+                        eval ${DISABLE_CACHE}
                         eval ${cmd}
                         eval ${SYNC}
-                        sleep 2
+                        sleep 1
                     done
                 done
             done
