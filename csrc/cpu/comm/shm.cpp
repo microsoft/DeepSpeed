@@ -26,9 +26,7 @@ enum coll_state {
     coll_allreduce_naive__copy_out_done,
     // alternative state when allreduce is working on alternative buffer
     // of the double buffer.
-    coll_alt1_begin,
     coll_alt1_allreduce_naive__copy_in_done,
-    coll_alt2_begin,
     coll_alt2_allreduce_naive__copy_in_done,
 };
 
@@ -98,15 +96,14 @@ static int current_buffer = 0;
 
 struct allreduce_workspace** workspace;
 
-void wait_buffer_state0_until_3(int index, enum coll_state state0,
-                               enum coll_state state1,
-                               enum coll_state state2)
+void wait_buffer_state0_until_2(int index, enum coll_state state0,
+                               enum coll_state state1)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state0);
 
     while (1) {
         volatile enum coll_state cur_state = *state_ptr;
-        if (cur_state == state0 || cur_state == state1 || cur_state == state2)
+        if (cur_state == state0 || cur_state == state1)
             break;
     }
 }
@@ -502,7 +499,7 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
     snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, rank);
     shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
     workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
-    workspace_buf->state0 = coll_begin;
+    workspace_buf->state0 = coll_alt2_allreduce_naive__copy_in_done;
     workspace_buf->state1 = coll_begin;
 
     // create the workspace pointer list
@@ -604,12 +601,11 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
 
 /*
     Symmetrical naive all_reduce
-    step 0: before enter the function ith times, state is begin(i)
+    step 0: before enter the function ith times, state is copy(i-1)
     step 1: each rank copy data from input (data_ptr) to SHM buffer[i]
     step 2: set own state to copy(i)
     step 3: wait each other rank's state equal or later than copy(i)
     step 4: reduce across SHM buffer(ith) directly into output (data_ptr)
-    step 5: set own state to begin(i+1)
 */
 void naive_all_reduce(char* data_ptr,
                       c10::ScalarType scalar_type,
@@ -637,11 +633,7 @@ void naive_all_reduce(char* data_ptr,
         ================================================
                  |       N        | copy(i-1)
                  |----------------|---------------------
-                 |       N        | begin(i)
-                 |----------------|---------------------
         copy(i)  |       Y        | copy(i)
-                 |----------------|---------------------
-                 |       Y        | begin(i+1)
                  |----------------|---------------------
                  |       Y        | copy(i+1)
         ------------------------------------------------
@@ -662,29 +654,20 @@ void naive_all_reduce(char* data_ptr,
         * So we have 2 sets of buffers, one buffer is used by current iter;
           one buffer used by either lagging ranks or leading ranks.
     */
-    enum coll_state begin_prev, begin_current, begin_next,
+    enum coll_state begin_next,
                     copy_prev, copy_current, copy_next;
     switch (state_idx) {
     case 0:
-        begin_prev =    coll_alt2_begin;
-        begin_current = coll_begin;
-        begin_next =    coll_alt1_begin;
         copy_prev =     coll_alt2_allreduce_naive__copy_in_done;
         copy_current =  coll_allreduce_naive__copy_in_done;
         copy_next =     coll_alt1_allreduce_naive__copy_in_done;
         break;
     case 1:
-        begin_prev =    coll_begin;
-        begin_current = coll_alt1_begin;
-        begin_next =    coll_alt2_begin;
         copy_prev =     coll_allreduce_naive__copy_in_done;
         copy_current =  coll_alt1_allreduce_naive__copy_in_done;
         copy_next =     coll_alt2_allreduce_naive__copy_in_done;
         break;
     case 2:
-        begin_prev =    coll_alt1_begin;
-        begin_current = coll_alt2_begin;
-        begin_next =    coll_begin;
         copy_prev =     coll_alt1_allreduce_naive__copy_in_done;
         copy_current =  coll_alt2_allreduce_naive__copy_in_done;
         copy_next =     coll_allreduce_naive__copy_in_done;
@@ -705,7 +688,7 @@ void naive_all_reduce(char* data_ptr,
     for (int i = 0; i < world_size; i++) {
         // wait until the other rank copy the buffer
         if (i != world_rank)
-            wait_buffer_state0_until_3(i, copy_current, begin_next, copy_next);
+            wait_buffer_state0_until_2(i, copy_current, copy_next);
     }
 #ifdef DO_PROFILE
     auto t2 = std::chrono::system_clock::now();
@@ -718,9 +701,6 @@ void naive_all_reduce(char* data_ptr,
 #ifdef DO_PROFILE
     auto t3 = std::chrono::system_clock::now();
 #endif
-
-    // set state to next state
-    workspace[world_rank]->state0 = begin_next;
 
 #ifdef DO_PROFILE
     count++;
