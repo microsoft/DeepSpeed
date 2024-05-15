@@ -22,7 +22,7 @@
                                                        stochastic_rounding);             \
     }
 
-std::vector<at::Tensor> quantize(torch::Tensor& out,
+at::Tensor quantize(torch::Tensor& out,
                                  torch::Tensor& val,
                                  int group_size,
                                  int stochastic_rounding,
@@ -42,19 +42,17 @@ std::vector<at::Tensor> quantize(torch::Tensor& out,
     DISPATCH_QUANTIZE(kBFloat16, __nv_bfloat16, 23, 8);
 #endif
 
-    auto out_q = torch::from_blob(out.data_ptr(), val.sizes(), out.options());
-
-    return {out_q, out_q};
+    return out;
 }
 
-at::Tensor get_scales(torch::Tensor& out, int group_size, int num_groups)
+at::Tensor get_scales(torch::Tensor& out, int num_groups)
 {
     auto options = at::TensorOptions()
                        .dtype(torch::kFloat)
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    auto scales = torch::from_blob(out.data_ptr(), {num_groups, group_size / 4 + 1}, options);
+    auto scales = torch::from_blob(out.data_ptr(), num_groups, options);
     return scales;
 }
 
