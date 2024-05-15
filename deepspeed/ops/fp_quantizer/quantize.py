@@ -87,8 +87,7 @@ class FP_Quantize(Quantizer):
             del self.input_q
             del input_q_reshaped
 
-            self.input_q = input_q
-            return self.input_q, self.scales
+            return input_q, self.scales
         return input_q_reshaped
 
     def get_scales(self):
