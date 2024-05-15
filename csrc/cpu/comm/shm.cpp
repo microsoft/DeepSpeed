@@ -21,9 +21,15 @@
 // states for collectives
 enum coll_state {
     coll_begin = 0,
-    coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
-    coll_allreduce_naive__reduce_done,    // this state is for rank == 0
-    coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
+    coll_allreduce_naive__copy_in_done,
+    coll_allreduce_naive__reduce_done,
+    coll_allreduce_naive__copy_out_done,
+    // alternative state when allreduce is working on alternative buffer
+    // of the double buffer.
+    coll_alt1_begin,
+    coll_alt1_allreduce_naive__copy_in_done,
+    coll_alt2_begin,
+    coll_alt2_allreduce_naive__copy_in_done,
 };
 
 // SHM building blocks
@@ -97,6 +103,19 @@ void wait_buffer_state_until(int index, enum coll_state state)
 
     while (*state_ptr != state)
         ;
+}
+
+void wait_buffer_state_until_3(int index, enum coll_state state0,
+                               enum coll_state state1,
+                               enum coll_state state2)
+{
+    volatile enum coll_state* state_ptr = &(workspace[index]->state);
+
+    while (1) {
+        volatile enum coll_state cur_state = *state_ptr;
+        if (cur_state == state0 || cur_state == state1 || cur_state == state2)
+            break;
+    }
 }
 
 void wait_buffer_state_until_range(int index, enum coll_state start, int size)
@@ -174,7 +193,7 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
 void reduce_bf16_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
-                         int to_buffer_idx,
+                         char* to_buffer,
                          struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
@@ -184,7 +203,7 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
 void reduce_fp32_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
-                         int to_buffer_idx,
+                         char* to_buffer,
                          struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
@@ -201,36 +220,37 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
                         int num_elements,
                         c10::ScalarType scalar_type,
                         int num_buffers,
-                        int to_buffer_idx)
+                        int to_buffer_idx,
+                        char* to_buffer)
 {
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
             if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
                 reduce_bf16_buffers(
-                    start_elements, num_elements, num_buffers, to_buffer_idx, workspace);
+                    start_elements, num_elements, num_buffers, to_buffer, workspace);
             } else {
                 for (int i = 0; i < num_buffers; i++) {
                     if (i == to_buffer_idx) continue;
                     reduce_2_bf16_buffers_iio(
                         num_elements,
                         workspace[i]->buffer[current_buffer] + start_elements * 2,
-                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 2,
-                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 2);
+                        to_buffer + start_elements * 2,
+                        to_buffer + start_elements * 2);
                 }
             }
             break;
         case c10::ScalarType::Float:
             if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
                 reduce_fp32_buffers(
-                    start_elements, num_elements, num_buffers, to_buffer_idx, workspace);
+                    start_elements, num_elements, num_buffers, to_buffer, workspace);
             } else {
                 for (int i = 0; i < num_buffers; i++) {
                     if (i == to_buffer_idx) continue;
                     reduce_2_fp32_buffers_iio(
                         num_elements,
                         workspace[i]->buffer[current_buffer] + start_elements * 4,
-                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 4,
-                        workspace[to_buffer_idx]->buffer[current_buffer] + start_elements * 4);
+                        to_buffer + start_elements * 4,
+                        to_buffer + start_elements * 4);
                 }
             }
             break;
@@ -299,7 +319,7 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
 void reduce_bf16_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
-                         int to_buffer_idx,
+                         char* to_buffer,
                          struct allreduce_workspace** workspace)
 {
     const int element_size = 2;
@@ -329,7 +349,7 @@ void reduce_bf16_buffers(int start_elements,
             case 3: REPEAT(2, CVT_ADD_BF16); break;
             default: assert(!"Should not get here.");
         }
-        _mm256_storeu_si256((__m256i*)(workspace[to_buffer_idx]->buffer[current_buffer] + i),
+        _mm256_storeu_si256((__m256i*)(to_buffer + i),
                             cvt_fp32_to_bf16(inout_val));
     }
 
@@ -338,7 +358,7 @@ void reduce_bf16_buffers(int start_elements,
     while (remain_elements > 0) {
         float val = 0.0f;
         for (int j = 0; j < num_buffers; j++) { val += *(at::BFloat16*)(workspace[j]->buffer[current_buffer] + i); }
-        *(at::BFloat16*)(workspace[to_buffer_idx]->buffer[current_buffer] + i) = val;
+        *(at::BFloat16*)(to_buffer + i) = val;
         remain_elements--;
         i += element_size;
     }
@@ -380,7 +400,7 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
 void reduce_fp32_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
-                         int to_buffer_idx,
+                         char* to_buffer,
                          struct allreduce_workspace** workspace)
 {
     const int element_size = 4;
@@ -410,7 +430,7 @@ void reduce_fp32_buffers(int start_elements,
             case 3: REPEAT(2, CVT_ADD_F32); break;
             default: assert(!"Should not get here.");
         }
-        _mm256_storeu_ps((float*)(workspace[to_buffer_idx]->buffer[current_buffer] + i), inout_val);
+        _mm256_storeu_ps((float*)(to_buffer + i), inout_val);
     }
 
     // process remaining part
@@ -418,7 +438,7 @@ void reduce_fp32_buffers(int start_elements,
     while (remain_elements > 0) {
         float val = 0.0f;
         for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer[current_buffer] + i); }
-        *(float*)(workspace[to_buffer_idx]->buffer[current_buffer] + i) = val;
+        *(float*)(to_buffer + i) = val;
         remain_elements--;
         i += element_size;
     }
@@ -580,11 +600,21 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
     return slice_size * slice_idx;
 }
 
+/*
+    Symmetrical naive all_reduce
+    step 0: before enter the function ith times, state is begin(i)
+    step 1: each rank copy data from input (data_ptr) to SHM buffer[i]
+    step 2: set own state to copy(i)
+    step 3: wait each other rank's state equal or later than copy(i)
+    step 4: reduce across SHM buffer(ith) directly into output (data_ptr)
+    step 5: set own state to begin(i+1)
+*/
 void naive_all_reduce(char* data_ptr,
                       c10::ScalarType scalar_type,
                       size_t chunk_size,
                       size_t chunk_el)
 {
+    static int state_idx = 0;
 #ifdef DO_PROFILE
     static double total_t1_t0 = 0.0;
     static double total_t2_t1 = 0.0;
@@ -593,82 +623,113 @@ void naive_all_reduce(char* data_ptr,
     static double total_t5_t4 = 0.0;
     static int count = -16;  // warmup
     auto t0 = std::chrono::system_clock::now();
-    auto t2 = t0;
-    auto t3 = t0;
-    auto t4 = t0;
 #endif
+
+    /*
+        We can't have infinite number of buffers and states.  2 sets of buffer
+        and 3 sets of states is just enough.  Consider current rank is in step 3,
+        with it's own state set to copy(i), the other rank will them have the
+        following situations:
+        ------------------------------------------------
+        my state | can I proceed? | the other rank state
+        ================================================
+                 |       N        | copy(i-1)
+                 |----------------|---------------------
+                 |       N        | begin(i)
+                 |----------------|---------------------
+        copy(i)  |       Y        | copy(i)
+                 |----------------|---------------------
+                 |       Y        | begin(i+1)
+                 |----------------|---------------------
+                 |       Y        | copy(i+1)
+        ------------------------------------------------
+        * When I have state as copy(i), the other rank cannot have state
+          begin(i-1) or before, in that case I'll be in state copy(i-1).
+        * The other rank cannot have state begin(i+2) or beyond because my
+          state is still copy(i), this is as far as the other rank could go
+        * From a rank's POV, all the other ranks can be divided into three sets:
+          - Lagging ranks: ranks that are still working on previous iteration
+          - Syncing ranks: ranks that are working on current iteration
+          - Leading ranks: ranks that are working on next iteration
+        * We can have 3 sets of states, one set for syncing ranks; one set for
+          lagging ranks; one set of leading ranks.  With 3 sets of states, we can
+          distinguish between lagging and leading ranks.
+        * Note from any rank's POV, leading ranks and lagging ranks does not
+          appear at the same time.  Either all other ranks are syncing or
+          lagging, or all other ranks are syncing or leading.
+        * So we have 2 sets of buffers, one buffer is used by current iter;
+          one buffer used by either lagging ranks or leading ranks.
+    */
+    enum coll_state begin_prev, begin_current, begin_next,
+                    copy_prev, copy_current, copy_next;
+    switch (state_idx) {
+    case 0:
+        begin_prev =    coll_alt2_begin;
+        begin_current = coll_begin;
+        begin_next =    coll_alt1_begin;
+        copy_prev =     coll_alt2_allreduce_naive__copy_in_done;
+        copy_current =  coll_allreduce_naive__copy_in_done;
+        copy_next =     coll_alt1_allreduce_naive__copy_in_done;
+        break;
+    case 1:
+        begin_prev =    coll_begin;
+        begin_current = coll_alt1_begin;
+        begin_next =    coll_alt2_begin;
+        copy_prev =     coll_allreduce_naive__copy_in_done;
+        copy_current =  coll_alt1_allreduce_naive__copy_in_done;
+        copy_next =     coll_alt2_allreduce_naive__copy_in_done;
+        break;
+    case 2:
+        begin_prev =    coll_alt1_begin;
+        begin_current = coll_alt2_begin;
+        begin_next =    coll_begin;
+        copy_prev =     coll_alt1_allreduce_naive__copy_in_done;
+        copy_current =  coll_alt2_allreduce_naive__copy_in_done;
+        copy_next =     coll_allreduce_naive__copy_in_done;
+        break;
+    default:
+        assert (!"Should not get here.");
+    }
+    state_idx = (state_idx + 1) % 3;
 
     parallel_memcpy(workspace[world_rank]->buffer[current_buffer], data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->state = coll_allreduce_naive__copy_in_done;
+    workspace[world_rank]->state = copy_current;
 
 #ifdef DO_PROFILE
     auto t1 = std::chrono::system_clock::now();
 #endif
 
-    if (world_rank == 0) {
-        // compute allreduce result on rank 0
-        for (int i = 1; i < world_size; i++) {
-            // wait until the other rank copy the buffer
-            wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
+    // compute allreduce result on rank 0
+    for (int i = 0; i < world_size; i++) {
+        // wait until the other rank copy the buffer
+        if (i != world_rank)
+            wait_buffer_state_until_3(i, copy_current, begin_next, copy_next);
+    }
+#ifdef DO_PROFILE
+    auto t2 = std::chrono::system_clock::now();
+#endif
+    // each rank reduce the buffer independently so therre is no need for synchronization afterward
+    reduce_all_buffers(workspace, 0, chunk_el, scalar_type, world_size, world_rank, data_ptr);
+    std::atomic_thread_fence(std::memory_order_release);
+#ifdef DO_PROFILE
+    auto t3 = std::chrono::system_clock::now();
+#endif
+    workspace[world_rank]->state = begin_next;
+#ifdef DO_PROFILE
+    count++;
+    if (count > 0) {
+        total_t1_t0 += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        total_t2_t1 += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        total_t3_t2 += std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+        if (world_rank == 0 && count == 1000) {
+            printf("naive_all_reduce time breakdown:\n");
+            printf("\tcopy input buffer: %.2f\n", total_t1_t0 / count);
+            printf("\twait for copy: %.2f\n", total_t2_t1 / count);
+            printf("\treduce: %.2f\n", total_t3_t2 / count);
         }
-#ifdef DO_PROFILE
-        t2 = std::chrono::system_clock::now();
-#endif
-        reduce_all_buffers(workspace, 0, chunk_el, scalar_type, world_size, 0);
-        std::atomic_thread_fence(std::memory_order_release);
-#ifdef DO_PROFILE
-        t3 = std::chrono::system_clock::now();
-#endif
-        workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
-        parallel_memcpy(data_ptr, workspace[0]->buffer[current_buffer], chunk_size);
-#ifdef DO_PROFILE
-        t4 = std::chrono::system_clock::now();
-#endif
     }
-    if (world_rank != 0) {
-        wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
-        parallel_memcpy(data_ptr, workspace[0]->buffer[current_buffer], chunk_size);
-        std::atomic_thread_fence(std::memory_order_release);
-        //workspace[world_rank]->state = coll_allreduce_naive__copy_out_done;
-    }
-    if (world_rank == 0) {
-        /*
-        // Remove this sync because double buffer do not reqire tail sync
-        for (int i = 1; i < world_size; i++) {
-            wait_buffer_state_until(i, coll_allreduce_naive__copy_out_done);
-        }
-        */
-        std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank]->state = coll_begin;
-#ifdef DO_PROFILE
-        auto t5 = std::chrono::system_clock::now();
-        count++;
-        if (count > 0) {
-            total_t1_t0 += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-            total_t2_t1 += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-            total_t3_t2 += std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
-            total_t4_t3 += std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count();
-            total_t5_t4 += std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count();
-            if (world_rank == 0 && count == 1000) {
-                printf("naive_all_reduce time breakdown:\n");
-                printf("\tcopy input buffer: %.2f\n", total_t1_t0 / count);
-                printf("\twait for copy: %.2f\n", total_t2_t1 / count);
-                printf("\treduce: %.2f\n", total_t3_t2 / count);
-                printf("\tcopy buffer to output: %.2f\n", total_t4_t3 / count);
-                printf("\twait finish: %.2f\n", total_t5_t4 / count);
-            }
-        }
 #endif
-    }
-    if (world_rank != 0) {
-        // if rank 0 spin too fast it could be in state 1 of next allreduce
-        // in this case wait_buffer_state_until(0, 0) may cause deadlock
-        // what we are certain is when rank 0 finishes the state won't be 2
-        // Remove this sync because double buffer do not reqire tail sync
-        //wait_buffer_state_until_not(0, coll_allreduce_naive__reduce_done);
-        workspace[world_rank]->state = coll_begin;
-    }
 }
 
 // naive allreduce distributed, each rank do naive reduce on its slice
@@ -711,7 +772,8 @@ void distributed_naive_reduce(char* data_ptr,
                        slice_size(chunk_el, world_rank),
                        scalar_type,
                        world_size,
-                       world_rank);
+                       world_rank,
+                       workspace[world_rank]->buffer[current_buffer]);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
 
