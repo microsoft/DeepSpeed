@@ -12,7 +12,7 @@
 #include <sys/mman.h>
 #include "shm.h"
 
-//#define DO_PROFILE
+#define DO_PROFILE
 #ifdef DO_PROFILE
 #include <cfloat>
 #include <chrono>
@@ -558,36 +558,13 @@ static void parallel_multi_memcpy(int world_size,
                                   size_t chunk_el,
                                   size_t chunk_size,
                                   int data_size,
-                                  size_t buffer_offset) __attribute__((target("avx512bw")));
-static void parallel_multi_memcpy(int world_size,
-                                  char* data_ptr,
-                                  size_t chunk_el,
-                                  size_t chunk_size,
-                                  int data_size,
                                   size_t buffer_offset)
 {
-#if 1
     for (int rank = 0; rank < world_size; rank++) {
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
                         slice_data(workspace[rank]->buffer + buffer_offset, chunk_el, data_size, rank),
                         slice_size(chunk_el, rank) * data_size);
     }
-#else
-    // assuming the first slice has smaller size than any other slice
-    auto n_bytes = slice_size(chunk_el, 0) * data_size;
-    auto aligned_bytes = n_bytes - (n_bytes % VECTOR_LENGTH_IN_BYTES);
-    int step = chunk_el / world_size * data_size;
-#pragma omp parallel for
-    for (int i = 0; i < aligned_bytes; i += VECTOR_LENGTH_IN_BYTES) {
-        auto to = data_ptr;
-        for (int rank = 0; rank < world_size; rank++) {
-            auto from = workspace[rank]->buffer + buffer_offset + step * rank;
-            auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
-            _mm256_storeu_si256((__m256i*)((char*)to + i), val);
-            to += step;
-        }
-    }
-#endif
 }
 
 #define positive_mod(num, mod) ((((num) % (mod)) + (mod)) % (mod))
