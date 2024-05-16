@@ -30,8 +30,8 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    const float* A,
                    const float* B,
                    float* C,
-//TODO HIP: Remove backward compatibility for torch<=2.0 in future
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+// TODO HIP: Remove backward compatibility for torch<=2.0 in future
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
                    rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
 #else
                    cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT);
@@ -48,7 +48,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    const __half* A,
                    const __half* B,
                    __half* C,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
                    rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
 #else
                    cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -69,7 +69,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int stride_B,
                                 int stride_C,
                                 int batch,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
                                 rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
 #else
                                 cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT);
@@ -90,7 +90,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int stride_B,
                                 int stride_C,
                                 int batch,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
                                 rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
 #else
                                 cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP);
