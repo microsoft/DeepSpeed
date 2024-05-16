@@ -1,4 +1,4 @@
-0;10;1chad not# Copyright (c) Microsoft Corporation.
+# Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
