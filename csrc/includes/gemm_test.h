@@ -249,8 +249,8 @@ public:
                                         stride_b,
                                         stride_c,
                                         bsz,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0					
-                                        static_cast<rocblas_gemm_algo>(algo));
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+					static_cast<rocblas_gemm_algo>(algo));
 #else
                                         static_cast<cublasGemmAlgo_t>(algo));
 #endif
