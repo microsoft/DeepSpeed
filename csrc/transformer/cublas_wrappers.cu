@@ -5,6 +5,7 @@
 
 #include "cublas_wrappers.h"
 
+//TODO HIP: Remove backward compatibility for torch<=2.0 in future
 #if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
 int cublas_gemm_ex(rocblas_handle handle,
                    rocblas_operation transa,

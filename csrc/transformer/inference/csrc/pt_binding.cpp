@@ -163,6 +163,7 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
                    (T*)W.data_ptr(),
                    (T*)Q.data_ptr(),
                    (T*)O.data_ptr(),
+//TODO HIP: Remove backward compatibility for torch<=2.0 in future
 #if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
                    rocblas_gemm_algo_standard);
 #else

@@ -67,6 +67,7 @@ public:
                            B,
                            A,
                            C,
+//TODO HIP: Remove backward compatibility for torch<=2.0 in future
 #if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0			   
                            static_cast<rocblas_gemm_algo>(algo));
 #else

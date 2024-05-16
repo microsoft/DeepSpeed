@@ -55,6 +55,7 @@ private:
 
 enum class BlasType { FP32, FP16, BF16 };
 
+//TODO HIP: Remove backward compatibility for torch<=2.0 in future
 #if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
 rocblas_operation get_trans_op(bool do_trans)
 {
