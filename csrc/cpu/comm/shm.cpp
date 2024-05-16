@@ -748,7 +748,7 @@ void distributed_naive_reduce(char* data_ptr,
 #endif
 
     int data_size = chunk_size / chunk_el;
-    parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
+    parallel_memcpy(workspace[world_rank]->buffer + BUFFER1_OFFSET, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state1 = coll_allreduce_naive__copy_in_done;
 
@@ -772,7 +772,7 @@ void distributed_naive_reduce(char* data_ptr,
                        scalar_type,
                        world_size,
                        world_rank,
-                       workspace[world_rank]->buffer,
+                       workspace[world_rank]->buffer + BUFFER1_OFFSET,
                        BUFFER1_OFFSET);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state1 = coll_allreduce_naive__reduce_done;
