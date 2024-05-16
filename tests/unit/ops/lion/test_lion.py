@@ -1,4 +1,4 @@
-# Copyright (c) Microsoft Corporation.
+0;10;1chad not# Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
@@ -28,7 +28,7 @@ class TestLionConfigs(DistributedTest):
     world_size = 1
     reuse_dist_env = True
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder had not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder has not been implemented on this system.")
     def test(self,
              optimizer,
              zero_offload,

@@ -1,4 +1,4 @@
-# Copyright (c) Microsoft Corporation.
+0;10;1chad not# Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
@@ -154,7 +154,7 @@ class TestFused(DistributedTest):
         assert optim.cur_iter == expected_iteration
 
 
-@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder has not been implemented on this system.")
 class TestUnfused(DistributedTest):
     world_size = 1
 

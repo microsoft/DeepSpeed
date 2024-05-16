@@ -60,7 +60,7 @@ class TestCPULion(DistributedTest):
         set_dist_env = False
 
     @pytest.mark.skipif(not get_accelerator().is_available(), reason="only supported in CUDA environments.")
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder had not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder has not been implemented on this system.")
     def test_fused_lion_equal(self, dtype, model_size):
         if ("amd" in pytest.cpu_vendor) and (dtype == torch.half):
             pytest.skip("cpu-lion with half precision not supported on AMD CPUs")
@@ -83,7 +83,7 @@ class TestCPULion(DistributedTest):
 
 class TestCPULionGPUError(DistributedTest):
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder had not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder has not been implemented on this system.")
     def test_cpu_lion_gpu_error(self):
         model_size = 64
         from deepspeed.ops.lion import DeepSpeedCPULion
