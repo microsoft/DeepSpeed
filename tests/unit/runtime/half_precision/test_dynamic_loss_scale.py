@@ -154,11 +154,7 @@ class TestFused(DistributedTest):
         assert optim.cur_iter == expected_iteration
 
 
-<<<<<<< dev
 @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
-=======
-@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="lamb is not compatible")
->>>>>>> master
 class TestUnfused(DistributedTest):
     world_size = 1
 

@@ -82,6 +82,7 @@ class TestCPULion(DistributedTest):
 
 
 class TestCPULionGPUError(DistributedTest):
+
     @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME], reason="CPULionBuilder had not been implemented on this system.")
     def test_cpu_lion_gpu_error(self):
         model_size = 64
