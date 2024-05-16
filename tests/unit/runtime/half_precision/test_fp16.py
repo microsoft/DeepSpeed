@@ -29,7 +29,8 @@ if torch.half not in get_accelerator().supported_dtypes():
 class TestLambFP32GradClip(DistributedTest):
     world_size = 2
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder has not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -62,7 +63,8 @@ class TestLambFP32GradClip(DistributedTest):
 class TestLambFP16(DistributedTest):
     world_size = 2
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder has not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test__basic(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -90,7 +92,8 @@ class TestLambFP16(DistributedTest):
             model.backward(loss)
             model.step()
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder has not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test_empty_grad(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -238,7 +241,8 @@ class TestFP16OptimizerForMoE(DistributedTest):
             engine.step()
 
     @pytest.mark.parametrize("fused_lamb_legacy", [(False), (True)])
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder has not been implemented on this system.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test_lamb_gradnorm(self, monkeypatch, fused_lamb_legacy: bool):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -502,7 +506,8 @@ class TestAmp(DistributedTest):
             model.backward(loss)
             model.step()
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder has not been implemented on this system")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system")
     def test_lamb_basic(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
