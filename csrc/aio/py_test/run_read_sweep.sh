@@ -24,6 +24,7 @@ IO_SIZE=$1
 LOG_DIR=$2/aio_perf_sweep
 MAP_DIR=$2/aio
 GPU_MEM=$3
+USE_GDS=$4
 RUN_SCRIPT=./test_ds_aio.py
 READ_OPT="--read"
 
@@ -37,6 +38,11 @@ if [[ ${GPU_MEM} == "gpu" ]]; then
     gpu_opt="--gpu"
 else
     gpu_opt=""
+fi
+if [[ ${USE_GDS} == "gds" ]]; then
+    gds_opt="--use_gds"
+else
+    gds_opt=""
 fi
 
 DISABLE_CACHE="sync; bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
@@ -58,7 +64,7 @@ for sub in single block; do
             for t in 1 2 4 8; do
                 for d in 16 32 64; do
                     for bs in 256K 512K 1M; do
-                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} --folder ${MAP_DIR}"
+                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder ${MAP_DIR}"
                         OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
                         LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
                         cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"

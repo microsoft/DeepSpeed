@@ -20,6 +20,7 @@ BOUNCE_BUFFER = 'bounce_buffer'
 
 def pre_handle(args, tid, read_op):
     io_string = "Read" if read_op else "Write"
+    gds = True if args.use_gds else False
     device_id, folder = args.mapping_list[tid]
     filename = create_filename(folder, args.read, args.io_size, tid)
     if args.read and not (os.path.isfile(filename) and os.path.getsize(filename) == args.io_size):
@@ -30,7 +31,7 @@ def pre_handle(args, tid, read_op):
     if args.gpu:
         device_name = get_accelerator().device_name(device_id)
         buffer = torch.randint(high=128, size=(args.io_size, ), dtype=torch.uint8, device=device_name)
-        if not args.slow_bounce_buffer:
+        if not (args.slow_bounce_buffer or gds):
             bounce_buffer = torch.randint(high=128, size=(args.io_size, ), dtype=torch.uint8,
                                           device='cpu').pin_memory()
     else:
@@ -41,7 +42,9 @@ def pre_handle(args, tid, read_op):
 
     io_parallel = args.io_parallel if args.io_parallel else 1
     handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,
-                                                not args.sequential_requests, io_parallel)
+                                                not args.sequential_requests, gds,io_parallel)
+    if gds:
+        handle.new_device_locked_tensor(buffer)
     task_log(tid, f'created deepspeed aio handle')
 
     ctxt = {}

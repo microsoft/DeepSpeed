@@ -83,6 +83,11 @@ def validate_args(args):
         no_error = no_error and no_mapping_error
         error_messages += mapping_error_messages
 
+    # Validate --gpu, --use_gds
+    if args.use_gds and not args.gpu:
+        error_messages.append(f'--gpu must be set to transfer with --use_gds')
+        no_error = False
+
     if not no_error:
         print(f'Found {len(error_messages)} validation errors')
         for i, msg in enumerate(error_messages):
@@ -140,6 +145,8 @@ def parse_arguments():
     parser.add_argument('--io_parallel', type=int, default=None, help='Per iop parallelism')
 
     parser.add_argument('--gpu', action='store_true', help='Use GPU memory')
+
+    parser.add_argument('--use_gds', action='store_true', help='Enable GDS AIO')
 
     parser.add_argument('--slow_bounce_buffer',
                         action='store_true',

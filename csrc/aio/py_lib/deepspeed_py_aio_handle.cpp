@@ -4,9 +4,6 @@
 // DeepSpeed Team
 
 /*
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
-
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
@@ -14,16 +11,38 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 
 using namespace std;
 
+bool deepspeed_aio_handle_t::s_cuFile_init = false;
+
 static void _start_aio_thread(std::shared_ptr<struct deepspeed_aio_thread_t> ctxt) { ctxt->run(); }
+
+static std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(const bool read_op,
+                                                               const torch::Tensor& buffer,
+                                                               const int fd,
+                                                               const char* filename,
+                                                               const long long int file_num_bytes,
+                                                               const int num_threads,
+                                                               const bool validate,
+                                                               const bool use_gds)
+{
+    if (buffer.is_cuda() && use_gds) {
+        return std::make_shared<gds_op_desc_t>(
+            read_op, buffer, fd, filename, file_num_bytes, num_threads, validate);
+    } else {
+        return std::make_shared<cpu_op_desc_t>(
+            read_op, buffer, fd, filename, file_num_bytes, num_threads, validate);
+    }
+}
 
 deepspeed_aio_handle_t::deepspeed_aio_handle_t(const int block_size,
                                                const int queue_depth,
                                                const bool single_submit,
                                                const bool overlap_events,
+                                               const bool use_gds,
                                                const int num_threads)
     : _aio_ctxt(new aio_context(block_size, queue_depth)),
       _single_submit(single_submit),
       _overlap_events(overlap_events),
+      _use_gds(use_gds),
       _num_threads(num_threads),
       _aio_config(block_size, queue_depth, single_submit, overlap_events, false),
       _num_pending_ops(0),
@@ -35,6 +54,12 @@ deepspeed_aio_handle_t::deepspeed_aio_handle_t(const int block_size,
 
     for (auto& ctxt : _thread_contexts) {
         _threads.push_back(std::thread(_start_aio_thread, ctxt));
+    }
+
+    if (!deepspeed_aio_handle_t::s_cuFile_init) {
+        cuFileDriverOpen();
+        cudaCheckError();
+        deepspeed_aio_handle_t::s_cuFile_init = true;
     }
 }
 
@@ -57,6 +82,8 @@ const int deepspeed_aio_handle_t::get_queue_depth() const
 const bool deepspeed_aio_handle_t::get_single_submit() const { return _single_submit; }
 
 const bool deepspeed_aio_handle_t::get_overlap_events() const { return _overlap_events; }
+
+const bool deepspeed_aio_handle_t::get_use_gds() const { return _use_gds; }
 
 const int deepspeed_aio_handle_t::get_thread_count() const { return _num_threads; }
 
@@ -179,16 +206,12 @@ int deepspeed_aio_handle_t::wait()
     while (_num_pending_ops > 0) {
         auto completed_op = _wait_for_aio_work();
 
+        if (completed_op->_validate) { completed_op->validate(); }
+
         completed_op->fini();
 
         close(completed_op->_fd);
 
-        if (completed_op->_validate) {
-            validate_aio_operation(completed_op->_read_op,
-                                   completed_op->_filename.c_str(),
-                                   completed_op->data_ptr(),
-                                   _num_threads * completed_op->_num_bytes);
-        }
         --_num_pending_ops;
         ++num_completed_ops;
     }
@@ -201,7 +224,7 @@ bool deepspeed_aio_handle_t::_is_valid_parallel_aio_op(const bool read_op,
 {
     const auto op_string = read_op ? "Read" : "Write";
     if (num_bytes % get_thread_count()) {
-        std::cout << "deepspeed_aio failure: parallel " << op_string << " num_bytes = " << num_bytes
+        std::cout << "deepseed_aio failure: parallel " << op_string << " num_bytes = " << num_bytes
                   << " not divisible by thread count = " << get_thread_count() << std::endl;
         return false;
     }
@@ -233,8 +256,8 @@ int deepspeed_aio_handle_t::pread(const torch::Tensor& buffer,
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
 
-    auto scheduled_op = std::make_shared<io_op_desc_t>(
-        true, buffer, fd, filename, (num_file_bytes / _num_threads), validate);
+    auto scheduled_op = _create_io_op_desc(
+        true, buffer, fd, filename, num_file_bytes, _num_threads, validate, _use_gds);
 
     _schedule_aio_work(scheduled_op);
 
@@ -248,6 +271,7 @@ int deepspeed_aio_handle_t::pwrite(const torch::Tensor& buffer,
                                    const bool validate,
                                    const bool async)
 {
+
     const auto num_write_bytes = static_cast<long long int>(buffer.nbytes());
     assert((num_write_bytes % _num_threads) == 0);
 
@@ -256,8 +280,8 @@ int deepspeed_aio_handle_t::pwrite(const torch::Tensor& buffer,
     const auto fd = open_file(filename, false);
     if (fd == -1) { return -1; }
 
-    auto scheduled_op = std::make_shared<io_op_desc_t>(
-        false, buffer, fd, filename, (num_write_bytes / _num_threads), validate);
+    auto scheduled_op = _create_io_op_desc(
+        false, buffer, fd, filename, num_write_bytes, _num_threads, validate, _use_gds);
 
     _schedule_aio_work(scheduled_op);
 
@@ -295,4 +319,14 @@ at::Tensor deepspeed_aio_handle_t::new_cpu_locked_tensor(const size_t num_elem,
 bool deepspeed_aio_handle_t::free_cpu_locked_tensor(torch::Tensor& locked_tensor)
 {
     return _pinned_tensor_mgr->free(locked_tensor);
+}
+
+int deepspeed_aio_handle_t::new_device_locked_tensor(const torch::Tensor& buffer)
+{
+    return register_buffer(buffer);
+}
+
+int deepspeed_aio_handle_t::free_device_locked_tensor(const torch::Tensor& buffer)
+{
+    return deregister_buffer(buffer);
 }
