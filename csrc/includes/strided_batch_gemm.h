@@ -78,7 +78,8 @@ public:
                                     stride_c,
                                     bsz,
 // TODO HIP: Remove backward compatibility for torch<=2.0 in future
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
+#if defined(__HIP_PLATFORM_AMD__) && \
+    ((TORCH_VERSION_MAJOR < 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR == 0))
                                     rocblas_gemm_algo(_config.gemm_algos[0]));
 #else
                                     cublasGemmAlgo_t(_config.gemm_algos[0]));
@@ -106,7 +107,8 @@ public:
                                     stride_b,
                                     stride_c,
                                     _config.batch_size,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
+#if defined(__HIP_PLATFORM_AMD__) && \
+    ((TORCH_VERSION_MAJOR < 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR == 0))
                                     rocblas_gemm_algo(_config.gemm_algos[0]));
 #else
                                     cublasGemmAlgo_t(_config.gemm_algos[0]));
@@ -150,7 +152,8 @@ public:
                                     stride_b,
                                     stride_c,
                                     bsz,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
+#if defined(__HIP_PLATFORM_AMD__) && \
+    ((TORCH_VERSION_MAJOR < 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR == 0))
                                     rocblas_gemm_algo(_config.gemm_algos[1]));
 #else
                                     cublasGemmAlgo_t(_config.gemm_algos[1]));
@@ -179,7 +182,8 @@ public:
                                     stride_b,
                                     stride_c,
                                     bsz,
-#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <= 0
+#if defined(__HIP_PLATFORM_AMD__) && \
+    ((TORCH_VERSION_MAJOR < 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR == 0))
                                     rocblas_gemm_algo(_config.gemm_algos[2]));
 #else
                                     cublasGemmAlgo_t(_config.gemm_algos[2]));
