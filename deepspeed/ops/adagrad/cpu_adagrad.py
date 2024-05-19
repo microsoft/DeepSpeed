@@ -46,8 +46,6 @@ class DeepSpeedCPUAdagrad(torch.optim.Optimizer):
         Args:
             closure (callable, optional): closure to compute the loss.
                 Defaults to ``None``.
-            fp16_param_groups: FP16 GPU parameters to update. Performing the
-                copy here reduces communication time. Defaults to ``None``.
 
         Returns:
             loss: if ``closure`` is provided. Otherwise ``None``.
