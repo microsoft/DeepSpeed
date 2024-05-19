@@ -11,7 +11,7 @@ from cpuinfo import get_cpu_info
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.adam import FusedAdam
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder import CPUAdamBuilder, FusedAdamBuilder
 from unit.common import DistributedTest
 
 if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
@@ -62,6 +62,8 @@ class TestCPUAdam(DistributedTest):
         set_dist_env = False
 
     @pytest.mark.skipif(not get_accelerator().is_available(), reason="only supported in CUDA environments.")
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME],
+                        reason="FusedAdam is not compatible")
     def test_fused_adam_equal(self, dtype, model_size):
         if dtype not in get_accelerator().supported_dtypes():
             pytest.skip(f"dtype {dtype} not supported in current accelerator")
