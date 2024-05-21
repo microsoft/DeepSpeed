@@ -10,6 +10,10 @@ on:
         required: false
         default: 'master'
         type: string
+  pull_request:
+    paths:
+      - "deepspeed/runtime/zero/stage_1_and_2.py"
+      - "deepspeed/runtime/zero/stage3.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,7 +28,7 @@ jobs:
     runs-on: [self-hosted, nvidia, cu117, v100]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
