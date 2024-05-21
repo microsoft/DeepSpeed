@@ -88,10 +88,6 @@ static int world_rank;
 struct allreduce_workspace {
     enum coll_state state0; // state for symmetric_naive_all_reduce
     enum coll_state state1; // state for distributed_naive_all_reduce
-    sem_t mutex;
-    sem_t turnstile1;
-    sem_t turnstile2;
-    int counter;
     // double buffer to avoid syncing between rounds
     // offset=0 -- 2*NAIVE_ALLREDUCE_THRESHOLD : buffer for symmetric_naive_all_reduce
     // after that : buffer for distributed_naive_all_reduce
@@ -142,28 +138,6 @@ void wait_buffer_state1_until_range(int index, enum coll_state start, int size)
         volatile enum coll_state cur_state = *state_ptr;
         if (cur_state >= start and cur_state < end) break;
     }
-}
-
-void barrier_wait(int root_idx, int num_ranks)
-{
-    // Phase 1: Wait for all threads to enter the barrier
-    auto shared = workspace[root_idx];
-    sem_wait(&shared->mutex);
-    shared->counter++;
-    if (shared->counter == num_ranks) {
-        for (int i = 0; i < num_ranks; ++i) { sem_post(&shared->turnstile1); }
-    }
-    sem_post(&shared->mutex);
-    sem_wait(&shared->turnstile1);
-
-    // Phase 2: Wait for all threads to exit the barrier
-    sem_wait(&shared->mutex);
-    shared->counter--;
-    if (shared->counter == 0) {
-        for (int i = 0; i < num_ranks; ++i) { sem_post(&shared->turnstile2); }
-    }
-    sem_post(&shared->mutex);
-    sem_wait(&shared->turnstile2);
 }
 
 __m512 cvt_bf16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
@@ -525,10 +499,6 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
             workspace[i] = workspace_buf_other;
         } else {
             workspace[i] = workspace_buf;
-            workspace_buf->counter = 0;
-            sem_init(&workspace_buf->mutex, 1, 1);
-            sem_init(&workspace_buf->turnstile1, 1, 0);
-            sem_init(&workspace_buf->turnstile2, 1, 0);
         }
     }
 }
