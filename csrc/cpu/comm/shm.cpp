@@ -191,14 +191,6 @@ void reduce_fp32_buffers(int start_elements,
                          char** buffers)
     __attribute__((target("avx512bw")));
 
-// N_REDUCE_LIMIT is the number of buffers that can be reduced together in one shot.
-// Compared with do N-1 2-reduces which needs 2*(N-1) read and N-1 write,
-// N-reduce only needs N read and 1 write, this saves 2/3 memory bandwidth.
-// When increase N_REDUCE_LIMIT to a bigger number, do the following steps
-// 1. Extend REPEAT_<X> macros list down below
-// 2. Extend switch cases which call "REPEAT(X, ...)" down below
-#define N_REDUCE_LIMIT 16
-
 void reduce_all_buffers(int start_elements,
                         int num_elements,
                         c10::ScalarType scalar_type,
@@ -237,51 +229,6 @@ void reduce_all_buffers(int start_elements,
     }
 }
 
-#define REPEAT(N, x) REPEAT_##N(x)
-#define REPEAT_1(x) x(1)
-#define REPEAT_2(x) \
-    REPEAT_1(x);    \
-    x(2)
-#define REPEAT_3(x) \
-    REPEAT_2(x);    \
-    x(3)
-#define REPEAT_4(x) \
-    REPEAT_3(x);    \
-    x(4)
-#define REPEAT_5(x) \
-    REPEAT_4(x);    \
-    x(5)
-#define REPEAT_6(x) \
-    REPEAT_5(x);    \
-    x(6)
-#define REPEAT_7(x) \
-    REPEAT_6(x);    \
-    x(7)
-#define REPEAT_8(x) \
-    REPEAT_7(x);    \
-    x(8)
-#define REPEAT_9(x) \
-    REPEAT_8(x);    \
-    x(9)
-#define REPEAT_10(x) \
-    REPEAT_9(x);     \
-    x(10)
-#define REPEAT_11(x) \
-    REPEAT_10(x);    \
-    x(11)
-#define REPEAT_12(x) \
-    REPEAT_11(x);    \
-    x(12)
-#define REPEAT_13(x) \
-    REPEAT_12(x);    \
-    x(13)
-#define REPEAT_14(x) \
-    REPEAT_13(x);    \
-    x(14)
-#define REPEAT_15(x) \
-    REPEAT_14(x);    \
-    x(15)
-
 #define CVT_ADD_BF16(x)                                                                 \
     do {                                                                                \
         auto in##x##_val =                                                              \
@@ -311,20 +258,22 @@ void reduce_bf16_buffers(int start_elements,
          i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(buffers[0] + i)));
         switch (world_size) {
-            case 16: REPEAT(15, CVT_ADD_BF16); break;
-            case 15: REPEAT(14, CVT_ADD_BF16); break;
-            case 14: REPEAT(13, CVT_ADD_BF16); break;
-            case 13: REPEAT(12, CVT_ADD_BF16); break;
-            case 12: REPEAT(11, CVT_ADD_BF16); break;
-            case 11: REPEAT(10, CVT_ADD_BF16); break;
-            case 10: REPEAT(9, CVT_ADD_BF16); break;
-            case 9: REPEAT(8, CVT_ADD_BF16); break;
-            case 8: REPEAT(7, CVT_ADD_BF16); break;
-            case 7: REPEAT(6, CVT_ADD_BF16); break;
-            case 6: REPEAT(5, CVT_ADD_BF16); break;
-            case 5: REPEAT(4, CVT_ADD_BF16); break;
-            case 4: REPEAT(3, CVT_ADD_BF16); break;
-            case 3: REPEAT(2, CVT_ADD_BF16); break;
+            case 16: CVT_ADD_BF16(15);
+            case 15: CVT_ADD_BF16(14);
+            case 14: CVT_ADD_BF16(13);
+            case 13: CVT_ADD_BF16(12);
+            case 12: CVT_ADD_BF16(11);
+            case 11: CVT_ADD_BF16(10);
+            case 10: CVT_ADD_BF16(9);
+            case 9: CVT_ADD_BF16(8);
+            case 8: CVT_ADD_BF16(7);
+            case 7: CVT_ADD_BF16(6);
+            case 6: CVT_ADD_BF16(5);
+            case 5: CVT_ADD_BF16(4);
+            case 4: CVT_ADD_BF16(3);
+            case 3: CVT_ADD_BF16(2);
+                    CVT_ADD_BF16(1);
+                    break;
             default:
                 for (int j=1; j<world_size; j++) {
                     auto in_val =
@@ -396,20 +345,22 @@ void reduce_fp32_buffers(int start_elements,
          i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(buffers[0] + i));
         switch (world_size) {
-            case 16: REPEAT(15, CVT_ADD_F32); break;
-            case 15: REPEAT(14, CVT_ADD_F32); break;
-            case 14: REPEAT(13, CVT_ADD_F32); break;
-            case 13: REPEAT(12, CVT_ADD_F32); break;
-            case 12: REPEAT(11, CVT_ADD_F32); break;
-            case 11: REPEAT(10, CVT_ADD_F32); break;
-            case 10: REPEAT(9, CVT_ADD_F32); break;
-            case 9: REPEAT(8, CVT_ADD_F32); break;
-            case 8: REPEAT(7, CVT_ADD_F32); break;
-            case 7: REPEAT(6, CVT_ADD_F32); break;
-            case 6: REPEAT(5, CVT_ADD_F32); break;
-            case 5: REPEAT(4, CVT_ADD_F32); break;
-            case 4: REPEAT(3, CVT_ADD_F32); break;
-            case 3: REPEAT(2, CVT_ADD_F32); break;
+            case 16: CVT_ADD_F32(15);
+            case 15: CVT_ADD_F32(14);
+            case 14: CVT_ADD_F32(13);
+            case 13: CVT_ADD_F32(12);
+            case 12: CVT_ADD_F32(11);
+            case 11: CVT_ADD_F32(10);
+            case 10: CVT_ADD_F32(9);
+            case 9: CVT_ADD_F32(8);
+            case 8: CVT_ADD_F32(7);
+            case 7: CVT_ADD_F32(6);
+            case 6: CVT_ADD_F32(5);
+            case 5: CVT_ADD_F32(4);
+            case 4: CVT_ADD_F32(3);
+            case 3: CVT_ADD_F32(2);
+                    CVT_ADD_F32(1);
+                    break;
             default:
                 for (int j=1; j<world_size; j++) {
                     auto in_val = _mm256_loadu_ps((float*)(buffers[j] + i));
