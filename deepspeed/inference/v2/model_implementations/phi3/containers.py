@@ -39,7 +39,7 @@ Phi3ForCausalLM(
 '''
 
 
-class PhiTransformerContainer(LayerContainer):
+class Phi3TransformerContainer(LayerContainer):
     """
         Transformer layer container for the Phi model.
     """
@@ -60,7 +60,7 @@ class PhiTransformerContainer(LayerContainer):
     }
 
 
-class PhiNonTransformerContainer(LayerContainer):
+class Phi3NonTransformerContainer(LayerContainer):
     """
         Non-Transformer layer container for the Phi model.
     """

@@ -16,20 +16,20 @@ from ...modules.configs import *
 from ...modules.interfaces import *
 from ...ragged import RaggedBatchWrapper
 
-from .containers import PhiNonTransformerContainer, PhiTransformerContainer
+from .containers import Phi3NonTransformerContainer, Phi3TransformerContainer
 
 
-class PhiInferenceModel(DSTransformerModelBase):
+class Phi3InferenceModel(DSTransformerModelBase):
     """
     Inference model implementation for ragged batching for Llama-2 models.
     """
 
-    _non_transformer: Optional[PhiNonTransformerContainer]
+    _non_transformer: Optional[Phi3NonTransformerContainer]
     """
     Embed + unembed container. Specializing the type annotation.
     """
 
-    _transformer: Optional[Iterable[PhiTransformerContainer]]
+    _transformer: Optional[Iterable[Phi3TransformerContainer]]
     """
     Per-layer transformer container. Specializing the type annotation.
     """
