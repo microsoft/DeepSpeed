@@ -75,6 +75,10 @@ void shared_close(SharedData* data)
     }
 }
 
+static bool is_initialized = 0;
+static int world_size;
+static int world_rank;
+
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
@@ -195,7 +199,6 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
 
 void reduce_bf16_buffers(int start_elements,
                          int num_elements,
-                         int num_buffers,
                          char* to_buffer,
                          size_t buffer_offset,
                          struct allreduce_workspace** workspace)
@@ -206,7 +209,6 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
 
 void reduce_fp32_buffers(int start_elements,
                          int num_elements,
-                         int num_buffers,
                          char* to_buffer,
                          size_t buffer_offset,
                          struct allreduce_workspace** workspace)
@@ -223,19 +225,21 @@ void reduce_fp32_buffers(int start_elements,
 void reduce_all_buffers(int start_elements,
                         int num_elements,
                         c10::ScalarType scalar_type,
-                        int num_buffers,
                         int to_buffer_idx,
                         char* to_buffer,
                         size_t buffer_offset,
                         struct allreduce_workspace** workspace)
 {
+    if (to_buffer == NULL) {
+        to_buffer = workspace[to_buffer_idx]->buffer + buffer_offset;
+    }
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
-            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+            if (world_size > 2 && world_size <= N_REDUCE_LIMIT) {
                 reduce_bf16_buffers(
-                    start_elements, num_elements, num_buffers, to_buffer, buffer_offset, workspace);
+                    start_elements, num_elements, to_buffer, buffer_offset, workspace);
             } else {
-                for (int i = 0; i < num_buffers; i++) {
+                for (int i = 0; i < world_size; i++) {
                     if (i == to_buffer_idx) continue;
                     reduce_2_bf16_buffers_iio(
                         num_elements,
@@ -246,11 +250,11 @@ void reduce_all_buffers(int start_elements,
             }
             break;
         case c10::ScalarType::Float:
-            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+            if (world_size > 2 && world_size <= N_REDUCE_LIMIT) {
                 reduce_fp32_buffers(
-                    start_elements, num_elements, num_buffers, to_buffer, buffer_offset, workspace);
+                    start_elements, num_elements, to_buffer, buffer_offset, workspace);
             } else {
-                for (int i = 0; i < num_buffers; i++) {
+                for (int i = 0; i < world_size; i++) {
                     if (i == to_buffer_idx) continue;
                     reduce_2_fp32_buffers_iio(
                         num_elements,
@@ -324,7 +328,6 @@ void reduce_all_buffers(int start_elements,
 
 void reduce_bf16_buffers(int start_elements,
                          int num_elements,
-                         int num_buffers,
                          char* to_buffer,
                          size_t buffer_offset,
                          struct allreduce_workspace** workspace)
@@ -339,7 +342,7 @@ void reduce_bf16_buffers(int start_elements,
     for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
          i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + buffer_offset + i)));
-        switch (num_buffers) {
+        switch (world_size) {
             case 16: REPEAT(15, CVT_ADD_BF16); break;
             case 15: REPEAT(14, CVT_ADD_BF16); break;
             case 14: REPEAT(13, CVT_ADD_BF16); break;
@@ -364,7 +367,7 @@ void reduce_bf16_buffers(int start_elements,
     int i = (start_elements + main_elements) * element_size;
     while (remain_elements > 0) {
         float val = 0.0f;
-        for (int j = 0; j < num_buffers; j++) { val += *(at::BFloat16*)(workspace[j]->buffer + buffer_offset + i); }
+        for (int j = 0; j < world_size; j++) { val += *(at::BFloat16*)(workspace[j]->buffer + buffer_offset + i); }
         *(at::BFloat16*)(to_buffer + i) = val;
         remain_elements--;
         i += element_size;
@@ -406,7 +409,6 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
 
 void reduce_fp32_buffers(int start_elements,
                          int num_elements,
-                         int num_buffers,
                          char* to_buffer,
                          size_t buffer_offset,
                          struct allreduce_workspace** workspace)
@@ -421,7 +423,7 @@ void reduce_fp32_buffers(int start_elements,
     for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
          i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer + buffer_offset + i));
-        switch (num_buffers) {
+        switch (world_size) {
             case 16: REPEAT(15, CVT_ADD_F32); break;
             case 15: REPEAT(14, CVT_ADD_F32); break;
             case 14: REPEAT(13, CVT_ADD_F32); break;
@@ -445,7 +447,7 @@ void reduce_fp32_buffers(int start_elements,
     int i = (start_elements + main_elements) * element_size;
     while (remain_elements > 0) {
         float val = 0.0f;
-        for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer + buffer_offset + i); }
+        for (int j = 0; j < world_size; j++) { val += *(float*)(workspace[j]->buffer + buffer_offset + i); }
         *(float*)(to_buffer + i) = val;
         remain_elements--;
         i += element_size;
@@ -478,10 +480,6 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
         i += element_size;
     }
 }
-
-static bool is_initialized = 0;
-static int world_size;
-static int world_rank;
 
 void shm_initialize(int size, int rank, char* addr_string, char* port_string)
 {
@@ -684,7 +682,7 @@ void symmetric_naive_all_reduce(char* data_ptr,
 #endif
 
     // each rank reduce the buffer independently so therre is no need for synchronization afterward
-    reduce_all_buffers(0, chunk_el, scalar_type, world_size, world_rank, data_ptr, BUFFER0_OFFSET(current_buffer), workspace);
+    reduce_all_buffers(0, chunk_el, scalar_type, world_rank, data_ptr, BUFFER0_OFFSET(current_buffer), workspace);
     std::atomic_thread_fence(std::memory_order_release);
 
     // switch buffer
@@ -746,9 +744,8 @@ void distributed_naive_reduce(char* data_ptr,
     reduce_all_buffers(slice_el_start(chunk_el, world_rank),
                        slice_size(chunk_el, world_rank),
                        scalar_type,
-                       world_size,
                        world_rank,
-                       workspace[world_rank]->buffer + BUFFER1_OFFSET,
+                       NULL,
                        BUFFER1_OFFSET,
                        workspace);
     std::atomic_thread_fence(std::memory_order_release);
