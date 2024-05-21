@@ -65,6 +65,19 @@ class GatedMLPParameter(ParameterBase):
         fused_param = torch.cat([self.gate_params, self.up_params], dim=-1).reshape(total_neurons, -1)
         return self.inference_model.transform_mlp_1_param(fused_param)
 
+class FusedGatedMLPParameter(ParameterBase):
+    """
+    Gated MLP projection container.
+    """
+
+    params: torch.Tensor
+    """
+    Weight parameter for the fused gating and non-gating weight parameters.
+    """
+
+    def finalize(self) -> torch.Tensor:
+        fused_param = self.params.reshape(self.params.shape[0], -1)
+        return self.inference_model.transform_mlp_1_param(fused_param)
 
 class MLP2Parameter(ParameterBase):
     """
