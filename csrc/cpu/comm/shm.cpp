@@ -208,33 +208,29 @@ void reduce_all_buffers(int start_elements,
 {
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
-            if (world_size > 2 && world_size <= N_REDUCE_LIMIT) {
+            if (world_size == 2) {
+                // add the other buffer to to_buffer
+                reduce_2_bf16_buffers_iio(
+                    num_elements,
+                    buffers[1-to_buffer_idx] + start_elements * 2,
+                    to_buffer + start_elements * 2,
+                    to_buffer + start_elements * 2);
+            } else {
                 reduce_bf16_buffers(
                     start_elements, num_elements, to_buffer, buffers);
-            } else {
-                for (int i = 0; i < world_size; i++) {
-                    if (i == to_buffer_idx) continue;
-                    reduce_2_bf16_buffers_iio(
-                        num_elements,
-                        buffers[i] + start_elements * 2,
-                        to_buffer + start_elements * 2,
-                        to_buffer + start_elements * 2);
-                }
             }
             break;
         case c10::ScalarType::Float:
-            if (world_size > 2 && world_size <= N_REDUCE_LIMIT) {
+            if (world_size == 2) {
+                reduce_2_fp32_buffers_iio(
+                    num_elements,
+                    buffers[1-to_buffer_idx] + start_elements * 4,
+                    to_buffer + start_elements * 4,
+                    to_buffer + start_elements * 4);
+            } else {
+                assert(world_size > 2);
                 reduce_fp32_buffers(
                     start_elements, num_elements, to_buffer, buffers);
-            } else {
-                for (int i = 0; i < world_size; i++) {
-                    if (i == to_buffer_idx) continue;
-                    reduce_2_fp32_buffers_iio(
-                        num_elements,
-                        buffers[i] + start_elements * 4,
-                        to_buffer + start_elements * 4,
-                        to_buffer + start_elements * 4);
-                }
             }
             break;
         default: assert(!"Should not get here");
@@ -329,7 +325,12 @@ void reduce_bf16_buffers(int start_elements,
             case 5: REPEAT(4, CVT_ADD_BF16); break;
             case 4: REPEAT(3, CVT_ADD_BF16); break;
             case 3: REPEAT(2, CVT_ADD_BF16); break;
-            default: assert(!"Should not get here.");
+            default:
+                for (int j=1; j<world_size; j++) {
+                    auto in_val =
+                        cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(buffers[j] + i)));
+                    inout_val = _mm512_add_ps(inout_val, in_val);
+                }
         }
         _mm256_storeu_si256((__m256i*)(to_buffer + i),
                             cvt_fp32_to_bf16(inout_val));
@@ -409,7 +410,11 @@ void reduce_fp32_buffers(int start_elements,
             case 5: REPEAT(4, CVT_ADD_F32); break;
             case 4: REPEAT(3, CVT_ADD_F32); break;
             case 3: REPEAT(2, CVT_ADD_F32); break;
-            default: assert(!"Should not get here.");
+            default:
+                for (int j=1; j<world_size; j++) {
+                    auto in_val = _mm256_loadu_ps((float*)(buffers[j] + i));
+                    inout_val = _mm256_add_ps(inout_val, in_val);
+                }
         }
         _mm256_storeu_ps((float*)(to_buffer + i), inout_val);
     }
@@ -634,8 +639,9 @@ void symmetric_naive_all_reduce(char* data_ptr,
 
     for (int i = 0; i < world_size; i++) {
         // wait until the other rank copy the buffer
-        if (i != world_rank)
+        if (i != world_rank) {
             wait_buffer_state0_until_2(i, copy_current, copy_next);
+        }
     }
 #ifdef DO_PROFILE
     auto t2 = std::chrono::system_clock::now();
