@@ -82,15 +82,15 @@ void shared_close(SharedData* data)
 #define NAIVE_ALLREDUCE_THRESHOLD 1048576
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
-    enum coll_state state0; // state for naive_all_reduce
-    enum coll_state state1; // state for distributed_naive_all_reduce
+    enum coll_state state0; // state for symmetric_naive_all_reduce
+    enum coll_state state1; // state for naive_all_reduce and distributed_naive_all_reduce
     sem_t mutex;
     sem_t turnstile1;
     sem_t turnstile2;
     int counter;
     // double buffer to avoid syncing between rounds
-    // offset=0 -- 2*NAIVE_ALLREDUCE_THRESHOLD : buffer for naive_allreduce
-    // after that : buffer for distributed_naive_all_reduce
+    // offset=0 -- 2*NAIVE_ALLREDUCE_THRESHOLD : buffer for symmetric_naive_all_reduce
+    // after that : buffer for naive_all_reduce and distributed_naive_all_reduce
     char buffer[2*NAIVE_ALLREDUCE_THRESHOLD + MAX_BUF_SIZE];
 };
 
@@ -220,14 +220,14 @@ void reduce_fp32_buffers(int start_elements,
 // 2. Extend switch cases which call "REPEAT(X, ...)" down below
 #define N_REDUCE_LIMIT 16
 
-void reduce_all_buffers(struct allreduce_workspace** workspace,
-                        int start_elements,
+void reduce_all_buffers(int start_elements,
                         int num_elements,
                         c10::ScalarType scalar_type,
                         int num_buffers,
                         int to_buffer_idx,
                         char* to_buffer,
-                        size_t buffer_offset)
+                        size_t buffer_offset,
+                        struct allreduce_workspace** workspace)
 {
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
@@ -596,7 +596,7 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
     step 3: wait each other rank's state equal or later than copy(i)
     step 4: reduce across SHM buffer(ith) directly into output (data_ptr)
 */
-void naive_all_reduce(char* data_ptr,
+void symmetric_naive_all_reduce(char* data_ptr,
                       c10::ScalarType scalar_type,
                       size_t chunk_size,
                       size_t chunk_el)
@@ -684,7 +684,7 @@ void naive_all_reduce(char* data_ptr,
 #endif
 
     // each rank reduce the buffer independently so therre is no need for synchronization afterward
-    reduce_all_buffers(workspace, 0, chunk_el, scalar_type, world_size, world_rank, data_ptr, BUFFER0_OFFSET(current_buffer));
+    reduce_all_buffers(0, chunk_el, scalar_type, world_size, world_rank, data_ptr, BUFFER0_OFFSET(current_buffer), workspace);
     std::atomic_thread_fence(std::memory_order_release);
 
     // switch buffer
@@ -699,13 +699,55 @@ void naive_all_reduce(char* data_ptr,
         total_t2_t1 += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
         total_t3_t2 += std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
         if (world_rank == 0 && count == 1000) {
-            printf("naive_all_reduce time breakdown:\n");
+            printf("symmetric_naive_all_reduce time breakdown:\n");
             printf("\tcopy input buffer: %.2f\n", total_t1_t0 / count);
             printf("\twait for copy: %.2f\n", total_t2_t1 / count);
             printf("\treduce: %.2f\n", total_t3_t2 / count);
         }
     }
 #endif
+}
+
+void naive_all_reduce(char* data_ptr,
+                      c10::ScalarType scalar_type,
+                      size_t chunk_size,
+                      size_t chunk_el)
+{
+    parallel_memcpy(workspace[world_rank]->buffer + BUFFER1_OFFSET, data_ptr, chunk_size);
+    std::atomic_thread_fence(std::memory_order_release);
+    workspace[world_rank]->state1 = coll_allreduce_naive__copy_in_done;
+
+    if (world_rank == 0) {
+        // compute allreduce result on rank 0
+        for (int i = 1; i < world_size; i++) {
+            // wait until the other rank copy the buffer
+            wait_buffer_state1_until(i, coll_allreduce_naive__copy_in_done);
+        }
+        reduce_all_buffers(0, chunk_el, scalar_type, world_size, 0, workspace[0]->buffer + BUFFER1_OFFSET, BUFFER1_OFFSET, workspace);
+        std::atomic_thread_fence(std::memory_order_release);
+        workspace[world_rank]->state1 = coll_allreduce_naive__reduce_done;
+        parallel_memcpy(data_ptr, workspace[0]->buffer + BUFFER1_OFFSET, chunk_size);
+    }
+    if (world_rank != 0) {
+        wait_buffer_state1_until(0, coll_allreduce_naive__reduce_done);
+        parallel_memcpy(data_ptr, workspace[0]->buffer + BUFFER1_OFFSET, chunk_size);
+        std::atomic_thread_fence(std::memory_order_release);
+        workspace[world_rank]->state1 = coll_allreduce_naive__copy_out_done;
+    }
+    if (world_rank == 0) {
+        for (int i = 1; i < world_size; i++) {
+            wait_buffer_state1_until(i, coll_allreduce_naive__copy_out_done);
+        }
+        std::atomic_thread_fence(std::memory_order_release);
+        workspace[world_rank]->state1 = coll_begin;
+    }
+    if (world_rank != 0) {
+        // if rank 0 spin too fast it could be in state 1 of next allreduce
+        // in this case wait_buffer_state_until(0, 0) may cause deadlock
+        // what we are certain is when rank 0 finishes the state won't be 2
+        wait_buffer_state1_until_not(0, coll_allreduce_naive__reduce_done);
+        workspace[world_rank]->state1 = coll_begin;
+    }
 }
 
 // naive allreduce distributed, each rank do naive reduce on its slice
@@ -743,14 +785,14 @@ void distributed_naive_reduce(char* data_ptr,
 #endif
 
     // reduce scatter
-    reduce_all_buffers(workspace,
-                       slice_el_start(chunk_el, world_rank),
+    reduce_all_buffers(slice_el_start(chunk_el, world_rank),
                        slice_size(chunk_el, world_rank),
                        scalar_type,
                        world_size,
                        world_rank,
                        workspace[world_rank]->buffer + BUFFER1_OFFSET,
-                       BUFFER1_OFFSET);
+                       BUFFER1_OFFSET,
+                       workspace);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state1 = coll_allreduce_naive__reduce_done;
 
@@ -805,7 +847,13 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
+
+        //naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        //symmetric_naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        distributed_naive_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        continue;
         if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
+            //symmetric_naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
             naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
         else
             distributed_naive_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
