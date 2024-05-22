@@ -195,10 +195,7 @@ class Phi3InferenceModel(DSTransformerModelBase):
     def forward(self, wrapped_batch: RaggedBatchWrapper) -> torch.Tensor:
         residual = self._forward_embed(wrapped_batch)
 
-        residual, hidden_states = self.norm(residual,
-                                            None,
-                                            gamma=self._transformer[0].attn_norm_gamma,
-                                            beta=None)
+        residual, hidden_states = self.norm(residual, None, gamma=self._transformer[0].attn_norm_gamma, beta=None)
 
         for layer_idx in range(self.num_layers):
             residual, hidden_states = self._forward_transformer_layer(layer_idx, residual, hidden_states,
