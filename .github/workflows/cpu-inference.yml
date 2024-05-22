@@ -47,6 +47,10 @@ jobs:
       - name: Detect instruction sets on instance
         run: |
           lscpu
+          # check whether node has enough memory to load model check point
+          cat /proc/meminfo
+          # check whether blob has enough space for model check point
+          df -k |grep "/blob$"
 
       - name: Install numactl
         run: |
@@ -55,18 +59,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install torch
+          pip install py-cpuinfo
           # check installed version
           pip list |grep \\\<torch\\\>
-
-      - name: Install oneCCL
-        run: |
-          pip install cmake
-          git clone https://github.com/oneapi-src/oneCCL
-          cd oneCCL
-          mkdir build
-          cd build
-          cmake ..
-          make -j install
 
       - name: Install transformers
         run: |
@@ -77,25 +72,109 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          # check why the host does not have AVX2 support
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
       - name: Python environment check
         run: |
           pip list
-          source oneCCL/build/_install/env/setvars.sh
-          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
           # check whether the environment is properly setup
           python -c "import deepspeed;from deepspeed.accelerator import get_accelerator;print(get_accelerator().device_name());print(get_accelerator().is_available())"
 
-      - name: Unit tests
+      - name: Download DeepSpeedExamples
         run: |
-          # prep oneCCL for CCLBackend comm ops building
-          source oneCCL/build/_install/env/setvars.sh
-          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
-          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          cd  tests
-          # LOCAL_SIZE=2 enforce CPU to report 2 devices, this helps run the test on github default runner
-          LOCAL_SIZE=2 COLUMNS=240 TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'seq_inference' unit/
-          LOCAL_SIZE=2 COLUMNS=240 TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'inference_ops' -m 'inference' unit/
+          git clone https://github.com/Microsoft/DeepSpeedExamples
+
+      - name: AutoTP test (facebook/opt-1.3b)
+        run: |
+          # modify MODEL to change the model name, other lines are the same
+          export MODEL=facebook/opt-1.3b
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+
+      - name: AutoTP test (bigscience/bloom-3b)
+        run: |
+          # modify MODEL to change the model name, other lines are the same
+          export MODEL=bigscience/bloom-3b
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+
+#      - name: AutoTP test (baichuan-inc/Baichuan-7B)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=baichuan-inc/Baichuan-7B
+#          export HF_HOME=/blob/hf_home
+#          echo "directory structure of TRASNSFORMERS_CACHE"
+#          find $TRANSFORMERS_CACHE
+#          echo "directory structure of HF_HOME"
+#          find $HF_HOME
+#          unset TRANSFORMERS_CACHE
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --trust_remote_code
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1 --trust_remote_code
+#
+#      - name: AutoTP test (tiiuae/falcon-7b)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=tiiuae/falcon-7b
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (EleutherAI/gpt-j-6b)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=EleutherAI/gpt-j-6b
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (bigcode/starcoder)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=bigcode/starcoder
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (google/flan-t5-xl)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=google/flan-t5-xl
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (mistralai/Mistral-7B-v0.1)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=mistralai/Mistral-7B-v0.1
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (mosaicml/mpt-7b)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=mosaicml/mpt-7b
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (meta-llama/Llama-2-7b-hf)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=meta-llama/Llama-2-7b-hf
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (EleutherAI/gpt-neox-20b)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=EleutherAI/gpt-neox-20
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
