@@ -117,33 +117,6 @@ void wait_buffer_state_until_2(int index, enum coll_state state0,
     }
 }
 
-void wait_buffer_state_until(int index, enum coll_state state, int state_group)
-{
-    volatile enum coll_state* state_ptr = &(workspace[index]->states[state_group]);
-
-    while (*state_ptr != state)
-        ;
-}
-
-void wait_buffer_state_until_not(int index, enum coll_state state, int state_group)
-{
-    volatile enum coll_state* state_ptr = &(workspace[index]->states[state_group]);
-
-    while (*state_ptr == state)
-        ;
-}
-
-void wait_buffer_state_until_range(int index, enum coll_state start, int size, int state_group)
-{
-    volatile enum coll_state* state_ptr = &(workspace[index]->states[state_group]);
-    enum coll_state end = (enum coll_state)(start + size);
-
-    while (1) {
-        volatile enum coll_state cur_state = *state_ptr;
-        if (cur_state >= start and cur_state < end) break;
-    }
-}
-
 __m512 cvt_bf16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
 inline __m512 cvt_bf16_to_fp32(const __m256i src)
 {
@@ -699,7 +672,7 @@ void distributed_naive_reduce(char* data_ptr,
         // make each rank start from different chunk to avoid conjestion on rank 0
         int rank = (i + world_rank) % world_size;
         // wait until the other rank reduce the buffer
-        wait_buffer_state_until_2(i, reduce_current, copy_next, state_group);
+        wait_buffer_state_until_2(rank, reduce_current, copy_next, state_group);
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
                         slice_data(distributed_buffer[current_buffer][rank], chunk_el, data_size, rank),
                         slice_size(chunk_el, rank) * data_size);
