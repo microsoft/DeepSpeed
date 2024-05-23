@@ -694,9 +694,6 @@ void distributed_naive_reduce(char* data_ptr,
         wait_buffer_state_until_not(i, coll_allreduce_naive__reduce_done, state_group);
     }
 
-    std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->states[state_group] = coll_begin;
-
 #ifdef DO_PROFILE
     auto t5 = std::chrono::system_clock::now();
     count++;
