@@ -674,7 +674,9 @@ void distributed_naive_reduce(char* data_ptr,
     auto t3 = std::chrono::system_clock::now();
 #endif
 
-    for (int rank = 0; rank < world_size; rank++) {
+    for (int i = 0; i < world_size; i++) {
+        // make each rank start from different chunk to avoid conjestion on rank 0
+        int rank = (i + world_rank) % world_size;
         // wait until the other rank reduce the buffer
         wait_buffer_state_until_range(rank, coll_allreduce_naive__reduce_done, 2, state_group);
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
