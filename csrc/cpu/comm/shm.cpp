@@ -23,11 +23,11 @@ enum coll_state {
     coll_begin = 0,
     coll_allreduce_naive__copy_in_done,
     coll_allreduce_naive__reduce_done,
-    coll_allreduce_naive__copy_out_done,
     // alternative state when allreduce is working on alternative buffer
     // of the double buffer.
     coll_alt1_allreduce_naive__copy_in_done,
     coll_alt2_allreduce_naive__copy_in_done,
+    coll_alt1_allreduce_naive__reduce_done,
 };
 
 // SHM building blocks
@@ -91,20 +91,19 @@ struct allreduce_workspace {
     // double buffer to avoid syncing between rounds
     // offset=0 -- 2*NAIVE_ALLREDUCE_THRESHOLD : buffer for symmetric_naive_all_reduce
     // after that : buffer for distributed_naive_all_reduce
-    char buffer[2*NAIVE_ALLREDUCE_THRESHOLD + MAX_BUF_SIZE];
+    char buffer[2*NAIVE_ALLREDUCE_THRESHOLD + 2*MAX_BUF_SIZE];
 };
 
 #define BUFFER0_OFFSET(current_buffer) current_buffer*NAIVE_ALLREDUCE_THRESHOLD
-#define BUFFER1_OFFSET 2*NAIVE_ALLREDUCE_THRESHOLD
+#define BUFFER1_OFFSET(current_buffer) 2*NAIVE_ALLREDUCE_THRESHOLD + current_buffer*MAX_BUF_SIZE
 
-static int current_buffer = 0;
 
 struct allreduce_workspace** workspace;
 
 // buffer for small messages, its a double buffer
 char** symmetric_buffer[2];
 // buffer for large messages, single buffer
-char** distributed_buffer;
+char** distributed_buffer[2];
 
 void wait_buffer_state_until_2(int index, enum coll_state state0,
                                enum coll_state state1, int state_group)
@@ -441,7 +440,8 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
     workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
     symmetric_buffer[0] = (char**)malloc(size * sizeof(char**));
     symmetric_buffer[1] = (char**)malloc(size * sizeof(char**));
-    distributed_buffer = (char**)malloc(size * sizeof(char**));
+    distributed_buffer[0] = (char**)malloc(size * sizeof(char**));
+    distributed_buffer[1] = (char**)malloc(size * sizeof(char**));
 
     // map shm of all ranks
     for (int i = 0; i < size; i++) {
@@ -458,7 +458,8 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
         }
         symmetric_buffer[0][i] = workspace[i]->buffer + BUFFER0_OFFSET(0);
         symmetric_buffer[1][i] = workspace[i]->buffer + BUFFER0_OFFSET(1);
-        distributed_buffer[i] = workspace[i]->buffer + BUFFER1_OFFSET;
+        distributed_buffer[0][i] = workspace[i]->buffer + BUFFER1_OFFSET(0);
+        distributed_buffer[1][i] = workspace[i]->buffer + BUFFER1_OFFSET(1);
     }
 }
 
@@ -557,24 +558,21 @@ void symmetric_naive_all_reduce(char* data_ptr,
           one buffer used by either lagging ranks or leading ranks.
     */
     const int state_group = 0;
+    static int current_buffer = 0;
     static int state_idx = 0;
 
-    enum coll_state begin_next,
-                    copy_prev, copy_current, copy_next;
+    enum coll_state copy_current, copy_next;
 
     switch (state_idx) {
     case 0:
-        copy_prev =     coll_alt2_allreduce_naive__copy_in_done;
         copy_current =  coll_allreduce_naive__copy_in_done;
         copy_next =     coll_alt1_allreduce_naive__copy_in_done;
         break;
     case 1:
-        copy_prev =     coll_allreduce_naive__copy_in_done;
         copy_current =  coll_alt1_allreduce_naive__copy_in_done;
         copy_next =     coll_alt2_allreduce_naive__copy_in_done;
         break;
     case 2:
-        copy_prev =     coll_alt1_allreduce_naive__copy_in_done;
         copy_current =  coll_alt2_allreduce_naive__copy_in_done;
         copy_next =     coll_allreduce_naive__copy_in_done;
         break;
@@ -642,10 +640,33 @@ void distributed_naive_reduce(char* data_ptr,
 #endif
 
     const int state_group = 1;
+    static int current_buffer = 0;
+    static int state_idx = 0;
+
+    enum coll_state copy_current, copy_next, reduce_current;
+
+    // similar to symmetric_naive_allreduce, but here we only need two sets of
+    // states, because distributed naive reduce has two barriers in the algorithm
+    switch (state_idx) {
+    case 0:
+        copy_current   = coll_allreduce_naive__copy_in_done;
+        reduce_current = coll_allreduce_naive__reduce_done;
+        copy_next      = coll_alt1_allreduce_naive__copy_in_done;
+        break;
+    case 1:
+        copy_current   = coll_alt1_allreduce_naive__copy_in_done;
+        reduce_current = coll_alt1_allreduce_naive__reduce_done;
+        copy_next      = coll_allreduce_naive__copy_in_done;
+        break;
+    default:
+        assert (!"Should not get here.");
+    }
+    state_idx = (state_idx + 1) % 2;
+
     int data_size = chunk_size / chunk_el;
-    parallel_memcpy(distributed_buffer[world_rank], data_ptr, chunk_size);
+    parallel_memcpy(distributed_buffer[current_buffer][world_rank], data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->states[state_group] = coll_allreduce_naive__copy_in_done;
+    workspace[world_rank]->states[state_group] = copy_current;
 
 #ifdef DO_PROFILE
     auto t1 = std::chrono::system_clock::now();
@@ -653,7 +674,7 @@ void distributed_naive_reduce(char* data_ptr,
 
     for (int i = 0; i < world_size; i++) {
         // wait until all the other ranks copy the buffer
-        wait_buffer_state_until_range(i, coll_allreduce_naive__copy_in_done, 2, state_group);
+        wait_buffer_state_until_2(i, copy_current, reduce_current, state_group);
     }
 
 #ifdef DO_PROFILE
@@ -665,10 +686,10 @@ void distributed_naive_reduce(char* data_ptr,
                        slice_size(chunk_el, world_rank),
                        scalar_type,
                        world_rank,
-                       distributed_buffer[world_rank],
-                       distributed_buffer);
+                       distributed_buffer[current_buffer][world_rank],
+                       distributed_buffer[current_buffer]);
     std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->states[state_group] = coll_allreduce_naive__reduce_done;
+    workspace[world_rank]->states[state_group] = reduce_current;
 
 #ifdef DO_PROFILE
     auto t3 = std::chrono::system_clock::now();
@@ -678,21 +699,17 @@ void distributed_naive_reduce(char* data_ptr,
         // make each rank start from different chunk to avoid conjestion on rank 0
         int rank = (i + world_rank) % world_size;
         // wait until the other rank reduce the buffer
-        wait_buffer_state_until_range(rank, coll_allreduce_naive__reduce_done, 2, state_group);
+        wait_buffer_state_until_2(i, reduce_current, copy_next, state_group);
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-                        slice_data(distributed_buffer[rank], chunk_el, data_size, rank),
+                        slice_data(distributed_buffer[current_buffer][rank], chunk_el, data_size, rank),
                         slice_size(chunk_el, rank) * data_size);
     }
-    std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->states[state_group] = coll_allreduce_naive__copy_out_done;
 
 #ifdef DO_PROFILE
     auto t4 = std::chrono::system_clock::now();
 #endif
 
-    for (int i = 0; i < world_size; i++) {
-        wait_buffer_state_until_not(i, coll_allreduce_naive__reduce_done, state_group);
-    }
+    current_buffer = 1-current_buffer;
 
 #ifdef DO_PROFILE
     auto t5 = std::chrono::system_clock::now();
