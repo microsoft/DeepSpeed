@@ -51,6 +51,7 @@ def pre_handle(args, tid, read_op):
     ctxt['file'] = filename
     ctxt['num_bytes'] = args.io_size
     ctxt['handle'] = handle
+    ctxt['gds'] = gds
     ctxt[BUFFER] = buffer
     ctxt[BOUNCE_BUFFER] = bounce_buffer
     ctxt['elapsed_sec'] = 0
@@ -74,6 +75,8 @@ def post_handle(pool_params):
     _, _, ctxt = pool_params
     for buf in [BUFFER, BOUNCE_BUFFER]:
         if ctxt[buf] is not None:
+            if ctxt['gds']:
+                ctxt['handle'].free_device_locked_tensor(ctxt[buf])
             ctxt[buf].detach()
             ctxt[buf] = None
     return ctxt
@@ -92,7 +95,6 @@ def main_parallel_read(pool_params):
         ctxt[BUFFER].data.copy_(ctxt[BOUNCE_BUFFER].data)
     end_time = time.time()
     ctxt['elapsed_sec'] += end_time - start_time
-
     return ctxt
 
 

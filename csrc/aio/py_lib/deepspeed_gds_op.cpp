@@ -65,8 +65,6 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
         }
         exit(EXIT_FAILURE);
     }
-    // _base_ptr = _contiguous_buffer.data_ptr();
-
     check_cudaruntimecall(cudaSetDevice(device));
 
     _safe_handle_register(fd, _cf_descr, _cf_handle);

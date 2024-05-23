@@ -59,6 +59,12 @@ deepspeed_aio_handle_t::deepspeed_aio_handle_t(const int block_size,
     if (!deepspeed_aio_handle_t::s_cuFile_init) {
         cuFileDriverOpen();
         cudaCheckError();
+        size_t direct_io_size = (size_t)block_size / 1024;
+        CUfileError_t status = cuFileDriverSetMaxDirectIOSize(direct_io_size);
+        if (status.err != CU_FILE_SUCCESS) {
+            std::cerr << "file register error:" << cuFileGetErrorString(status) << std::endl;
+            exit(EXIT_FAILURE);
+        }
         deepspeed_aio_handle_t::s_cuFile_init = true;
     }
 }
