@@ -272,7 +272,7 @@ class DeepSpeedCheckpoint(object):
     def _get_layer_keys(self):
         key_set = set()
         for file_path in self.layer_files:
-            _, fname = os.path.split(file_path)            
+            _, fname = os.path.split(file_path)
             layer_id = re.search(LAYER_FILE_PREFIX_PATTERN, fname).group(1)
             key_set.add(layer_id)
         sorted_ids = sorted(list(key_set), key=int)
