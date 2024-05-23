@@ -93,7 +93,7 @@ class DeepSpeedSelfAttention(nn.Module):
         if isinstance(qkv_out, list) or isinstance(qkv_out, tuple):
             qkv_out = qkv_out[0]
 
-        no_masking = input_mask is None
+        no_masking = input_mask is None or input_mask is False
 
         if no_masking:
             input_mask = torch.empty(1)
@@ -254,8 +254,12 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         if input_mask.dtype == torch.bool:
             input_mask = input_mask.long()
 
+        # Invert input_mask per transformer implementation (eg, in BLOOM, it's already inverted)
+        if self.config.invert_mask:
+            input_mask = 1 - input_mask
+
         attention_probs = self.softmax_func(attn_scores=attention_scores,
-                                            attn_mask=((1 - input_mask).to(target_dtype) * minus_inf),
+                                            attn_mask=input_mask.to(target_dtype) * minus_inf,
                                             alibi=alibi,
                                             triangular=(self.config.triangular_masking
                                                         and (attention_scores.shape[-2] > 1)),

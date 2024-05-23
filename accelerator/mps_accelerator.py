@@ -20,9 +20,19 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = "mps"
         self._communication_backend_name = None
+        self._compile_backend = "inductor"
 
     def is_synchronized_device(self):
         return False
+
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def resolves_data_dependency(self):
+        return self.is_synchronized_device()
+
+    def handles_memory_backpressure(self):
+        return self.is_synchronized_device()
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -166,6 +176,17 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def is_triton_supported(self):
         return False
 
+    # Graph operations
+    def create_graph(self):
+        return None
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
     # Tensor operations
     @property
     def BFloat16Tensor(self):
@@ -238,3 +259,23 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    # TODO: mpu's visible envs is confirmed, keep as CUDA_VISIBLE_DEVICES
+    def visible_devices_envs(self):
+        # TODO: could not find visible devices env for mps
+        return ['CUDA_VISIBLE_DEVICES']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")

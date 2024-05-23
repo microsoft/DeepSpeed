@@ -23,7 +23,7 @@ from _pytest.outcomes import Skipped
 from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout for tests that hang
-DEEPSPEED_TEST_TIMEOUT = 600
+DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
 
 
 def is_rocm_pytorch():
@@ -81,6 +81,15 @@ def set_accelerator_visible():
                 match = re.search('Device Type.*GPU', line)
                 if match:
                     num_accelerators += 1
+        elif get_accelerator().device_name() == 'hpu':
+            try:
+                hl_smi = subprocess.check_output(['hl-smi', "-L"])
+                num_accelerators = re.findall(r"Module ID\s+:\s+(\d+)", hl_smi.decode())
+            except FileNotFoundError:
+                sim_list = subprocess.check_output(['ls', '-1', '/dev/accel'])
+                num_accelerators = re.findall(r"accel(\d+)", sim_list.decode())
+            num_accelerators = sorted(num_accelerators, key=int)
+            os.environ["HABANA_VISIBLE_MODULES"] = ",".join(num_accelerators)
         elif get_accelerator().device_name() == 'npu':
             npu_smi = subprocess.check_output(['npu-smi', 'info', '-l'])
             num_accelerators = int(npu_smi.decode('utf-8').strip().split('\n')[0].split(':')[1].strip())
@@ -90,7 +99,10 @@ def set_accelerator_visible():
                 subprocess.check_output('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l', shell=True))
             num_accelerators = cpu_sockets
 
-        cuda_visible = ",".join(map(str, range(num_accelerators)))
+        if isinstance(num_accelerators, list):
+            cuda_visible = ",".join(num_accelerators)
+        else:
+            cuda_visible = ",".join(map(str, range(num_accelerators)))
 
     # rotate list based on xdist worker id, example below
     # wid=0 -> ['0', '1', '2', '3']
@@ -113,6 +125,7 @@ class DistributedExec(ABC):
     set_dist_env = True
     requires_cuda_env = True
     reuse_dist_env = False
+    non_daemonic_procs = False
     _pool_cache = {}
     exec_timeout = DEEPSPEED_TEST_TIMEOUT
 
@@ -145,18 +158,15 @@ class DistributedExec(ABC):
                 pass  # test methods can have kwargs that are not fixtures
         return fixture_kwargs
 
-    def _launch_procs(self, num_procs):
-        # Verify we have enough accelerator devices to run this test
-        if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
-            pytest.skip(
-                f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
-            )
-
-        # Set start method to `forkserver` (or `fork`)
-        mp.set_start_method('forkserver', force=True)
-
+    def _launch_daemonic_procs(self, num_procs):
         # Create process pool or use cached one
         master_port = None
+
+        if get_accelerator().device_name() == 'hpu':
+            if self.reuse_dist_env:
+                print("Ignoring reuse_dist_env for hpu")
+                self.reuse_dist_env = False
+
         if self.reuse_dist_env:
             if num_procs not in self._pool_cache:
                 self._pool_cache[num_procs] = mp.Pool(processes=num_procs)
@@ -176,18 +186,85 @@ class DistributedExec(ABC):
             # Shortcut to exit pytest in the case of a hanged test. This
             # usually means an environment error and the rest of tests will
             # hang (causing super long unit test runtimes)
-            pytest.exit("Test hanged, exiting", returncode=0)
-
-        # Tear down distributed environment and close process pools
-        self._close_pool(pool, num_procs)
+            pytest.exit("Test hanged, exiting", returncode=1)
+        finally:
+            # Regardless of the outcome, ensure proper teardown
+            # Tear down distributed environment and close process pools
+            self._close_pool(pool, num_procs)
 
         # If we skipped a test, propagate that to this process
         if any(skip_msgs):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
 
-    def _dist_run(self, local_rank, num_procs, master_port):
-        skip_msg = ''
+    def _launch_non_daemonic_procs(self, num_procs):
+        assert not self.reuse_dist_env, "Cannot reuse distributed environment with non-daemonic processes"
+
+        master_port = get_master_port()
+        skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
+        processes = []
+        for local_rank in range(num_procs):
+            p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, skip_msg))
+            p.start()
+            processes.append(p)
+
+        # Now loop and wait for a test to complete. The spin-wait here isn't a big
+        # deal because the number of processes will be O(#GPUs) << O(#CPUs).
+        any_done = False
+        start = time.time()
+        while (not any_done) and ((time.time() - start) < self.exec_timeout):
+            for p in processes:
+                if not p.is_alive():
+                    any_done = True
+                    break
+            time.sleep(.1)  # So we don't hog CPU
+
+        # If we hit the timeout, then presume a test is hanged
+        if not any_done:
+            for p in processes:
+                p.terminate()
+            pytest.exit("Test hanged, exiting", returncode=1)
+
+        # Wait for all other processes to complete
+        for p in processes:
+            p.join(self.exec_timeout)
+
+        failed = [(rank, p) for rank, p in enumerate(processes) if p.exitcode != 0]
+        for rank, p in failed:
+            # If it still hasn't terminated, kill it because it hung.
+            if p.exitcode is None:
+                p.terminate()
+                pytest.fail(f'Worker {rank} hung.', pytrace=False)
+            if p.exitcode < 0:
+                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}', pytrace=False)
+            if p.exitcode > 0:
+                pytest.fail(f'Worker {rank} exited with code {p.exitcode}', pytrace=False)
+
+        if not skip_msg.empty():
+            # This assumed all skip messages are the same, it may be useful to
+            # add a check here to assert all exit messages are equal
+            pytest.skip(skip_msg.get())
+
+    def _launch_procs(self, num_procs):
+        # Verify we have enough accelerator devices to run this test
+        if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
+            pytest.skip(
+                f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
+            )
+
+        if get_accelerator().device_name() == 'xpu':
+            self.non_daemonic_procs = True
+            self.reuse_dist_env = False
+
+        # Set start method to `forkserver` (or `fork`)
+        mp.set_start_method('forkserver', force=True)
+
+        if self.non_daemonic_procs:
+            self._launch_non_daemonic_procs(num_procs)
+        else:
+            self._launch_daemonic_procs(num_procs)
+
+    def _dist_run(self, local_rank, num_procs, master_port, skip_msg=""):
         if not dist.is_initialized():
             """ Initialize deepspeed.comm and execute the user function. """
             if self.set_dist_env:
@@ -218,7 +295,10 @@ class DistributedExec(ABC):
             self.run(**self._fixture_kwargs)
         except BaseException as e:
             if isinstance(e, Skipped):
-                skip_msg = e.msg
+                if self.non_daemonic_procs:
+                    skip_msg.put(e.msg)
+                else:
+                    skip_msg = e.msg
             else:
                 raise e
 
@@ -384,3 +464,13 @@ class DistributedTest(DistributedExec):
 def get_test_path(filename):
     curr_path = Path(__file__).parent
     return str(curr_path.joinpath(filename))
+
+
+# fp16 > bf16 > fp32
+def preferred_dtype():
+    if get_accelerator().is_fp16_supported():
+        return torch.float16
+    elif get_accelerator().is_bf16_supported():
+        return torch.bfloat16
+    else:
+        return torch.float32

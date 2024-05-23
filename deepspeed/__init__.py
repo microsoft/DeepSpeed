@@ -12,16 +12,21 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
-try:
-    import triton  # noqa: F401 # type: ignore
-    HAS_TRITON = True
-except ImportError:
+# Skip Triton import for AMD due to pytorch-triton-rocm module breaking device API in DeepSpeed
+if not (hasattr(torch.version, 'hip') and torch.version.hip is not None):
+    try:
+        import triton  # noqa: F401 # type: ignore
+        HAS_TRITON = True
+    except ImportError:
+        HAS_TRITON = False
+else:
     HAS_TRITON = False
 
 from . import ops
 from . import module_inject
 
 from .accelerator import get_accelerator
+from .constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.hybrid_engine import DeepSpeedHybridEngine
@@ -38,7 +43,7 @@ from .utils import log_dist, OnDevice, logger
 from .comm.comm import init_distributed
 
 from .runtime import zero
-from .runtime import DeepSpeedOptimizer, ZeROOptimizer
+from .runtime.compiler import is_compile_supported
 
 from .pipe import PipelineModule
 
@@ -67,6 +72,7 @@ def initialize(args=None,
                model_parameters: Optional[torch.nn.Module] = None,
                training_data: Optional[torch.utils.data.Dataset] = None,
                lr_scheduler: Optional[Union[_LRScheduler, DeepSpeedSchedulerCallable]] = None,
+               distributed_port: int = TORCH_DISTRIBUTED_DEFAULT_PORT,
                mpu=None,
                dist_init_required: Optional[bool] = None,
                collate_fn=None,
@@ -90,6 +96,8 @@ def initialize(args=None,
 
         lr_scheduler: Optional: Learning Rate Scheduler Object or a Callable that takes an Optimizer and returns a Scheduler object.
             The scheduler object should define a get_lr(), step(), state_dict(), and load_state_dict() methods
+
+        distributed_port: Optional: Master node (rank 0)'s free port that needs to be used for communication during distributed training
 
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
@@ -132,7 +140,9 @@ def initialize(args=None,
     global dist
     from deepspeed import comm as dist
     dist_backend = get_accelerator().communication_backend_name()
-    dist.init_distributed(dist_backend=dist_backend, dist_init_required=dist_init_required)
+    dist.init_distributed(dist_backend=dist_backend,
+                          distributed_port=distributed_port,
+                          dist_init_required=dist_init_required)
 
     # Set config using config_params for backwards compat
     if config is None and config_params is not None:
@@ -234,12 +244,6 @@ def _add_core_arguments(parser):
                        type=str,
                        help='Deprecated DeepSpeed json configuration file.')
 
-    group.add_argument('--deepspeed_mpi',
-                       default=False,
-                       action='store_true',
-                       help="Run via MPI, this will attempt to discover the necessary variables to initialize torch "
-                       "distributed from the MPI environment")
-
     return parser
 
 
@@ -292,7 +296,7 @@ def init_inference(model, config=None, **kwargs):
     .. code-block:: python
 
         generator.model = deepspeed.init_inference(generator.model,
-                                                    mp_size=world_size,
+                                                    tensor_parallel={"tp_size": world_size},
                                                     dtype=torch.half,
                                                     replace_with_kernel_inject=True)
         string = generator("DeepSpeed is")
