@@ -107,7 +107,7 @@ class DeQuantizer:
         if self.config['group_size'] % 8 == 0 and \
                 (self.config['num_bits'] == 4 or self.config['num_bits'] == 8) and \
                 self.config['group_dim'] == len(tensor.shape) - 1 and \
-                    self.dtype == torch.float16 and device == 'cuda':
+                    self.dtype == torch.float16 and device == get_accelerator().device_name():
 
             last_dimension_size = self.config['group_size']
             if self.config['num_bits'] == 4:
