@@ -13,7 +13,7 @@ To test accuracy and performance of NCCL backend:
 python test_nccl_backend.py
 python test_nccl_perf.py
 ```
-Similarly, for MPI backend: 
+Similarly, for MPI backend:
 ```bash
 python test_mpi_backend.py
 python test_mpi_perf.py
