@@ -704,8 +704,20 @@ void distributed_naive_reduce(char* data_ptr,
     for (int i = 0; i < world_size; i++) {
         wait_buffer_state_until_2(i, reduce_current, copy_next, state_group);
     }
+
     auto t4 = std::chrono::system_clock::now();
+
+    #if 0
+    for (int i = 0; i < world_size; i++) {
+        int rank = (i + world_rank) % world_size;
+        // wait until the other rank reduce the buffer
+        parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
+                        slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
+                        slice_size(chunk_el, rank) * data_size);
+    }
+    #else
     multi_memcpy(data_ptr, distributed_buffer[current_buffer], chunk_el, data_size);
+    #endif
 
     current_buffer = 1-current_buffer;
 
