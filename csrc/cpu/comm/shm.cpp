@@ -452,8 +452,60 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     for (int i = aligned_bytes; i < n_bytes; i++) { *((char*)to + i) = *((char*)from + i); }
 }
 
+static void serial_memcpy(void* to, void* from, size_t n_bytes)
+    __attribute__((target("avx512bw")));
+static void serial_memcpy(void* to, void* from, size_t n_bytes)
+{
+    auto aligned_bytes = n_bytes - (n_bytes % VECTOR_LENGTH_IN_BYTES);
+    // process aligned part
+    for (int i = 0; i < aligned_bytes; i += VECTOR_LENGTH_IN_BYTES) {
+        auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
+        _mm256_storeu_si256((__m256i*)((char*)to + i), val);
+    }
+
+    // process remaining part
+    for (int i = aligned_bytes; i < n_bytes; i++) { *((char*)to + i) = *((char*)from + i); }
+}
+
 size_t slice_size(size_t chunk_el, int slice_idx);
 char* slice_data(char* data_ptr, size_t chunk_el, int el_size, int slice_idx);
+
+static void multi_memcpy(char* to, char**from, size_t chunk_el, size_t data_size)
+    __attribute__((target("avx512bw")));
+static void multi_memcpy(char* to, char**from, size_t chunk_el, size_t data_size)
+{
+    auto n_bytes_min = slice_size(chunk_el, 0) * data_size;
+    auto aligned_bytes = n_bytes_min - (n_bytes_min % VECTOR_LENGTH_IN_BYTES);
+    size_t _size = chunk_el / world_size * data_size;
+
+    #pragma omp parallel for
+    for (int j = 0; j < aligned_bytes; j += VECTOR_LENGTH_IN_BYTES) {
+        for (int i = 0; i < world_size; i++) {
+            // make each rank start from different chunk to avoid conjestion on rank 0
+            int rank = (i + world_rank) % world_size;
+            auto slice_to = to + _size * rank;
+            auto slice_from = from[rank] + _size * rank;
+
+            // process aligned part
+            auto val = _mm256_loadu_si256((__m256i*)((char*)slice_from + j));
+            _mm256_storeu_si256((__m256i*)((char*)slice_to + j), val);
+        }
+    }
+
+    auto n_bytes = _size;
+    // process remaining part
+    for (int rank = 0; rank < world_size; rank++) {
+        auto slice_to = to + _size * rank;
+        auto slice_from = from[rank] + _size * rank;
+        if (rank == world_size - 1) {
+            n_bytes += (chunk_el % world_size) * data_size;
+        }
+
+        for (int i = aligned_bytes; i < n_bytes; i++) {
+            *((char*)slice_to + i) = *((char*)slice_from + i);
+        }
+    }
+}
 
 #define positive_mod(num, mod) ((((num) % (mod)) + (mod)) % (mod))
 #define rank_mod(rank) positive_mod(rank, world_size)
@@ -669,14 +721,9 @@ void distributed_naive_reduce(char* data_ptr,
 #endif
 
     for (int i = 0; i < world_size; i++) {
-        // make each rank start from different chunk to avoid conjestion on rank 0
-        int rank = (i + world_rank) % world_size;
-        // wait until the other rank reduce the buffer
-        wait_buffer_state_until_2(rank, reduce_current, copy_next, state_group);
-        parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-                        slice_data(distributed_buffer[current_buffer][rank], chunk_el, data_size, rank),
-                        slice_size(chunk_el, rank) * data_size);
+        wait_buffer_state_until_2(i, reduce_current, copy_next, state_group);
     }
+    multi_memcpy(data_ptr, distributed_buffer[current_buffer], chunk_el, data_size);
 
 #ifdef DO_PROFILE
     auto t4 = std::chrono::system_clock::now();
