@@ -15,7 +15,7 @@ from deepspeed.comm.reduce_op import ReduceOp
 from deepspeed.accelerator import get_accelerator
 from ..inference_utils import elem_size
 from ..logging import inference_logger
-from .blocked_allocator import BlockedAllocator
+from .blocked_allocator import BlockedAllocator, LinearScanBlockedAllocator
 from .manager_configs import AllocationMode, KVCacheConfig, MemoryConfig
 
 
@@ -136,7 +136,8 @@ class BlockedKVCache:
                 f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
             caches.append(torch.empty(alloc_shape, dtype=config.cache_dtype,
                                       device=get_accelerator().current_device()))
-            allocators.append(BlockedAllocator(num_blocks))
+            # allocators.append(BlockedAllocator(num_blocks))
+            allocators.append(LinearScanBlockedAllocator(num_blocks))
 
         self._caches = tuple(caches)
         self._allocators = tuple(allocators)
