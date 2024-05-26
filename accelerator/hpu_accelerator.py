@@ -74,7 +74,7 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return self.hpu.random.get_rng_state()
 
     def manual_seed(self, seed):
-        self.hpu.random.manual_seed(seed)
+        return self.hpu.random.manual_seed(seed)
 
     def manual_seed_all(self, seed):
         self.hpu.random.manual_seed_all(seed)
