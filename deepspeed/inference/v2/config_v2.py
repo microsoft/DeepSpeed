@@ -43,4 +43,5 @@ class RaggedInferenceEngineConfig(DeepSpeedConfigModel):
     quantization: QuantizationConfig = {}
 
     enable_prefix_cache: bool = False
+    """ Enable prefix cache for the model. """
 

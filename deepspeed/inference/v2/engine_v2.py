@@ -152,7 +152,7 @@ class InferenceEngineV2:
         # We return one set of logits per sequence in the batch (saves cost on unembedding)
         assert logits.shape[0] == self._batch.current_sequences
 
-        for uid, tokens in zip(batch_uids, batch_tokens):
+        for uid in batch_uids:
             host_seq_desc = self._state_manager.get_sequence(uid)
             host_seq_desc.post_forward()  # Updates sequence metadata.
             self._model.maybe_free_kv(host_seq_desc)
