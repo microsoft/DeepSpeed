@@ -253,8 +253,8 @@ class InferenceEngineV2:
         if self._config.enable_prefix_cache:
             return self._state_manager.lookup_cache(tokens)
         return 0, torch.tensor([])
-    
-    def setup_cached_sequence(self, uid: int, cached_length:int, block_ids: torch.Tensor) -> None:
+
+    def setup_cached_sequence(self, uid: int, cached_length: int, block_ids: torch.Tensor) -> None:
         if self._config.enable_prefix_cache:
             seq = self._state_manager.get_or_create_sequence(uid)
             seq.pre_forward(cached_length)

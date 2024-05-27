@@ -12,7 +12,7 @@ import torch
 class BlockedAllocatorBase(ABC):
     """
     Allocator class for managing which blocks are free/used in the
-    blocked KV-cache. 
+    blocked KV-cache.
     """
 
     # Number of blocks in the KV-cache(s).
@@ -129,10 +129,10 @@ class BlockedAllocator(BlockedAllocatorBase):
 
 
 class LinearScanBlockedAllocator(BlockedAllocatorBase):
+
     def __init__(self, num_blocks: int) -> None:
         super().__init__(num_blocks)
         self._blocks = torch.zeros(num_blocks + 1, dtype=torch.int32, device='cpu', pin_memory=True)
-
 
     def allocate(self, num_blocks: int) -> torch.Tensor:
         if num_blocks > self._free_blocks:

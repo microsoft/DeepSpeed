@@ -1,6 +1,10 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from typing import Dict, List, Set
 import hashlib
-from collections import defaultdict
 
 import torch
 
@@ -21,12 +25,12 @@ class PrefixBlockMap():
         self.tokens_to_blocks: Dict[str, List[int]] = {}
         self.blocks_to_tokens: Dict[Set[int], str] = {}
         self.block_size: int = block_size
-    
+
     def lookup(self, tokens: torch.Tensor) -> torch.Tensor:
         n_blocks = len(tokens) // self.block_size
         cached_blocks = torch.tensor([], dtype=torch.int32)
         for i in range(n_blocks):
-            chunk = tokens[:(i+1)*self.block_size]
+            chunk = tokens[:(i + 1) * self.block_size]
             hash = token_ids_to_hash(chunk)
             if hash in self.tokens_to_blocks:
                 cached_blocks = self.tokens_to_blocks[hash]
@@ -37,11 +41,11 @@ class PrefixBlockMap():
     def extend(self, tokens: torch.Tensor, new_block_ids: List[int]) -> None:
         n_blocks = len(tokens) // self.block_size
         for i in range(n_blocks):
-            chunk = tokens[:(i+1)*self.block_size]
+            chunk = tokens[:(i + 1) * self.block_size]
             hash = token_ids_to_hash(chunk)
             if hash not in self.tokens_to_blocks:
-                self.tokens_to_blocks[hash] = new_block_ids[:i+1]
-                self.blocks_to_tokens[frozenset(new_block_ids[:i+1])] = hash
+                self.tokens_to_blocks[hash] = new_block_ids[:i + 1]
+                self.blocks_to_tokens[frozenset(new_block_ids[:i + 1])] = hash
 
     def delete(self, block_ids: List[int]) -> None:
         blocks_set = frozenset(block_ids)
@@ -50,4 +54,3 @@ class PrefixBlockMap():
             if blocks_set & used_blocks:
                 del self.tokens_to_blocks[hash]
                 del self.blocks_to_tokens[used_blocks]
-

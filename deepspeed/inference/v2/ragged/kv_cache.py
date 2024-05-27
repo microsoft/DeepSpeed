@@ -137,7 +137,7 @@ class BlockedKVCache:
                 f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
             caches.append(torch.empty(alloc_shape, dtype=config.cache_dtype,
                                       device=get_accelerator().current_device()))
-            
+
             if enable_prefix_cache:
                 allocators.append(LinearScanBlockedAllocator(num_blocks))
             else:

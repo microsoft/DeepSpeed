@@ -370,7 +370,7 @@ class DSTransformerModelBase(DSInferenceModelBase):
             new_blocks = self.state_manager.allocate_blocks(n_needed_blocks)
             sequence.extend_kv_cache(new_blocks)
             return new_blocks
-        
+
         return None
 
     def kv_cache_config(self) -> Tuple[KVCacheConfig, ...]:

@@ -15,7 +15,7 @@ from .blocked_allocator import BlockedAllocator
 from .kv_cache import BlockedKVCache
 from .manager_configs import DSStateManagerConfig, KVCacheConfig
 from .sequence_descriptor import DSSequenceDescriptor
-from .prefix_block_tree import PrefixBlockMap
+from .prefix_block_map import PrefixBlockMap
 
 
 class DSStateManager:
@@ -102,9 +102,8 @@ class DSStateManager:
                                         enable_prefix_cache=enable_prefix_cache)
 
         assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
-        self._block_tree = PrefixBlockMap(self._kv_configs[0].block_size)
+        self._block_map = PrefixBlockMap(self._kv_configs[0].block_size)
         self._ref_counts = defaultdict(int)
-
 
     def get_cache(self, cache_id: int, cache_group: int = 0) -> torch.Tensor:
         """
@@ -176,7 +175,7 @@ class DSStateManager:
 
     def lookup_cache(self, tokens: torch.Tensor) -> int:
 
-        block_ids = self._block_tree.lookup(tokens)
+        block_ids = self._block_map.lookup(tokens)
         assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
 
         cache_hit_length = len(block_ids) * self._kv_configs[0].block_size
@@ -192,7 +191,7 @@ class DSStateManager:
         Update the KV cache for the given sequence id.
         """
         seq = self.get_sequence(uid)
-        self._block_tree.extend(tokens, seq.all_block_ids())
+        self._block_map.extend(tokens, seq.all_block_ids())
 
     def increment_ref_count(self, block_ids: torch.Tensor) -> None:
         for block_id in block_ids:

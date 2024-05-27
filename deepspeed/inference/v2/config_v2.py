@@ -44,4 +44,3 @@ class RaggedInferenceEngineConfig(DeepSpeedConfigModel):
 
     enable_prefix_cache: bool = False
     """ Enable prefix cache for the model. """
-
