@@ -171,6 +171,6 @@ class LinearScanBlockedAllocator(BlockedAllocatorBase):
             if self._blocks[block] != -1:
                 raise ValueError(f'Block {block} is already free')
 
-        for block in reversed(blocks):
+        for block in blocks:
             self._blocks[block] = 0
             self._free_blocks += 1
