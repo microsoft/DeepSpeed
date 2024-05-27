@@ -7,6 +7,7 @@ import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
 import intel_extension_for_pytorch as ipex  # noqa: F401 # type: ignore
 import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
+import functools
 
 
 class XPU_Accelerator(DeepSpeedAccelerator):
@@ -14,6 +15,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
+        self._compile_backend = "inductor"
         self.aligned_tensors = []
 
     def is_synchronized_device(self):
@@ -190,31 +192,31 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return torch.xpu.BFloat16Tensor
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device=self._name)
 
     @property
     def ByteTensor(self):
-        return torch.xpu.ByteTensor
+        return functools.partial(torch.tensor, dtype=torch.uint8, device=self._name)
 
     @property
     def DoubleTensor(self):
-        return torch.xpu.DoubleTensor
+        return functools.partial(torch.tensor, dtype=torch.double, device=self._name)
 
     @property
     def FloatTensor(self):
-        return torch.xpu.FloatTensor
+        return functools.partial(torch.tensor, dtype=torch.float, device=self._name)
 
     @property
     def HalfTensor(self):
-        return torch.xpu.HalfTensor
+        return functools.partial(torch.tensor, dtype=torch.half, device=self._name)
 
     @property
     def IntTensor(self):
-        return torch.xpu.IntTensor
+        return functools.partial(torch.tensor, dtype=torch.int, device=self._name)
 
     @property
     def LongTensor(self):
-        return torch.xpu.LongTensor
+        return functools.partial(torch.tensor, dtype=torch.long, device=self._name)
 
     def pin_memory(self, tensor, align_bytes=1):
         if align_bytes == 1:
@@ -289,3 +291,21 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def visible_devices_envs(self):
+        return ['ZE_AFFINITY_MASK']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")
