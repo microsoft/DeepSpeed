@@ -133,7 +133,7 @@ class InferenceEngineV2:
             new_block_ids = self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
             if self._config.enable_prefix_cache and new_block_ids is not None:
                 self._state_manager.increment_ref_count(new_block_ids)
-                self._state_manager._block_tree.delete(new_block_ids)
+                self._state_manager._block_map.delete(new_block_ids)
             host_seq_desc.pre_forward(tokens.numel())
 
             # We can disable checks since we already validated schedulability.
