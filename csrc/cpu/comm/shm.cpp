@@ -675,7 +675,7 @@ void distributed_naive_reduce(char* data_ptr,
         int rank = (i + world_rank) % world_size;
         // wait until the other rank reduce the buffer
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-                        slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
+                        slice_data(distributed_buffer[current_buffer][rank], chunk_el, chunk_size / chunk_el, rank),
                         slice_size(chunk_el, rank) * data_size);
     }
 
