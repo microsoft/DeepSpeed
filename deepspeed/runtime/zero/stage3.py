@@ -1412,7 +1412,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         err = torch.tensor(-1.0, device=inf_or_nan.device, dtype=torch.float)
         total_norm = inf_or_nan * err + inf_or_nan.logical_not() * total_norm
 
-        return total_norm
+        return total_norm.cpu()
 
     @instrument_w_nvtx
     def partition_grads(self, params_to_release: List[Parameter], grad_partitions: List[Tensor]) -> None:
@@ -2111,8 +2111,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
-            if clip > 1:
-                combined_scale = clip * self.loss_scale
+            clip = torch.clamp(clip, min=1.0)
+            combined_scale = clip * self.loss_scale
 
         self.fp32_partitioned_groups_flat[sub_group_id].grad.mul_(1. / combined_scale)
 
