@@ -57,7 +57,8 @@ class DSStateManager:
     def __init__(self,
                  config: DSStateManagerConfig,
                  kv_configs: Tuple[KVCacheConfig, ...],
-                 base_mp_group: Optional[Any] = None) -> None:
+                 base_mp_group: Optional[Any] = None,
+                 enable_prefix_cache: bool = False) -> None:
         """
         The key
 
@@ -97,7 +98,8 @@ class DSStateManager:
         self._kv_cache = BlockedKVCache(self._kv_configs,
                                         self._config.memory_config,
                                         mp_group=base_mp_group,
-                                        offload=self._config.offload)
+                                        offload=self._config.offload,
+                                        enable_prefix_cache=enable_prefix_cache)
 
         assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
         self._block_tree = PrefixBlockMap(self._kv_configs[0].block_size)

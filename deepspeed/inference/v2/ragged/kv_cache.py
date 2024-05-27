@@ -61,7 +61,8 @@ class BlockedKVCache:
                  configs: Tuple[KVCacheConfig, ...],
                  memory_config: MemoryConfig,
                  mp_group: Optional[Any] = None,
-                 offload: bool = False) -> None:
+                 offload: bool = False,
+                 enable_prefix_cache: bool = False) -> None:
         """
         Create a container that will maintain the storage and allocations for a set of
         blocked KV-caches.
@@ -136,8 +137,11 @@ class BlockedKVCache:
                 f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
             caches.append(torch.empty(alloc_shape, dtype=config.cache_dtype,
                                       device=get_accelerator().current_device()))
-            # allocators.append(BlockedAllocator(num_blocks))
-            allocators.append(LinearScanBlockedAllocator(num_blocks))
+            
+            if enable_prefix_cache:
+                allocators.append(LinearScanBlockedAllocator(num_blocks))
+            else:
+                allocators.append(BlockedAllocator(num_blocks))
 
         self._caches = tuple(caches)
         self._allocators = tuple(allocators)

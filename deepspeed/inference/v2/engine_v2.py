@@ -87,7 +87,8 @@ class InferenceEngineV2:
         self._batch = RaggedBatchWrapper(self._config.state_manager)
         self._state_manager = DSStateManager(self._config.state_manager,
                                              self._model.kv_cache_config(),
-                                             base_mp_group=self._base_mp_group)
+                                             base_mp_group=self._base_mp_group,
+                                             enable_prefix_cache=self._config.enable_prefix_cache)
         self._model.set_state_manager(self._state_manager)
 
     def _initialize_tp_group(self):
