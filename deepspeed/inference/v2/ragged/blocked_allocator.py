@@ -4,28 +4,22 @@
 # DeepSpeed Team
 
 from typing import Iterable, Union, List
+from abc import ABC, abstractmethod
 
 import torch
 
 
-class BlockedAllocator:
+class BlockedAllocatorBase(ABC):
     """
     Allocator class for managing which blocks are free/used in the
-    blocked KV-cache. This is a simple allocator that uses a linked list
-    to keep track of which blocks are free/used. The cost of allocation/deallocation
-    is O(blocks), where blocks is the number of blocks to allocate/deallocate.
-
-    TODO(cmikeh2): Evaluate performance of this allocator and migrate
-    to C++ if necessary.
+    blocked KV-cache. 
     """
+
     # Number of blocks in the KV-cache(s).
     _num_blocks: int
 
     # Array of blocks, where each element is the next block in the linked list.
     _blocks: torch.Tensor
-
-    # Index of the head of the linked list.
-    _head: int
 
     # Number of free blocks in the KV-cache.
     _free_blocks: int
@@ -43,10 +37,9 @@ class BlockedAllocator:
             raise ValueError(f'Blocked KV-cache must have at least 1 block, provided {num_blocks}')
 
         self._num_blocks = num_blocks
-        self._blocks = torch.arange(1, num_blocks + 1, dtype=torch.int32, device='cpu', pin_memory=True)
-        self._head = 0
         self._free_blocks = num_blocks
 
+    @abstractmethod
     def allocate(self, num_blocks: int) -> torch.Tensor:
         """
         Allocate a list of blocks from the associated KV-caches. This will
@@ -57,7 +50,50 @@ class BlockedAllocator:
             num_blocks (int): The number of blocks to allocate.
 
         Returns:
-            List[int]: The list of blocks allocated.
+            torch.Tensor: The list of blocks allocated.
+        """
+        pass
+
+    @abstractmethod
+    def free(self, blocks: Union[Iterable[int], int]) -> None:
+        """
+        Free a list of blocks in the associated KV-caches. This will return
+        the blocks to the free pool if they are valid and not already free.
+
+        Parameters:
+            blocks (Union[Iterable[int], int]): The list of blocks to free. If only one block
+                is to be freed, this can be alone as an integer.
+        """
+        pass
+
+    @property
+    def free_blocks(self) -> int:
+        """
+        Return the number of free blocks in the KV-cache.
+        """
+        return self._free_blocks
+
+
+class BlockedAllocator(BlockedAllocatorBase):
+    """
+    This is a simple allocator that uses a linked list to keep track of which blocks are free/used. The cost of allocation/deallocation
+    is O(blocks), where blocks is the number of blocks to allocate/deallocate.
+
+    TODO(cmikeh2): Evaluate performance of this allocator and migrate
+    to C++ if necessary.
+    """
+
+    # Index of the head of the linked list.
+    _head: int
+
+    def __init__(self, num_blocks: int) -> None:
+        super().__init__(num_blocks)
+        self._blocks = torch.arange(1, num_blocks + 1, dtype=torch.int32, device='cpu', pin_memory=True)
+        self._head = 0
+
+    def allocate(self, num_blocks: int) -> torch.Tensor:
+        """
+        Refer to the docstring of `BlockedAllocatorBase.allocate`.
         """
         if num_blocks > self._free_blocks:
             raise ValueError(f'Not enough free blocks in the KV-cache to allocate {num_blocks} blocks')
@@ -73,13 +109,7 @@ class BlockedAllocator:
 
     def free(self, blocks: Union[Iterable[int], int]) -> None:
         """
-        Return a list of blocks to the free pool. If a single invalid block is provided (i.e.,
-        one that is out of range of the allocator or is already free), then an exception is raised
-        and no blocks are freed.
-
-        Parameters:
-            blocks (Union[Iterable[int], int]): The list of blocks to free. If only one block
-                is to be freed, this can be alone as an integer.
+        Refer to the docstring of `BlockedAllocatorBase.free`.
         """
         if isinstance(blocks, int):
             blocks = [blocks]
@@ -92,51 +122,19 @@ class BlockedAllocator:
             if self._blocks[block] != -1:
                 raise ValueError(f'Block {block} is already free')
 
-        for block in reversed(blocks):
+        for block in blocks:
             self._blocks[block] = self._head
             self._head = block
             self._free_blocks += 1
 
-    @property
-    def free_blocks(self) -> int:
-        """
-        Return the number of free blocks in the KV-cache.
-        """
-        return self._free_blocks
 
-
-class LinearScanBlockedAllocator:
-    # Number of blocks in the KV-cache(s).
-    _num_blocks: int
-
-    # Array of blocks, where each element is the next block in the linked list.
-    _blocks: torch.Tensor
-
-    # Number of free blocks in the KV-cache.
-    _free_blocks: int
-
+class LinearScanBlockedAllocator(BlockedAllocatorBase):
     def __init__(self, num_blocks: int) -> None:
-
-        if num_blocks < 1:
-            raise ValueError(f'Blocked KV-cache must have at least 1 block, provided {num_blocks}')
-
-        self._num_blocks = num_blocks
+        super().__init__(num_blocks)
         self._blocks = torch.zeros(num_blocks + 1, dtype=torch.int32, device='cpu', pin_memory=True)
-        self._free_blocks = num_blocks
+
 
     def allocate(self, num_blocks: int) -> torch.Tensor:
-        """
-        Allocate a list of blocks from the associated KV-caches. This will
-        return `num_blocks` blocks from the KV-cache if they are available,
-        or raise an exception if there are not enough free blocks.
-
-        Parameters:
-            num_blocks (int): The number of blocks to allocate.
-
-        Returns:
-            List[int]: The list of blocks allocated.
-        """
-        
         if num_blocks > self._free_blocks:
             raise ValueError(f'Not enough free blocks in the KV-cache to allocate {num_blocks} blocks')
 
@@ -155,23 +153,12 @@ class LinearScanBlockedAllocator:
         return allocated_blocks
 
     def allocate_blocks(self, blocks: List[int]) -> None:
-
         for block in blocks:
-            # assert self._blocks[block] == 0, f"Block {block} is already allocated"
             if self._blocks[block] != -1:
                 self._blocks[block] = -1
                 self._free_blocks -= 1
 
     def free(self, blocks: Union[Iterable[int], int]) -> None:
-        """
-        Return a list of blocks to the free pool. If a single invalid block is provided (i.e.,
-        one that is out of range of the allocator or is already free), then an exception is raised
-        and no blocks are freed.
-
-        Parameters:
-            blocks (Union[Iterable[int], int]): The list of blocks to free. If only one block
-                is to be freed, this can be alone as an integer.
-        """
 
         if isinstance(blocks, int):
             blocks = [blocks]
@@ -187,10 +174,3 @@ class LinearScanBlockedAllocator:
         for block in reversed(blocks):
             self._blocks[block] = 0
             self._free_blocks += 1
-
-    @property
-    def free_blocks(self) -> int:
-        """
-        Return the number of free blocks in the KV-cache.
-        """
-        return self._free_blocks
