@@ -12,7 +12,7 @@
 #include <sys/mman.h>
 #include "shm.h"
 
-//#define DO_PROFILE
+// #define DO_PROFILE
 #ifdef DO_PROFILE
 #include <cfloat>
 #include <chrono>
@@ -75,9 +75,7 @@ void shared_close(SharedData* data)
     }
 }
 
-static bool is_initialized = 0;
 static int world_size;
-static int world_rank;
 
 // SHM based allreduce helper functions
 // buffer that holds shm name
@@ -97,12 +95,11 @@ struct allreduce_workspace {
 #define BUFFER0_OFFSET(current_buffer) current_buffer*NAIVE_ALLREDUCE_THRESHOLD
 #define BUFFER1_OFFSET(current_buffer) 2*NAIVE_ALLREDUCE_THRESHOLD + current_buffer*MAX_BUF_SIZE
 
-
 struct allreduce_workspace** workspace;
 
-// buffer for small messages, its a double buffer
+// buffer for small messages, double buffer
 char** symmetric_buffer[2];
-// buffer for large messages, single buffer
+// buffer for large messages, double buffer
 char** distributed_buffer[2];
 
 void wait_buffer_state_until_2(int index, enum coll_state state0,
@@ -380,6 +377,9 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
     }
 }
 
+static bool is_initialized = 0;
+static int world_rank;
+
 void shm_initialize(int size, int rank, char* addr_string, char* port_string)
 {
     if (is_initialized) return;
@@ -511,9 +511,10 @@ void symmetric_naive_all_reduce(char* data_ptr,
                  |       Y        | copy(i+1)
         ------------------------------------------------
         * When I have state as copy(i), the other rank cannot have state
-          begin(i-1) or before, in that case I'll be in state copy(i-1).
-        * The other rank cannot have state begin(i+2) or beyond because my
-          state is still copy(i), this is as far as the other rank could go
+          copy(i-2) or before. In that case I'll be in state copy(i-1) and cannot
+          proceeed to copy(i).
+        * The other rank cannot have state copy(i+2) or beyond because my
+          state is still copy(i), copy(i+1) is as far as the other rank could go.
         * From a rank's POV, all the other ranks can be divided into three sets:
           - Lagging ranks: ranks that are still working on previous iteration
           - Syncing ranks: ranks that are working on current iteration
@@ -523,7 +524,8 @@ void symmetric_naive_all_reduce(char* data_ptr,
           distinguish between lagging and leading ranks.
         * Note from any rank's POV, leading ranks and lagging ranks does not
           appear at the same time.  Either all other ranks are syncing or
-          lagging, or all other ranks are syncing or leading.
+          lagging, or all other ranks are syncing or leading.  Otherwise leading
+          and lagging ranks will be 2 iterations apart and this should not happen.
         * So we have 2 sets of buffers, one buffer is used by current iter;
           one buffer used by either lagging ranks or leading ranks.
     */
@@ -708,7 +710,6 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-
         if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
             symmetric_naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
         else
