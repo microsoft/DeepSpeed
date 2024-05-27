@@ -204,7 +204,7 @@ class DSInferenceModelBase(torch.nn.Module, ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def maybe_allocate_kv(self, sequence: DSSequenceDescriptor, n_new_tokens: int) -> None:
+    def maybe_allocate_kv(self, sequence: DSSequenceDescriptor, n_new_tokens: int) -> Optional[torch.Tensor]:
         """
         Given a sequence and the number of new tokens in the sequence, determine
         whether or not additional KV-storage is needed and allocate it if so.
@@ -212,6 +212,9 @@ class DSInferenceModelBase(torch.nn.Module, ABC):
         Args:
             sequence (DSSequenceDescriptor): The sequence for which to allocate KV-storage.
             n_new_tokens (int): The number of new tokens in the sequence.
+
+        Returns:
+            Optional[torch.Tensor]: The allocated KV block IDs. If no new blocks are needed, this returns None.
         """
         raise NotImplementedError()
 
