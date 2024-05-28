@@ -17,7 +17,7 @@ struct deepspeed_aio_handle_t {
     const bool _single_submit;
     const bool _overlap_events;
     const bool _use_gds;
-    const int _num_threads;
+    int _num_threads;
     deepspeed_aio_config_t _aio_config;
     static bool s_cuFile_init;
 

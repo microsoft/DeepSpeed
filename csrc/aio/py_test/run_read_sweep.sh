@@ -17,6 +17,14 @@ function validate_environment()
     fi
 }
 
+function fileExists() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 
 validate_environment
 
@@ -68,14 +76,19 @@ for sub in single block; do
                         OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
                         LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
                         cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
-                        echo ${DISABLE_CACHE}
-                        echo ${cmd}
-                        echo ${SYNC}
 
-                        eval ${DISABLE_CACHE}
-                        eval ${cmd}
-                        eval ${SYNC}
-                        sleep 5
+                        if fileExists ${LOG}; then
+                            echo "Log Exists"
+                            sleep 2
+                        else
+                            echo ${DISABLE_CACHE}
+                            echo ${cmd}
+                            echo ${SYNC}
+                            eval ${DISABLE_CACHE}
+                            eval ${cmd}
+                            eval ${SYNC}
+                            sleep 2
+                        fi
                     done
                 done
             done

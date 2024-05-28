@@ -140,7 +140,7 @@ def parse_arguments():
 
     parser.add_argument('--handle', action='store_true', help='Use AIO handle.')
 
-    parser.add_argument('--loops', type=int, default=1, help='Count of operation repetitions')
+    parser.add_argument('--loops', type=int, default=3, help='Count of operation repetitions')
 
     parser.add_argument('--io_parallel', type=int, default=None, help='Per iop parallelism')
 
