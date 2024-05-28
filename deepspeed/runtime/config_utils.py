@@ -102,7 +102,7 @@ class DeepSpeedConfigModel(BaseModel):
             if field_info.json_schema_extra and field_info.json_schema_extra.get("deprecated", False):
                 self._process_deprecated_field(field_name)
 
-    model_conf = ConfigDict(
+    model_config = ConfigDict(
         validate_default=True,
         validate_assignment=True,
         use_enum_values=True,
