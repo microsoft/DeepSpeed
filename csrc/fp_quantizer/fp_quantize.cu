@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include "context.h"
 #include "memory_access_utils.h"
-#include "quantize.h"
+#include "fp_quantize.h"
 #include "reduction_utils.h"
 
 #include <cuda.h>
