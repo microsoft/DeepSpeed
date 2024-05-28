@@ -13,30 +13,17 @@ from enum import Enum
 
 
 class DtypeEnum(Enum):
-    # The torch dtype must always be the first value (so we return torch.dtype)
-    fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
-    fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
-    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16", "bfloat"
-    int8 = torch.int8, "torch.int8", "int8"
+    fp16 = (torch.float16, "torch.float16", "fp16", "float16", "half")
+    fp32 = (torch.float32, "torch.float32", "fp32", "float32", "float")
+    bf16 = (torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16", "bfloat")
+    int8 = (torch.int8, "torch.int8", "int8")
 
-    # Copied from https://stackoverflow.com/a/43210118
-    # Allows us to use multiple values for each Enum index and returns first
-    # listed value when Enum is called
-    def __new__(cls, *values):
-        obj = object.__new__(cls)
-        # first value is canonical value
-        obj._value_ = values[0]
-        for other_value in values[1:]:
-            cls._value2member_map_[other_value] = obj
-        obj._all_values = values
-        return obj
-
-    def __repr__(self):
-        return "<%s.%s: %s>" % (
-            self.__class__.__name__,
-            self._name_,
-            ", ".join([repr(v) for v in self._all_values]),
-        )
+    @classmethod
+    def from_str(cls, value: str):
+        for dtype in cls:
+            if value in dtype.value:
+                return dtype
+        raise ValueError(f"'{value}' is not a valid DtypeEnum")
 
 
 class MoETypeEnum(str, Enum):
@@ -136,7 +123,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     `(attention_output projection, transformer output projection)`
     """
 
-    dtype: DtypeEnum = torch.float16
+    dtype: torch.dtype = torch.float16
     """
     Desired model data type, will convert model to this type.
     Supported target types: `torch.half`, `torch.int8`, `torch.float`
@@ -302,6 +289,14 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
                                       "deprecated": True,
                                       "new_param": "moe.type"
                                   })
+
+    @field_validator("dtype", mode="before")
+    def validate_dtype(cls, field_value, values):
+        if isinstance(field_value, str):
+            return DtypeEnum.from_str(field_value).value[0]
+        if isinstance(field_value, torch.dtype):
+            return field_value
+        raise TypeError(f"Invalid type for dtype: {type(field_value)}")
 
     @field_validator("moe")
     def moe_backward_compat(cls, field_value, values):

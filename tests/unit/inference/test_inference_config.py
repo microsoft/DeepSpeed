@@ -37,7 +37,7 @@ class TestInferenceConfig(DistributedTest):
         assert engine._config.dtype == kwargs["dtype"]
 
     def test_json_config(self, tmpdir):
-        config = {"replace_with_kernel_inject": True, "dtype": torch.float32}
+        config = {"replace_with_kernel_inject": True, "dtype": "torch.float32"}
         config_json = create_config_from_dict(tmpdir, config)
 
         engine = deepspeed.init_inference(torch.nn.Module(), config=config_json)
