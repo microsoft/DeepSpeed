@@ -2408,10 +2408,10 @@ class DeepSpeedEngine(Module):
         split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(grads)
         if self.pipeline_parallelism:
             dp_group = self.mpu.get_data_parallel_group()
+            dp_world_size = dist.get_world_size(dp_group)
         else:
             dp_group = groups._get_sequence_data_parallel_group()
-
-        dp_world_size = dist.get_world_size(dp_group) / float(self.sequence_parallel_size)
+            dp_world_size = dist.get_world_size(dp_group) / float(self.sequence_parallel_size)
         for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
             if sparse_bucket_tuple:
                 bucket_type, sparse_bucket = sparse_bucket_tuple
@@ -2428,7 +2428,7 @@ class DeepSpeedEngine(Module):
     def _reduce_expert_gradients(self, expert_grads, elements_per_buffer):
         # to maintain the gradients value unaffected by ep_size setting,
         # utilize dp_world_size for allreduce average
-        dp_world_size = dist.get_world_size(groups._get_data_parallel_group()) / float(self.sequence_parallel_size)
+        dp_world_size = dist.get_world_size(groups._get_data_parallel_group())
         for ep_name, expert_grads_group in expert_grads.items():
             ep_dp_group = groups._get_expert_data_parallel_group(ep_name)
             split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(
