@@ -104,7 +104,7 @@ from deepspeed.accelerator import get_accelerator
 
 from deepspeed.runtime.config import DtypeEnum
 
-from deepspeed.sequence.layer_v2 import DistributedAttention
+from deepspeed.sequence.layer import DistributedAttention
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -1172,6 +1172,7 @@ class DeepSpeedEngine(Module):
         if self.sequence_parallel_size > 1:
             #replace module attention with deespeed dist attention
             for _, module in self.module.named_modules():
+                #print(f"module: {module}")
                 if all(hasattr(module, attr) for attr in ['k_proj', 'v_proj', 'q_proj', 'out_proj']):
 
                     attn = module
@@ -1180,11 +1181,10 @@ class DeepSpeedEngine(Module):
                         self.get_sequence_parallel_group(),
                         2,
                         1,
-                        hidden_size_per_attention_head=attn.embed_dim // attn.num_heads,
-                        num_q_per_kv=attn.num_q_per_kv if hasattr(attn, 'num_q_per_kv') else -1)
+                    )
 
-                    module.forward = lambda hidden_states, *args, **kwargs: compute_attn_sp.forward(
-                        hidden_states, *args, **kwargs)
+                    module._flash_attention_forward = lambda q, k, v, *args, **kwargs: compute_attn_sp(
+                        q, k, v, *args, **kwargs)
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
@@ -1839,7 +1839,8 @@ class DeepSpeedEngine(Module):
         #print(f"DEBUG ENGINE forward: {self.global_rank} input= {inputs} kwargs= {kwargs}")
         #input_ids = kwargs.get("input_ids", None)
         #atten_mask = kwargs.get("attention_mask", None)
-
+        #SAGE
+        #kwargs["attention_mask"] = None
         #for e, f  in zip(input_ids, atten_mask):
         #print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e.shape if e  else None}, attn_mask= {f.shape if f else None}")
         #    print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e if e  else None}, attn_mask= {f if f else None}")

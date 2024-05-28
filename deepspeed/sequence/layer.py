@@ -17,7 +17,10 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     inp_shape = list(input.shape)
     inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
     if scatter_idx < 2:
+        scatter_idx = 0  ##Hack for backward
+        print(f"scatter_idx {scatter_idx} Input shape {input.shape} inp_shape {inp_shape}")
         input_t = input.reshape(
+            #[-1, seq_world_size, inp_shape[scatter_idx]] + \
             [seq_world_size, inp_shape[scatter_idx]] + \
             inp_shape[scatter_idx + 1:]
         ).contiguous()
@@ -32,8 +35,16 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     dist.all_to_all_single(output, input_t, group=group)
 
     # if scattering the seq-dim, transpose the heads back to the original dimension
+    #print(f"Output shape {output.shape} ")
     if scatter_idx < 2:
-        output = output.transpose(0, 1).contiguous()
+        print(f"scatter_idx {scatter_idx} Input shape {input.shape} inp_shape {inp_shape}")
+        print(f"Output shape {output.shape} ")
+        #output = output.transpose(0, 1).contiguous()
+        #print(f"Output TRANSPOSE shape {output.shape} ")
+        #output = output.permute(1,2,0,3)
+        output = output.permute(1, 2, 0, 3, 4)
+        print(f"Output TRANSPOSE shape {output.shape} ")
+
 
     return output.reshape(
         inp_shape[: gather_idx] + \
@@ -45,7 +56,6 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, group: dist.ProcessGroup, input: Tensor, scatter_idx: int, gather_idx: int) -> Tensor:
-
         ctx.group = group
         ctx.scatter_idx = scatter_idx
         ctx.gather_idx = gather_idx
@@ -81,7 +91,7 @@ class DistributedAttention(torch.nn.Module):
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any, **kwargs) -> Tensor:
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         """ forward
 
         Arguments:
@@ -96,6 +106,7 @@ class DistributedAttention(torch.nn.Module):
         # TODO Merge three alltoall calls into one
         # TODO (Reza): change the api on the megatron-deepspeed side so that we only receive all data (q,k, and v) together!
         #in shape : e.g.,  [s/p:h:]
+        print(f"PRE Query shape {query.shape} Key shape {key.shape} Value shape {value.shape}")
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
@@ -105,5 +116,7 @@ class DistributedAttention(torch.nn.Module):
 
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
 
+        print(f"SECOND ALL2ALLOutput shape {output.shape}")
+        output = output.transpose(0, 1).contiguous()  ##
         #out e.g., [s/p::h]
         return output
