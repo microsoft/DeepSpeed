@@ -34,6 +34,7 @@ from ..modules.interfaces import (
 
 from deepspeed.accelerator import get_accelerator
 
+
 def instantiate_attention(attention_config: DSSelfAttentionConfig,
                           engine_config: RaggedInferenceEngineConfig) -> DSSelfAttentionBase:
     """
