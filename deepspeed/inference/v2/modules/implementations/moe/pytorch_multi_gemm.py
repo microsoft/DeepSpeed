@@ -23,6 +23,7 @@ from ...configs import DSMoEConfig
 # from ....kernels.cutlass_ops import MoEGEMM
 from ....inference_parameter import InferenceParameter
 
+
 def _activation_reference(out_states: torch.Tensor, act_type: ActivationType) -> torch.Tensor:
     if is_gated(act_type):
         act_func_map = {
@@ -46,6 +47,7 @@ def _activation_reference(out_states: torch.Tensor, act_type: ActivationType) ->
 
         return act_func_map[act_type](out_states)
 
+
 def _gating_reference(logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Reference gating code.
@@ -67,6 +69,7 @@ def _gating_reference(logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     exp_count_cumsum = exp_count.cumsum(dim=0)
 
     return sorted_indices, original_indices, exp_count_cumsum, gates1_s
+
 
 @DSMoERegistry.register_module
 class DSPytorchMultiGemmMoE(DSMoEBase):
@@ -267,10 +270,12 @@ class DSPytorchMultiGemmMoE(DSMoEBase):
             max_bound = expert_cumsum[expert_idx]
 
             input_slice = moe_input[min_bound:max_bound]
-            intermediate = torch.nn.functional.linear(input_slice, mlp_1_w[expert_idx], mlp_1_b[expert_idx] if mlp_1_b is not None else None)
+            intermediate = torch.nn.functional.linear(input_slice, mlp_1_w[expert_idx],
+                                                      mlp_1_b[expert_idx] if mlp_1_b is not None else None)
 
             intermediate = _activation_reference(intermediate, self._config.activation)
-            output_slice = torch.nn.functional.linear(intermediate, mlp_2_w[expert_idx], mlp_2_b[expert_idx] if mlp_2_b is not None else None)
+            output_slice = torch.nn.functional.linear(intermediate, mlp_2_w[expert_idx],
+                                                      mlp_2_b[expert_idx] if mlp_2_b is not None else None)
 
             output_unordered[min_bound:max_bound] = output_slice
 
@@ -304,4 +309,3 @@ class DSPytorchMultiGemmMoE(DSMoEBase):
 
         self._moe_gather(output, output_unordered, scores, mapped_slots, self._expert_counts)
         return output
-
