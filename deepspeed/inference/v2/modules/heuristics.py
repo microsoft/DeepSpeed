@@ -32,7 +32,7 @@ from ..modules.interfaces import (
     DSUnembedRegistry,
 )
 
-from deepspeed.accelerator import get_accelerator
+import torch
 
 
 def instantiate_attention(attention_config: DSSelfAttentionConfig,
@@ -132,7 +132,7 @@ def instantiate_moe(moe_config: DSMoEConfig, engine_config: RaggedInferenceEngin
         }
 
     # check if we are on H100 or above
-    if get_accelerator().get_device_capability(0)[0] >= 9:
+    if torch.cuda.get_device_capability(0)[0] >= 9: #ignore-cuda
         config = ConfigBundle(name="pytorch_multi_gemm_moe",
                               config=moe_config,
                               implementation_config=implementation_config)
