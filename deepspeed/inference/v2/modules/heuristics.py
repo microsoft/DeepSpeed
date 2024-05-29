@@ -32,6 +32,7 @@ from ..modules.interfaces import (
     DSUnembedRegistry,
 )
 
+import torch
 
 def instantiate_attention(attention_config: DSSelfAttentionConfig,
                           engine_config: RaggedInferenceEngineConfig) -> DSSelfAttentionBase:
@@ -129,10 +130,15 @@ def instantiate_moe(moe_config: DSMoEConfig, engine_config: RaggedInferenceEngin
             "weight_dtype": moe_config.input_dtype,
         }
 
-    # Currently, we only have one implementation, so we just return it.
-    config = ConfigBundle(name="cutlass_multi_gemm_moe",
-                          config=moe_config,
-                          implementation_config=implementation_config)
+    # check if we are on H100 or above
+    if torch.cuda.get_device_capability(0)[0] >= 9:
+        config = ConfigBundle(name="pytorch_multi_gemm_moe",
+                            config=moe_config,
+                            implementation_config=implementation_config)
+    else:
+        config = ConfigBundle(name="cutlass_multi_gemm_moe",
+                            config=moe_config,
+                            implementation_config=implementation_config)
     return DSMoERegistry.instantiate_config(config)
 
 
