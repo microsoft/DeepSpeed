@@ -362,7 +362,7 @@ class DeepSpeedEngine(Module):
         self.unflatten = _unflatten_dense_tensors
 
         self._is_compiled = False
-        self._compiler_backend = None
+        self._compiler_backend = get_backend_fn(self._config.compile_config.backend)
         self._compile_kwargs = self._config.compile_config.kwargs
         self._compiler_fn = None
 
@@ -1793,9 +1793,6 @@ class DeepSpeedEngine(Module):
         """
 
         if self._config.compile_config.enabled and not self._is_compiled:
-            if self._compiler_backend is None:
-                self._compiler_backend = get_backend_fn(self._config.compile_config.backend)
-
             if self._compiler_fn is None:
                 compiled_model = torch.compile(self.module,
                                                backend=self._compiler_backend,
@@ -3668,7 +3665,7 @@ class DeepSpeedEngine(Module):
 
     @property
     def backend(self) -> Union[str, Callable]:
-        return self._backend
+        return self._compiler_backend
 
     @property
     def torch_compile_kwargs(self) -> Dict[str, Any]:
