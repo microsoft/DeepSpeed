@@ -782,7 +782,7 @@ def _einsum_flops_compute(equation, *operands):
     for line in optim.split("\n"):
         if "optimized flop" in line.lower():
             flop = int(float(line.split(":")[-1]))
-            return flop, 0
+            return flop, flop // 2
     raise NotImplementedError("Unsupported einsum operation.")
 
 
