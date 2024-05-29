@@ -18,7 +18,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from typing import Callable, Dict, Union, Iterable
+from typing import Callable, Dict, Union, Iterable, Any
 
 import deepspeed
 
@@ -90,7 +90,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
-from .compiler import CompiledModuleWrapper
+from .compiler import get_backend_fn
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -361,8 +361,10 @@ class DeepSpeedEngine(Module):
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
 
-        if self._config.compile_config.enabled:
-            self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
+        self._is_compiled = False
+        self._compiler_backend = None
+        self._compile_kwargs = self._config.compile_config.kwargs
+        self._compiler_fn = None
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -1789,6 +1791,20 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+
+        if self._config.compile_config.enabled and not self._is_compiled:
+            if self._compiler_backend is None:
+                self._compiler_backend = get_backend_fn(self._config.compile_config.backend)
+
+            if self._compiler_fn is None:
+                compiled_model = torch.compile(self.module,
+                                               backend=self._compiler_backend,
+                                               **self._config.compile_config.kwargs)
+            else:
+                compiled_model = self._compiler_fn(self.module)
+
+            self._set_client_model(compiled_model)
+            self._is_compiled = True
 
         if self.autotuning_profile_model_info():
             ma = get_ma_status()
@@ -3600,3 +3616,64 @@ class DeepSpeedEngine(Module):
             self.optimizer.empty_partition_cache()
             gc.collect()
             get_accelerator().empty_cache()
+
+    def set_backend(self, backend: Union[str, Callable]):
+        """Set the backend for torch.compile.
+
+        Args:
+            backend (Union[str, Callable]): backend name or a function that takes a torch.nn.Module and returns a compiled module.
+            You can directly pass a function that works as a backend.
+            See also `backend` field in `CompileConfig` for more details.
+        """
+        if self.is_compiled:
+            raise ValueError("Cannot change backend after compiling the module.")
+        self._compiler_backend = get_backend_fn(backend)
+
+    def set_torch_compile_kwargs(self, kwargs: Dict[str, Union[str, Any]]) -> None:
+        """Set kwargs for torch.compile. Kwargs that are set in DeepSpeed config will be overwritten.
+        You can also pass a backend name with "backend" key to change the backend.
+
+        Args:
+            kwargs (Dict[str, Union[str, Any]]): kwargs passed to torch.compile.
+        """
+        if self.is_compiled:
+            raise ValueError("Cannot change compile kwargs after compiling the module.")
+
+        if "backend" in kwargs:
+            raise ValueError("backend cannot be set as compile kwargs. Use set_backend instead.")
+
+        self._compile_kwargs.update(kwargs)
+
+    def set_compiler_fn(self, compiler_fn: Callable) -> None:
+        """Set a function to be used for compiling the module.
+        This function should take a torch.nn.Module as input and return a compiled module.
+        Note that other compile options are ignored when a compiler_fn is set.
+
+        Example:
+        ```python
+            def my_compiler_fn(module: torch.nn.Module):
+                ...
+                return torch.compile(module, ...)
+
+            engine.set_compiler_fn(my_compiler_fn)
+        ```
+        """
+        if self.is_compiled:
+            raise ValueError("Cannot change compiler_fn after compiling the module.")
+        self._compiler_fn = compiler_fn
+
+    @property
+    def is_compiled(self) -> bool:
+        return self._is_compiled
+
+    @property
+    def backend(self) -> Union[str, Callable]:
+        return self._backend
+
+    @property
+    def torch_compile_kwargs(self) -> Dict[str, Any]:
+        return self._compile_kwargs
+
+    @property
+    def compiler_fn(self) -> Union[Callable, None]:
+        return self._compiler_fn
