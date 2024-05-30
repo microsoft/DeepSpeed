@@ -7,13 +7,14 @@ import os
 from typing import List
 
 import torch
+
 from deepspeed import comm as dist
-from deepspeed.utils import logger
-from deepspeed.ops.adam import DeepSpeedCPUAdam
-from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
-from deepspeed.ops.adam import FusedAdam
-from deepspeed.utils.nvtx import instrument_w_nvtx
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.adam import FusedAdam
+from deepspeed.utils import logger
+from deepspeed.utils.nvtx import instrument_w_nvtx
 
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
@@ -85,3 +86,17 @@ def assert_ints_same_as_other_ranks(ints: List[int]) -> None:
     if ints != rank0_ints:
         raise RuntimeError(f"disagreement between rank0 and rank{dist.get_rank()}: "
                            f"rank0: {rank0_ints}, rank{dist.get_rank()}: {ints}")
+
+
+@property
+def _zero_stage_3(self) -> bool:
+    assert isinstance(self.config, dict)
+    zero_optimization = self.config.get("zero_optimization")
+    # the stage which needs partition params
+    return zero_optimization is not None and 3 <= zero_optimization.get("stage") <= 5
+
+
+def patch_pl():
+    pass
+    # from pytorch_lightning.strategies import DeepSpeedStrategy
+    # DeepSpeedStrategy.zero_stage_3 = _zero_stage_3

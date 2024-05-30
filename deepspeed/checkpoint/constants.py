@@ -17,7 +17,9 @@ BASE_OPTIMIZER_STATE = 'base_optimizer_state'
 SINGLE_PARTITION_OF_FP32_GROUPS = "single_partition_of_fp32_groups"
 GROUP_PADDINGS = 'group_paddings'
 PARTITION_COUNT = 'partition_count'
+GROUP_PARTITION_COUNT = 'group_partition_count'
 ZERO_STAGE = 'zero_stage'
+PARO_STRATEGY = 'paro_strategy'
 CLIP_GRAD = 'clip_grad'
 FP32_WEIGHT_KEY = "fp32"
 

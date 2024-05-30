@@ -3,10 +3,12 @@
 
 # DeepSpeed Team
 
-from pydantic import Field, validator
 import sys
-from typing import Optional
 from enum import Enum
+from typing import Optional
+
+from pydantic import Field, validator
+
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
 from deepspeed.utils import logger
 from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig, OffloadDeviceEnum
@@ -44,7 +46,8 @@ ZeRO optimization should be enabled as:
 """
 
 ZERO_OPTIMIZATION = "zero_optimization"
-
+PARO_STRATEGY = "paro_strategy"
+SUPPORTED_PARO_STRATEGIES = ['NNG', 'NGG', 'GGG', 'NII', 'NIG', 'IIG', 'IGG', 'ING']
 
 def read_zero_config_deprecated(param_dict):
     zero_config_dict = {}
@@ -77,6 +80,55 @@ class ZeroStageEnum(int, Enum):
 
 
 class DeepSpeedZeroConfig(DeepSpeedConfigModel):
+
+    def __init__(self, strict=False, **data):
+        if not data.get(PARO_STRATEGY, ""):
+            # 兼容老的配置
+            intra_p, intra_g, intra_os = False, False, False
+
+            if 'hier_p' in data:
+                intra_p = data['hier_p']
+                del data['hier_p']
+
+            if 'hier_g' in data:
+                intra_g = data['hier_g']
+                del data['hier_g']
+
+            if 'hier_os' in data:
+                intra_os = data['hier_os']
+                del data['hier_os']
+
+            if intra_p or intra_g or intra_os:
+                assert data['stage'] >= 2
+
+                if data['stage'] == 2:
+                    strategy = ['N', 'G', 'G']
+                elif data['stage'] == 3:
+                    strategy = ['G', 'G', 'G']
+
+                if intra_p:
+                    strategy[0] = 'I'
+                if intra_g:
+                    strategy[1] = 'I'
+                if intra_os:
+                    strategy[2] = 'I'
+                data[PARO_STRATEGY] = ''.join(strategy)
+
+        if data.get(PARO_STRATEGY, ""):
+            # PARO_STRATEGY 优先级最高，表示参数/
+            assert data[PARO_STRATEGY] in SUPPORTED_PARO_STRATEGIES
+            strategy = data[PARO_STRATEGY]
+            if strategy == "NNG":
+                data["stage"] = 1
+            elif strategy in ['NGG', 'NII', 'NIG']:
+                data["stage"] = 2
+            elif strategy in ['GGG', 'IIG', 'IGG', 'ING']:
+                data["stage"] = 3
+
+            logger.info(f'PaRO_STRATEGY: {data[PARO_STRATEGY]}')
+
+        super().__init__(strict=strict, **data)
+            
     """
     Sets parameters for ZeRO optimizations.
     """
@@ -87,6 +139,13 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     to disabled, optimizer state partitioning, and optimizer+gradient state
     partitioning, and optimizer+gradient+parameter partitioning, respectively.
     """
+    paro_strategy: str = ""
+
+    # shard_g: str = ""
+
+    # shard_p: str = ""
+
+    # shard_os: str = ""
 
     contiguous_gradients: bool = True
     """

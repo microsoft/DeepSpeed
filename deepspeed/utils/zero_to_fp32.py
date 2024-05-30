@@ -13,7 +13,6 @@
 # example: python zero_to_fp32.py . pytorch_model.bin
 
 import argparse
-import torch
 import glob
 import math
 import os
@@ -21,12 +20,15 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass
 
+import torch
+
+from deepspeed.checkpoint.constants import (DS_VERSION, OPTIMIZER_STATE_DICT, SINGLE_PARTITION_OF_FP32_GROUPS,
+                                            FP32_FLAT_GROUPS, ZERO_STAGE, PARTITION_COUNT, PARAM_SHAPES, BUFFER_NAMES,
+                                            FROZEN_PARAM_SHAPES, FROZEN_PARAM_FRAGMENTS, GROUP_PARTITION_COUNT,
+                                            PARO_STRATEGY)
 # while this script doesn't use deepspeed to recover data, since the checkpoints are pickled with
 # DeepSpeed data structures it has to be available in the current python environment.
 from deepspeed.utils import logger
-from deepspeed.checkpoint.constants import (DS_VERSION, OPTIMIZER_STATE_DICT, SINGLE_PARTITION_OF_FP32_GROUPS,
-                                            FP32_FLAT_GROUPS, ZERO_STAGE, PARTITION_COUNT, PARAM_SHAPES, BUFFER_NAMES,
-                                            FROZEN_PARAM_SHAPES, FROZEN_PARAM_FRAGMENTS)
 
 
 @dataclass
@@ -149,6 +151,11 @@ def parse_optim_states(files, ds_checkpoint_dir):
         raise ValueError(f"{files[0]} is not a zero checkpoint")
     zero_stage = state_dicts[0][OPTIMIZER_STATE_DICT][ZERO_STAGE]
     world_size = state_dicts[0][OPTIMIZER_STATE_DICT][PARTITION_COUNT]
+    paro_strategy = state_dicts[0][OPTIMIZER_STATE_DICT].get(PARO_STRATEGY, "")
+    intra_p, intra_g = False, False
+    if paro_strategy:
+        intra_p = paro_strategy[0] == 'I'
+        intra_g = paro_strategy[1] == 'I'
 
     # For ZeRO-2 each param group can have different partition_count as data parallelism for expert
     # parameters can be different from data parallelism for non-expert parameters. So we can just
@@ -179,10 +186,18 @@ def parse_optim_states(files, ds_checkpoint_dir):
         #
         # XXX: could make the script more memory efficient for when there are multiple groups - it
         # will require matching the sub-lists of param_shapes for each param group flattened tensor
-
-        fp32_flat_groups = [
-            torch.cat(state_dicts[i][OPTIMIZER_STATE_DICT][fp32_groups_key], 0) for i in range(len(state_dicts))
-        ]
+        if intra_p or intra_g:
+            group_partition_count = state_dicts[0][OPTIMIZER_STATE_DICT][GROUP_PARTITION_COUNT]
+            fp32_flat_groups = []
+            for idx_in_group in range(group_partition_count):
+                for group_idx in range(world_size // group_partition_count):
+                    fp32_flat_groups.append(torch.cat(
+                        state_dicts[group_idx * group_partition_count + idx_in_group][OPTIMIZER_STATE_DICT][
+                            fp32_groups_key], 0))
+        else:
+            fp32_flat_groups = [
+                torch.cat(state_dicts[i][OPTIMIZER_STATE_DICT][fp32_groups_key], 0) for i in range(len(state_dicts))
+            ]
 
     return zero_stage, world_size, fp32_flat_groups
 

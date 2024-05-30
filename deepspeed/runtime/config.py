@@ -3,17 +3,27 @@
 
 # DeepSpeed Team
 
-import os
-from typing import Union
-from enum import Enum
-
-import torch
-import json
-import hjson
-import copy
 import base64
+import copy
+import json
+import os
+from enum import Enum
+from typing import Union
 
+import hjson
+import torch
+
+from deepspeed import comm as dist
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
+from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from .config_utils import (
+    get_scalar_param,
+    dict_raise_error_on_duplicate_keys,
+    ScientificNotationEncoder,
+)
 from .constants import *
+from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, \
+    get_curriculum_enabled_legacy, get_curriculum_params_legacy
 from .fp16.loss_scaler import (
     INITIAL_LOSS_SCALE,
     SCALE_WINDOW,
@@ -21,22 +31,11 @@ from .fp16.loss_scaler import (
     CONSECUTIVE_HYSTERESIS,
     MIN_LOSS_SCALE,
 )
-from .config_utils import (
-    get_scalar_param,
-    dict_raise_error_on_duplicate_keys,
-    ScientificNotationEncoder,
-)
+from .swap_tensor.aio_config import get_aio_config
 from .zero.config import get_zero_config, ZeroStageEnum
-from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..autotuning.config import DeepSpeedAutotuningConfig
 from ..comm.config import DeepSpeedCommsConfig
-from ..monitor.config import get_monitor_config
-
-from deepspeed import comm as dist
-from deepspeed.runtime.config_utils import DeepSpeedConfigModel
-
-from ..git_version_info import version as __version__
-from ..utils import logger
-
+from ..compression.config import get_compression_config, get_quantize_enabled
 from ..elasticity import (
     elasticity_enabled,
     compute_elastic_config,
@@ -52,17 +51,11 @@ from ..elasticity.constants import (
     NUM_GPUS_PER_NODE,
     NUM_GPUS_PER_NODE_DEFAULT,
 )
-
-from ..profiling.config import DeepSpeedFlopsProfilerConfig
-from ..autotuning.config import DeepSpeedAutotuningConfig
+from ..git_version_info import version as __version__
+from ..monitor.config import get_monitor_config
 from ..nebula.config import DeepSpeedNebulaConfig
-
-from ..compression.config import get_compression_config, get_quantize_enabled
-from ..compression.constants import *
-from .swap_tensor.aio_config import get_aio_config
-
-from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, get_curriculum_enabled_legacy, get_curriculum_params_legacy
-from .data_pipeline.constants import *
+from ..profiling.config import DeepSpeedFlopsProfilerConfig
+from ..utils import logger
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
@@ -787,6 +780,7 @@ class DeepSpeedConfig(object):
         self.mics_shard_size = self.zero_config.mics_shard_size
         self.mics_hierarchial_params_gather = self.zero_config.mics_hierarchical_params_gather
         self.zero_optimization_stage = self.zero_config.stage
+        self.paro_strategy = self.zero_config.paro_strategy
         self.zero_enabled = self.zero_optimization_stage > 0
 
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(param_dict)

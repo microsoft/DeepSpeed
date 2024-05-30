@@ -26,9 +26,10 @@
 """
 
 from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
 from deepspeed.utils import log_dist
 from deepspeed.utils.exceptions import DeprecatedException
-from deepspeed.accelerator import get_accelerator
+
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
 # Expert data parallel group that the current rank belongs to.
@@ -324,6 +325,8 @@ def _clone_world_group():
 def _get_local_all_to_all_group():
     assert dist.is_initialized(), 'dist is not initialized'
     global _ALL_TO_ALL_GROUP
+    if len(_ALL_TO_ALL_GROUP) > 0:
+        return _ALL_TO_ALL_GROUP
     device_per_node = get_accelerator().device_count()
     num_local = dist.get_world_size() // device_per_node
     if num_local == 0 and dist.get_world_size() > 0:
@@ -363,6 +366,9 @@ def _get_data_parallel_group():
 def _get_broadcast_src_rank():
     return dist.get_global_rank(_get_data_parallel_group(), 0)
 
+
+def _get_current_device():
+    return get_accelerator().current_device()
 
 def _get_expert_broadcast_src_rank(group_name):
     return dist.get_global_rank(_get_expert_data_parallel_group(group_name), 0)

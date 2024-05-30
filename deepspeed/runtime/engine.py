@@ -3,48 +3,26 @@
 
 # DeepSpeed Team
 
+import gc
+import hashlib
 import os
 import re
 import stat
-import torch
-import hashlib
 from collections import defaultdict, OrderedDict, deque
 from shutil import copyfile
-import gc
+from typing import Callable, Dict, Union, Iterable
 
+import torch
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-
-from typing import Callable, Dict, Union, Iterable
 
 import deepspeed
-
 from deepspeed import comm as dist
-from deepspeed.runtime.utils import see_memory_usage, DummyOptim
-from .zero.offload_config import OffloadDeviceEnum
-from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
-from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
-from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
-from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION
-
-from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
-from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
-from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
-
-from deepspeed.runtime.config import DEEPSPEED_OPTIMIZERS, \
-    ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
-    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER
-
-from deepspeed.runtime.dataloader import DeepSpeedDataLoader
-from deepspeed.runtime.constants import \
-    ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP, GRADIENT_ACCUMULATION_STEPS, \
-    DATA_PARALLEL_GROUP, GLOBAL_RANK
-from deepspeed.runtime.zero.config import ZeroStageEnum
+from deepspeed.accelerator import get_accelerator
+from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FROZEN_PARAM_FRAGMENTS
 from deepspeed.compression import compression_scheduler
 from deepspeed.compression.constants import \
     WEIGHT_QUANTIZE_IN_FORWARD_ENABLED, \
@@ -57,18 +35,19 @@ from deepspeed.compression.constants import \
     WEIGHT_QUANTIZE_ROUNDING, \
     WEIGHT_QUANTIZE_VERBOSE, \
     WEIGHT_QUANTIZE_KERNEL
-from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FROZEN_PARAM_FRAGMENTS
-from deepspeed.runtime.sparse_tensor import SparseTensor
-
-from deepspeed.runtime import lr_schedules
-from deepspeed.utils import groups
-from deepspeed.utils import logger, log_dist, instrument_w_nvtx
-from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
-from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
-from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
-from deepspeed.runtime.utils import clip_grad_norm_
-from deepspeed.runtime.eigenvalue import Eigenvalue
+from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
+from deepspeed.runtime import lr_schedules
+from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
+from deepspeed.runtime.config import DEEPSPEED_OPTIMIZERS, \
+    ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
+    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER
+from deepspeed.runtime.config import DtypeEnum
+from deepspeed.runtime.constants import \
+    ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
+    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP, GRADIENT_ACCUMULATION_STEPS, \
+    DATA_PARALLEL_GROUP, GLOBAL_RANK
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
     CURRICULUM_LEARNING_ENABLED, DATA_SAMPLING_NUM_WORKERS, RANDOM_LTD, \
@@ -76,26 +55,36 @@ from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE, RANDOM_LTD_LAYER_TOKEN_LR_ENABLED, \
     RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE, DATA_EFFICIENCY
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
-from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
-from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
 from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayerTokenDrop
-
-from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
-
+from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
+from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
+from deepspeed.runtime.dataloader import DeepSpeedDataLoader
+from deepspeed.runtime.eigenvalue import Eigenvalue
+from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
+from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
+from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
+from deepspeed.runtime.sparse_tensor import SparseTensor
+from deepspeed.runtime.utils import clip_grad_norm_
+from deepspeed.runtime.utils import see_memory_usage, DummyOptim
+from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION
+from deepspeed.runtime.zero.config import ZeroStageEnum
+from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
+from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
+from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
+from deepspeed.utils import groups
+from deepspeed.utils import logger, log_dist, instrument_w_nvtx
+from deepspeed.utils.debug import debug_extract_module_and_param_names
+from deepspeed.utils.logging import print_json_dist, print_configuration
+from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
-from ..ops.adam import FusedAdam
-from ..moe.sharded_moe import TopKGate, MOELayer
-from ..moe.layer import MoE
-from ..moe.utils import is_moe_param
+from .zero.offload_config import OffloadDeviceEnum
 from ..git_version_info import version
-
-from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
-from deepspeed.utils.logging import print_json_dist, print_configuration
-
-from deepspeed.accelerator import get_accelerator
-
-from deepspeed.runtime.config import DtypeEnum
+from ..moe.layer import MoE
+from ..moe.sharded_moe import TopKGate, MOELayer
+from ..moe.utils import is_moe_param
+from ..ops.adam import FusedAdam
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -712,6 +701,18 @@ class DeepSpeedEngine(Module):
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
 
+    def paro_strategy(self):
+        return self._config.paro_strategy
+
+    def zero_intra_p(self):
+        return self._config.paro_strategy and self._config.paro_strategy[0] == 'I'
+
+    def zero_intra_g(self):
+        return self._config.paro_strategy and self._config.paro_strategy[1] == 'I'
+
+    def zero_intra_os(self):
+        return self._config.paro_strategy and self._config.paro_strategy[2] == 'I'
+
     def mics_shard_size(self):
         return self._config.mics_shard_size
 
@@ -726,6 +727,20 @@ class DeepSpeedEngine(Module):
 
     def zero_optimization_partition_weights(self):
         return self.zero_optimization_stage() >= ZeroStageEnum.weights
+
+    def is_zero3_intra_p(self):
+        return self.zero_optimization_stage() == ZeroStageEnum.weights and self.zero_intra_p()
+
+    def is_paro_NIG(self):
+        # NIG
+        return dist.get_world_size() > 1 and (self.paro_strategy == 'NIG' or (
+                    self.zero_optimization_stage() == ZeroStageEnum.gradients and self.zero_intra_g() and not self.zero_intra_os()))
+
+    def is_paro_NII(self):
+        # NII
+        # with zero2, inner partition param and gradients
+        return dist.get_world_size() > 1 and (self.paro_strategy == 'NII' or (
+                    self.zero_optimization_stage() == ZeroStageEnum.gradients and self.zero_intra_g() and self.zero_intra_os()))
 
     def zero_contiguous_gradients(self):
         return self._config.zero_config.contiguous_gradients
@@ -1032,6 +1047,28 @@ class DeepSpeedEngine(Module):
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p, groups._get_broadcast_src_rank(), group=self.data_parallel_group)
 
+    def _zero4_init_broadcast_model(self):
+        logger.warning(f'Begin zero4 init broadcast model params')
+        if 'global_0' not in self.zero4_group:
+            logger.warning(f'Skip broadcast param as only has one node')
+            return
+
+        def is_replicated(p):
+            if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
+                return False
+            return True
+
+        for p in self.module.parameters():
+            # Broadcast the model for different parameters
+            if is_moe_param(p):
+                raise NotImplementedError()
+            else:
+                if torch.is_tensor(p) and is_replicated(p):
+                    device_rank = groups._get_current_device()
+                    dist.broadcast(p, device_rank, group=self.zero4_group[f'global_{device_rank}'])
+
+        logger.warning(f'Finish zero4 init broadcast model params')
+
     @staticmethod
     def __check_params(model: Module, dtype: torch.dtype) -> None:
         return
@@ -1099,13 +1136,20 @@ class DeepSpeedEngine(Module):
         if self.zero_quantized_gradients():
             log_dist("Using quantized gradients", ranks=[0])
             self.local_all_to_all_group = groups._get_local_all_to_all_group()
+
+        self.zero4_group = None
+        if self.is_zero3_intra_p() or self.is_paro_NIG():
+            self.zero21_group = self.zero4_group = groups._get_local_all_to_all_group()
+
         self.data_parallel_group = groups._get_data_parallel_group()
         self.dp_world_size = groups._get_data_parallel_world_size()
         self.mp_world_size = groups._get_model_parallel_world_size()
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not self.amp_enabled():
+        if self.is_zero3_intra_p():
+            self._zero4_init_broadcast_model()
+        elif not self.amp_enabled():
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
@@ -1441,36 +1485,72 @@ class DeepSpeedEngine(Module):
                 if overlap_comm:
                     logger.warning("Pipeline parallelism does not support overlapped communication, will be disabled.")
                     overlap_comm = False
-            optimizer = DeepSpeedZeroOptimizer(
-                optimizer,
-                self.param_names,
-                timers=timers,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                contiguous_gradients=contiguous_gradients,
-                reduce_bucket_size=self.zero_reduce_bucket_size(),
-                allgather_bucket_size=self.zero_allgather_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                expert_parallel_group=self.expert_parallel_group if self.has_moe_layers else None,
-                expert_data_parallel_group=self.expert_data_parallel_group if self.has_moe_layers else None,
-                reduce_scatter=self.zero_reduce_scatter(),
-                overlap_comm=overlap_comm,
-                cpu_offload=self.zero_cpu_offload(),
-                mpu=self.mpu,
-                postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps(),
-                ignore_unused_parameters=self.zero_ignore_unused_parameters(),
-                partition_grads=zero_stage == ZeroStageEnum.gradients,
-                round_robin_gradients=round_robin_gradients,
-                has_moe_layers=self.has_moe_layers,
-                fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
-                communication_data_type=self.communication_data_type,
-                elastic_checkpoint=self.zero_elastic_checkpoint())
+            if self.is_paro_NIG() or self.is_paro_NII():
+                logger.info('Set the gradient_accumulation_steps to: {}'.format(self.gradient_accumulation_steps()))
+                from deepspeed.runtime.zero.stage_NII import ParoNIIOptimizer
+                from deepspeed.runtime.zero.stage_NIG import ParoNIGOptimizer
+                opt_class = ParoNIGOptimizer if self.is_paro_NIG() else ParoNIIOptimizer
+                logger.info(f'Use the {opt_class} optimizer')
+                optimizer = opt_class(
+                    optimizer,
+                    self.param_names,
+                    timers=timers,
+                    static_loss_scale=self.loss_scale(),
+                    dynamic_loss_scale=self.dynamic_loss_scale(),
+                    dynamic_loss_args=self.dynamic_loss_scale_args(),
+                    clip_grad=self.gradient_clipping(),
+                    contiguous_gradients=contiguous_gradients,
+                    reduce_bucket_size=self.zero_reduce_bucket_size(),
+                    allgather_bucket_size=self.zero_allgather_bucket_size(),
+                    dp_process_group=self.data_parallel_group,
+                    expert_parallel_group=self.expert_parallel_group if self.has_moe_layers else None,
+                    expert_data_parallel_group=self.expert_data_parallel_group if self.has_moe_layers else None,
+                    reduce_scatter=self.zero_reduce_scatter(),
+                    overlap_comm=overlap_comm,
+                    cpu_offload=self.zero_cpu_offload(),
+                    mpu=self.mpu,
+                    postscale_gradients=self.postscale_gradients(),
+                    gradient_predivide_factor=self.gradient_predivide_factor(),
+                    gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                    ignore_unused_parameters=self.zero_ignore_unused_parameters(),
+                    partition_grads=zero_stage == ZeroStageEnum.gradients,
+                    round_robin_gradients=round_robin_gradients,
+                    has_moe_layers=self.has_moe_layers,
+                    fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
+                    communication_data_type=self.communication_data_type,
+                    elastic_checkpoint=self.zero_elastic_checkpoint())
+            else:
+                logger.info('Use the DeepSpeedZeroOptimizer')
+                optimizer = DeepSpeedZeroOptimizer(
+                    optimizer,
+                    self.param_names,
+                    timers=timers,
+                    static_loss_scale=self.loss_scale(),
+                    dynamic_loss_scale=self.dynamic_loss_scale(),
+                    dynamic_loss_args=self.dynamic_loss_scale_args(),
+                    clip_grad=self.gradient_clipping(),
+                    contiguous_gradients=contiguous_gradients,
+                    reduce_bucket_size=self.zero_reduce_bucket_size(),
+                    allgather_bucket_size=self.zero_allgather_bucket_size(),
+                    dp_process_group=self.data_parallel_group,
+                    expert_parallel_group=self.expert_parallel_group if self.has_moe_layers else None,
+                    expert_data_parallel_group=self.expert_data_parallel_group if self.has_moe_layers else None,
+                    reduce_scatter=self.zero_reduce_scatter(),
+                    overlap_comm=overlap_comm,
+                    cpu_offload=self.zero_cpu_offload(),
+                    mpu=self.mpu,
+                    postscale_gradients=self.postscale_gradients(),
+                    gradient_predivide_factor=self.gradient_predivide_factor(),
+                    gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                    ignore_unused_parameters=self.zero_ignore_unused_parameters(),
+                    partition_grads=zero_stage == ZeroStageEnum.gradients,
+                    round_robin_gradients=round_robin_gradients,
+                    has_moe_layers=self.has_moe_layers,
+                    fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
+                    communication_data_type=self.communication_data_type,
+                    elastic_checkpoint=self.zero_elastic_checkpoint())
 
-        elif zero_stage == ZeroStageEnum.weights:
+        elif zero_stage == ZeroStageEnum.weights and not self.zero_intra_p() and not self.zero_intra_g():
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
             if isinstance(optimizer, DummyOptim):
                 log_dist("Creating ZeRO Offload", ranks=[0])
@@ -1533,6 +1613,77 @@ class DeepSpeedEngine(Module):
                     communication_data_type=self.communication_data_type,
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
                     zero_quantized_weights=self.zero_quantized_weights())
+
+        elif zero_stage == ZeroStageEnum.weights and self.zero_intra_p():
+            assert not self.has_moe_layers, f"MoE not supported with Paro {self.paro_strategy}"
+            assert not isinstance(optimizer, DummyOptim)
+            log_dist(f'Creating {model_dtype} ZeRO stage {zero_stage} optimizer', ranks=[0])
+            from deepspeed.runtime.zero.stage_IIG import ParoIIGOptimizer
+            from deepspeed.runtime.zero.stage_IGG import ParoIGGOptimizer
+
+            opt_class = ParoIIGOptimizer if self.zero_intra_g() else ParoIGGOptimizer
+
+            optimizer = opt_class(
+                self.module,
+                optimizer,
+                timers=timers,
+                ds_config=self.config,
+                static_loss_scale=self.loss_scale(),
+                dynamic_loss_scale=self.dynamic_loss_scale(),
+                dynamic_loss_args=self.dynamic_loss_scale_args(),
+                clip_grad=self.gradient_clipping(),
+                contiguous_gradients=self.zero_contiguous_gradients(),
+                reduce_bucket_size=self.zero_reduce_bucket_size(),
+                prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                max_reuse_distance=self.zero_max_reuse_distance(),
+                max_live_parameters=self.zero_max_live_parameters(),
+                param_persistence_threshold=self.zero_param_persistence_threshold(),
+                model_persistence_threshold=self.zero_model_persistence_threshold(),
+                dp_process_group=self.data_parallel_group,
+                reduce_scatter=self.zero_reduce_scatter(),
+                overlap_comm=self.zero_overlap_comm(),
+                offload_optimizer_config=self.zero_offload_optimizer(),
+                offload_param_config=self.zero_offload_param(),
+                sub_group_size=self.zero_sub_group_size(),
+                mpu=self.mpu,
+                postscale_gradients=self.postscale_gradients(),
+                gradient_predivide_factor=self.gradient_predivide_factor(),
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                aio_config=self.aio_config(),
+                communication_data_type=self.communication_data_type)
+        elif self.paro_strategy() == 'ING':
+            from deepspeed.runtime.zero.stage_ING import ParoINGOptimizer
+            assert not self.has_moe_layers, "MoE not supported with Stage ING"
+            assert not isinstance(optimizer, DummyOptim)
+            log_dist(f'Creating {model_dtype} ZeRO stage ING optimizer', ranks=[0])
+            optimizer = ParoINGOptimizer(
+                self.module,
+                optimizer,
+                timers=timers,
+                ds_config=self.config,
+                static_loss_scale=self.loss_scale(),
+                dynamic_loss_scale=self.dynamic_loss_scale(),
+                dynamic_loss_args=self.dynamic_loss_scale_args(),
+                clip_grad=self.gradient_clipping(),
+                contiguous_gradients=self.zero_contiguous_gradients(),
+                reduce_bucket_size=self.zero_reduce_bucket_size(),
+                prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                max_reuse_distance=self.zero_max_reuse_distance(),
+                max_live_parameters=self.zero_max_live_parameters(),
+                param_persistence_threshold=self.zero_param_persistence_threshold(),
+                model_persistence_threshold=self.zero_model_persistence_threshold(),
+                dp_process_group=self.data_parallel_group,
+                reduce_scatter=self.zero_reduce_scatter(),
+                overlap_comm=self.zero_overlap_comm(),
+                offload_optimizer_config=self.zero_offload_optimizer(),
+                offload_param_config=self.zero_offload_param(),
+                sub_group_size=self.zero_sub_group_size(),
+                mpu=self.mpu,
+                postscale_gradients=self.postscale_gradients(),
+                gradient_predivide_factor=self.gradient_predivide_factor(),
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                aio_config=self.aio_config(),
+                communication_data_type=self.communication_data_type)
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -1832,11 +1983,14 @@ class DeepSpeedEngine(Module):
             f'allreduce_gradients() is not valid when bfloat+pipeline_parallelism is enabled'
 
         # Pass (PP) gas boundary flag to optimizer (required for zero)
-        self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
+        if self.is_paro_NIG() or self.is_paro_NII():
+            self._is_gradient_accumulation_boundary = self.optimizer.is_intra_gradient_accumulation_boundary
+        else:
+            self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
+
         # ZeRO stage >= 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
-
         # Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
             if self.zero_optimization_stage() == ZeroStageEnum.optimizer_states and hasattr(
@@ -1892,6 +2046,9 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization():
             self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
+            if not self.is_gradient_accumulation_boundary() and not loss.requires_grad:
+                # only for antmmf vlmo itc loss
+                loss.requires_grad = True
             self.optimizer.backward(loss, retain_graph=retain_graph)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries
@@ -1915,7 +2072,6 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.backward_inner_timers)
 
         self._start_timers(self.engine_timers.backward_reduce_timers)
-
         if allreduce_gradients and self.enable_backward_allreduce:
             # Traditional code path that allreduces the module parameter grads
             self.allreduce_gradients()
@@ -1942,11 +2098,14 @@ class DeepSpeedEngine(Module):
             bool: if the current step is a gradient accumulation boundary.
 
         """
-        if self._is_gradient_accumulation_boundary is None:
-            return (self.micro_steps + 1) % \
-                self.gradient_accumulation_steps() == 0
-        else:
+        if self.is_paro_NIG() or self.is_paro_NII():
             return self._is_gradient_accumulation_boundary
+        else:
+            if self._is_gradient_accumulation_boundary is None:
+                return (self.micro_steps + 1) % \
+                    self.gradient_accumulation_steps() == 0
+            else:
+                return self._is_gradient_accumulation_boundary
 
     def set_gradient_accumulation_boundary(self, is_boundary):
         """
@@ -2066,6 +2225,9 @@ class DeepSpeedEngine(Module):
         report_progress = False
 
         self._step_applied = False  # assume False, will flip to True
+
+        if self.is_paro_NIG() or self.is_paro_NII():
+            self._is_gradient_accumulation_boundary = self.optimizer.is_intra_gradient_accumulation_boundary
 
         # Update the model when we reach gradient accumulation boundaries
         if self.is_gradient_accumulation_boundary():

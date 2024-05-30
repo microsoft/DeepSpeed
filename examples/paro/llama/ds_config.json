@@ -1,0 +1,16 @@
+{
+  "zero_optimization": {
+    "paro_strategy": "NIG"
+  },
+  "bf16": {
+    "enabled": true
+  },
+  "flops_profiler": {
+    "enabled": false,
+    "profile_step": 3,
+    "module_depth": -1,
+    "top_modules": 10,
+    "detailed": true,
+    "output_file": null
+  }
+}

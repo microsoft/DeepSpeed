@@ -21,21 +21,19 @@
         -- deepspeed groups API should be brought into ds.comm
 """
 
+from datetime import timedelta
+
 import torch
-import os
-
-from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
-from .constants import *
-from .reduce_op import *
-from deepspeed.accelerator import get_accelerator
-from deepspeed.comm.ccl import CCLBackend
-
-from deepspeed.utils.comms_logging import CommsLogger
-from deepspeed.utils import timer, get_caller_func
-from deepspeed.comm.torch import TorchBackend
 
 from deepspeed import utils
-from datetime import timedelta
+from deepspeed.accelerator import get_accelerator
+from deepspeed.comm.ccl import CCLBackend
+from deepspeed.comm.torch import TorchBackend
+from deepspeed.utils import timer
+from deepspeed.utils.comms_logging import CommsLogger
+from .constants import *
+from .reduce_op import *
+from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 
 # Current deepspeed.comm backend (cdb) global object for simple access by client code
 cdb = None
@@ -178,7 +176,9 @@ def new_group(ranks):
     global cdb
     assert cdb is not None and cdb.is_initialized(
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    return cdb.new_group(ranks)
+    group = cdb.new_group(ranks)
+    iter_intra_comm_info.insert_inter_intra_subgroup(ranks, group)
+    return group
 
 
 def is_available() -> bool:
@@ -225,7 +225,10 @@ def all_gather(tensor_list,
                log_name='all_gather',
                debug=get_caller_func()):
     global cdb
-    return cdb.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
+    ret = iter_intra_comm_info._2d_all_gather(tensor_list=tensor_list, tensor=tensor, group=group)
+    if ret == -1:
+        return cdb.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
+    return ret
 
 
 def has_reduce_scatter_tensor():
@@ -436,7 +439,10 @@ def reduce_scatter(output,
                    log_name='reduce_scatter',
                    debug=get_caller_func()):
     global cdb
-    return cdb.reduce_scatter(output=output, input_list=input_list, op=op, group=group, async_op=async_op)
+    ret = iter_intra_comm_info._2d_reduce_scatter(output=output, input_list=input_list, op=op, group=group)
+    if ret == -1:
+        return cdb.reduce_scatter(output=output, input_list=input_list, op=op, group=group, async_op=async_op)
+    return ret
 
 
 def has_all_reduce_coalesced():
@@ -476,8 +482,11 @@ def all_reduce(tensor,
     # timers.start()
     # TensorBoard logging for comm calls.?
     global cdb
+    ret = iter_intra_comm_info._2d_all_reduce(tensor, group=group, op=op)
     #print(f'op = {op}, cdb= {cdb.name}')
-    return cdb.all_reduce(tensor, op, group, async_op)
+    if ret == -1:
+        return cdb.all_reduce(tensor, op, group, async_op)
+    return ret
 
 
 @timed_op
@@ -488,7 +497,7 @@ def all_reduce_coalesced(tensors,
                          prof=False,
                          log_name='all_reduce',
                          debug=get_caller_func()):
-    global cbd
+    global cdb
     return cdb.all_reduce_coalesced(tensors, op, group, async_op)
 
 
@@ -640,6 +649,7 @@ def init_distributed(dist_backend=None,
                 utils.logger.info('Initializing TorchBackend in DeepSpeed with backend {}'.format(dist_backend))
             # Create a torch backend object, initialize torch distributed, and assign to cdb
             cdb = TorchBackend(dist_backend, timeout, init_method, rank, world_size)
+        iter_intra_comm_info.initialized()
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
@@ -741,3 +751,133 @@ def patch_aws_sm_env_for_torch_nccl_backend(verbose=True):
             "Discovered AWS SageMaker settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
             .format(os.environ['RANK'], os.environ['LOCAL_RANK'], os.environ['WORLD_SIZE'], os.environ['MASTER_ADDR'],
                     os.environ['MASTER_PORT']))
+
+
+class InterIntraCommInfo:
+    def initialized(self):
+        self.num_gpus = torch.cuda.device_count()
+        self.num_nodes = get_world_size() // self.num_gpus
+        self.group_to_inter_intra_subgroup = {}
+        self.default_inter_intra_subgroup = None
+
+    def get_inter_intra_subgroup(self, origin_group):
+        if origin_group is None:
+            return self.default_inter_intra_subgroup
+        elif origin_group is not None and origin_group in self.group_to_inter_intra_subgroup:
+            return self.group_to_inter_intra_subgroup[origin_group]
+        else:
+            return None
+
+    def insert_inter_intra_subgroup(self, ranks, origin_group):
+        if self.num_nodes < 2:
+            return
+        inter_subgroup = None
+        intra_subgroup = None
+        inter_ranks = {}
+        intra_ranks = {}
+        curr_num_gpus = 0
+        curr_num_nodes = 0
+        for rank in ranks:
+            node_idx = rank // self.num_gpus
+            gpu_idx = rank % self.num_gpus
+            if gpu_idx in inter_ranks:
+                inter_ranks[gpu_idx].append(rank)
+            else:
+                inter_ranks[gpu_idx] = [rank]
+            if node_idx in intra_ranks:
+                intra_ranks[node_idx].append(rank)
+            else:
+                intra_ranks[node_idx] = [rank]
+            curr_num_gpus = max(curr_num_gpus, len(inter_ranks[gpu_idx]))
+            curr_num_nodes = max(curr_num_nodes, len(intra_ranks[node_idx]))
+
+        if curr_num_gpus * curr_num_nodes != len(ranks) or curr_num_nodes < 2:
+            return
+
+        for gpu_idx, inter_rank in inter_ranks.items():
+            group = cdb.new_group(inter_rank)
+            if get_rank() % self.num_gpus == gpu_idx:
+                inter_subgroup = group
+
+        for node_idx, intra_rank in intra_ranks.items():
+            group = cdb.new_group(intra_rank)
+            if get_rank() // self.num_gpus == node_idx:
+                intra_subgroup = group
+        if len(ranks) == get_world_size():
+            self.default_inter_intra_subgroup = inter_subgroup, intra_subgroup
+        self.group_to_inter_intra_subgroup[origin_group] = inter_subgroup, intra_subgroup
+
+    def get_input_list(self, tensor, group=None, partition_size=-1):
+        world_size = get_world_size(group)
+        group_rank = get_rank(group)
+        if partition_size == -1:
+            partition_size = (tensor.numel() + world_size - 1) // world_size
+        input_list = []
+        for i in range(world_size):
+            start = i * partition_size
+            end = start + partition_size
+            if start < tensor.numel() and end <= tensor.numel():
+                input = tensor.view(-1).narrow(0, start, partition_size)
+            else:
+                input = torch.zeros(partition_size, dtype=tensor.dtype, device=tensor.device)
+                if start < tensor.numel():
+                    elements = tensor.numel() - start
+                    input.narrow(0, 0, elements).copy_(tensor.view(-1).narrow(0, start, elements))
+            input_list.append(input)
+        return input_list, input_list[group_rank]
+
+    def _2d_all_reduce(self, tensor, group=None, op=ReduceOp.SUM):
+        inter_intra_subgroup = self.get_inter_intra_subgroup(group)
+        if tensor.numel() < (1 << 20) or inter_intra_subgroup is None:
+            return -1
+        inter_group, intra_group = inter_intra_subgroup
+        input_list, input = self.get_input_list(tensor, intra_group)
+        # intra reduce-scatter over NVLink
+        cdb.reduce_scatter(input, input_list, group=intra_group, op=op)
+        # inter ring-allreduce over GPU Direct RDMA
+        cdb.all_reduce(input, group=inter_group, op=op)
+        # intra allgather over NVLink
+        cdb.all_gather(input_list, input, group=intra_group)
+        cdb.barrier()
+        if tensor.numel() % input.numel() != 0:
+            elements = tensor.numel() % input.numel()
+            tensor.view(-1).narrow(0, tensor.numel() - elements, elements).copy_(input_list[-1].narrow(0, 0, elements))
+        return 0
+
+    def _2d_reduce_scatter(self, output, input_list, op=ReduceOp.SUM, group=None, async_op=False):
+        inter_intra_subgroup = self.get_inter_intra_subgroup(group)
+        if output.numel() * len(input_list) < (1 << 20) or inter_intra_subgroup is None:
+            return -1
+        inter_group, intra_group = inter_intra_subgroup
+        num_gpus = get_world_size(intra_group)
+        num_nodes = get_world_size(inter_group)
+        gpu_idx = get_rank(intra_group)
+
+        rank = get_rank()
+        # intra all_reduce over NVLINK
+        for i in range(num_nodes):
+            curr_input_list = input_list[i * num_gpus: i * num_gpus + num_gpus]
+            cdb.reduce_scatter(curr_input_list[rank % num_gpus], curr_input_list, group=intra_group, op=op)
+        # inter reduce_scatter over GPU Direct RDMA
+        cdb.reduce_scatter(output, input_list[gpu_idx::num_gpus], group=inter_group, op=op)
+        cdb.barrier()
+        return 0
+
+    def _2d_all_gather(self, tensor_list, tensor, group=None, async_op=False):
+        inter_intra_subgroup = self.get_inter_intra_subgroup(group)
+        if tensor.numel() * len(tensor_list) < (1 << 20) or inter_intra_subgroup is None:
+            return -1
+        inter_group, intra_group = inter_intra_subgroup
+        num_gpus = get_world_size(intra_group)
+        gpu_idx = get_rank(intra_group)
+        cdb.all_gather(tensor_list[gpu_idx::num_gpus], tensor, group=inter_group)
+        num_nodes = get_world_size(inter_group)
+        rank = get_rank()
+        for i in range(num_nodes):
+            curr_input_list = tensor_list[i * num_gpus: i * num_gpus + num_gpus]
+            cdb.all_gather(curr_input_list, curr_input_list[rank % num_gpus], group=intra_group)
+        cdb.barrier()
+        return 0
+
+
+iter_intra_comm_info = InterIntraCommInfo()

@@ -9,14 +9,16 @@ bandwidth utilization
 
 import math
 from typing import List
+
 import torch
 from torch import Tensor
-from deepspeed import comm as dist
 # NOTE: Use torch.distributed's ProcessGroup class until we have our own.
 from torch.distributed import ProcessGroup, all_to_all_single
+
+from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.utils import instrument_w_nvtx
 from deepspeed.ops import op_builder
+from deepspeed.utils import instrument_w_nvtx
 
 
 def _torch_reduce_scatter_fn(input_tensor: Tensor, output_tensor: Tensor, group=None, async_op=False, prof=False):
@@ -127,6 +129,222 @@ def reduce_scatter_coalesced(
     for tensor_idx in range(len(tensors)):
         output_lst[tensor_idx] = tensor_partition_buffer_for_each_rank[this_rank].narrow(
             0, offset, partition_lst_for_each_tensor[tensor_idx][this_rank].numel())
+
+        offset += padded_partition_sz_for_each_tensor[tensor_idx]
+    return output_lst
+
+
+@instrument_w_nvtx
+@torch.no_grad()
+def reduce_scatter_coalesced_with_padding(
+        tensors: List[Tensor],
+        group: ProcessGroup = None,
+) -> List[Tensor]:
+    """simultaneously reduce-scatter a list of tensors - this can be done more
+    efficiently than individual reduce scatter calls
+    TODO. see if PyTorch team wants a c++ version of this for ProcessGroupNCCL
+    """
+    this_rank = dist.get_rank(group)
+    world_sz = dist.get_world_size(group)
+    dp_world_sz = dist.get_world_size()
+
+    partition_lst_for_each_tensor = [None] * len(tensors)
+    padded_partition_sz_for_each_tensor = []
+    for tensor_idx, tensor in enumerate(tensors):
+        flattened_tensor = tensor.view(-1)
+        chunk_sz = math.ceil(tensor.numel() / dp_world_sz)
+        if dp_world_sz > world_sz:
+            chunk_sz = chunk_sz * dp_world_sz // world_sz
+        padded_partition_sz_for_each_tensor.append(chunk_sz)
+        partition_lst_for_each_tensor[tensor_idx] = [
+            flattened_tensor[rank * chunk_sz: rank * chunk_sz + chunk_sz] for rank in range(0, world_sz)
+        ]
+
+    if len(tensors) == 1 and tensors[0].numel() % dp_world_sz == 0:
+        # if there's only one tensor being reduced and we don't need to pad
+        # we have an opportunity to avoid a memory allocation
+        tensor_partition_flat_buffer = tensors[0].view(-1)
+    else:
+        # interleave tensor partitions such that the correct reduced partitions of each tensor
+        # end up at each rank
+        tensor_partitions_lst_with_padding = []
+        for rank in range(world_sz):
+            for tensor_idx in range(len(tensors)):
+                # add tensor content
+                tensor_chunk = partition_lst_for_each_tensor[tensor_idx][rank]
+                tensor_partitions_lst_with_padding.append(tensor_chunk)
+
+                # add padding if necessary
+                padding_sz = padded_partition_sz_for_each_tensor[tensor_idx] - tensor_chunk.numel()
+                if padding_sz > 0:
+                    tensor_partitions_lst_with_padding.append(
+                        torch.empty(padding_sz, dtype=tensor_chunk.dtype, device=tensor_chunk.device))
+
+        tensor_partition_flat_buffer = instrument_w_nvtx(torch.cat)(tensor_partitions_lst_with_padding)
+
+    tensor_partition_flat_buffer.div_(world_sz)  # pre-divide
+    tensor_partition_buffer_for_each_rank: List[Tensor] = torch.chunk(tensor_partition_flat_buffer, world_sz)
+
+    # batched reduce-scatter call
+    _torch_reduce_scatter_fn(tensor_partition_flat_buffer,
+                             tensor_partition_buffer_for_each_rank[this_rank],
+                             group=group)
+
+    # reverse procedure of the interleaving done previously, done on the
+    # result of the batched reduce-scatter
+    output_lst: List[Tensor] = [None] * len(tensors)
+    offset = 0
+    for tensor_idx in range(len(tensors)):
+        output_lst[tensor_idx] = tensor_partition_buffer_for_each_rank[this_rank].narrow(
+            0, offset, padded_partition_sz_for_each_tensor[tensor_idx])
+
+        offset += padded_partition_sz_for_each_tensor[tensor_idx]
+    return output_lst
+
+
+@instrument_w_nvtx
+@torch.no_grad()
+def reduce_scatter_coalesced_for_subgroup_order(
+        tensors: List[Tensor],
+        group: ProcessGroup = None,
+) -> List[Tensor]:
+    """simultaneously reduce-scatter a list of tensors - this can be done more
+    efficiently than individual reduce scatter calls
+    For zero stage23
+    2 nodes with 4 gpus: global sharded: p0, p1, p2, p3
+        node0              node1
+    gpu0    gpu1       gpu0    gpu1
+    p0,p1  p2,p3       p0,p1  p2,p3
+    g0     g2             g1     g3
+    o0     o2             o1     o3
+    So, we have different order grad shards to reduce scatter
+    """
+    world_sz = dist.get_world_size(group)
+    sub_group_size = get_accelerator().device_count()
+    num_nodes = world_sz // sub_group_size
+    this_rank = dist.get_rank(group)
+    node_rank = this_rank // sub_group_size
+
+    partition_lst_for_each_tensor = [None] * len(tensors)
+    for tensor_idx, tensor in enumerate(tensors):
+        flattened_tensor = tensor.view(-1)
+        chunk_sz = math.ceil(tensor.numel() / world_sz)
+        partition_lst_for_each_tensor[tensor_idx] = [
+            flattened_tensor[rank * chunk_sz:rank * chunk_sz + chunk_sz] for rank in range(0, world_sz)
+        ]
+
+    padded_partition_sz_for_each_tensor = tuple(math.ceil(t.numel() / world_sz) for t in tensors)
+
+    # interleave tensor partitions such that the correct reduced partitions of each tensor
+    # end up at each rank
+    tensor_partitions_lst_with_padding = []
+    for node_idx in range(num_nodes):
+        for device_idx in range(sub_group_size):
+            for tensor_idx in range(len(tensors)):
+                # add tensor content
+                tensor_chunk = partition_lst_for_each_tensor[tensor_idx][device_idx * num_nodes + node_idx]
+                tensor_partitions_lst_with_padding.append(tensor_chunk)
+
+                # add padding if necessary
+                padding_sz = padded_partition_sz_for_each_tensor[tensor_idx] - tensor_chunk.numel()
+                if padding_sz > 0:
+                    tensor_partitions_lst_with_padding.append(
+                        torch.empty(padding_sz, dtype=tensor_chunk.dtype, device=tensor_chunk.device))
+
+    tensor_partition_flat_buffer = instrument_w_nvtx(torch.cat)(tensor_partitions_lst_with_padding)
+
+    tensor_partition_flat_buffer.div_(world_sz)  # pre-divide
+    tensor_partition_buffer_for_each_rank: List[Tensor] = torch.chunk(tensor_partition_flat_buffer, world_sz)
+
+    # batched reduce-scatter call
+    _torch_reduce_scatter_fn(tensor_partition_flat_buffer,
+                             tensor_partition_buffer_for_each_rank[this_rank],
+                             group=group)
+
+    # reverse procedure of the interleaving done previously, done on the
+    # result of the batched reduce-scatter
+    output_lst: List[Tensor] = [None] * len(tensors)
+    offset = 0
+    for tensor_idx in range(len(tensors)):
+        output_lst[tensor_idx] = tensor_partition_buffer_for_each_rank[this_rank].narrow(
+            0, offset, padded_partition_sz_for_each_tensor[tensor_idx])
+
+        offset += padded_partition_sz_for_each_tensor[tensor_idx]
+    return output_lst
+
+
+@instrument_w_nvtx
+@torch.no_grad()
+def reduce_scatter_coalesced_for_subgroup_order_v2(
+        tensors: List[Tensor],
+        group: ProcessGroup = None,
+        _is_grad_accu_boundary=False
+) -> List[Tensor]:
+    """
+    for ING
+    simultaneously reduce-scatter a list of tensors - this can be done more
+    efficiently than individual reduce scatter calls
+    For zero stage23
+    2 nodes with 4 gpus: global sharded: p0, p1, p2, p3
+        node0              node1
+    gpu0    gpu1       gpu0    gpu1
+    p0,p1  p2,p3       p0,p1  p2,p3
+    g0     g2             g1     g3
+    o0     o2             o1     o3
+    So, we have different order grad shards to reduce scatter
+    """
+    world_sz = dist.get_world_size(group)  # 4
+    sub_group_size = get_accelerator().device_count()  # 2
+    num_nodes = world_sz // sub_group_size  # 2
+    this_rank = dist.get_rank(group)  # 0
+    node_rank = this_rank // sub_group_size
+
+    partition_lst_for_each_tensor = [None] * len(tensors)
+    for tensor_idx, tensor in enumerate(tensors):
+        flattened_tensor = tensor.view(-1)  # 1000000
+        chunk_sz = math.ceil(tensor.numel() / world_sz)
+        partition_lst_for_each_tensor[tensor_idx] = [
+            flattened_tensor[rank * chunk_sz:rank * chunk_sz + chunk_sz] for rank in range(0, world_sz)
+        ]
+
+    # (250000, 250, 250000)
+    padded_partition_sz_for_each_tensor = tuple(math.ceil(t.numel() / world_sz) for t in tensors)
+
+    # interleave tensor partitions such that the correct reduced partitions of each tensor
+    # end up at each rank
+    tensor_partitions_lst_with_padding = []
+    for node_idx in range(num_nodes):
+        for device_idx in range(sub_group_size):
+            for tensor_idx in range(len(tensors)):
+                # add tensor content
+                tensor_chunk = partition_lst_for_each_tensor[tensor_idx][
+                    device_idx * num_nodes + node_idx]
+                tensor_partitions_lst_with_padding.append(tensor_chunk)
+
+                # add padding if necessary
+                padding_sz = padded_partition_sz_for_each_tensor[tensor_idx] - tensor_chunk.numel()
+                if padding_sz > 0:
+                    tensor_partitions_lst_with_padding.append(
+                        torch.empty(padding_sz, dtype=tensor_chunk.dtype, device=tensor_chunk.device))
+    tensor_partition_flat_buffer = instrument_w_nvtx(torch.cat)(tensor_partitions_lst_with_padding)
+    if _is_grad_accu_boundary:
+        tensor_partition_flat_buffer.div_(world_sz)  # pre-divide
+
+    tensor_partition_buffer_for_each_rank: List[Tensor] = torch.chunk(tensor_partition_flat_buffer, world_sz)
+
+    if _is_grad_accu_boundary:
+        # batched reduce-scatter call
+        _torch_reduce_scatter_fn(tensor_partition_flat_buffer,
+                                 tensor_partition_buffer_for_each_rank[this_rank],
+                                 group=group)
+
+    # reverse procedure of the interleaving done previously, done on the
+    # result of the batched reduce-scatter
+    output_lst: List[Tensor] = [None] * len(tensors)
+    offset = 0
+    for tensor_idx in range(len(tensors)):
+        output_lst[tensor_idx] = tensor_partition_buffer_for_each_rank[this_rank].narrow(
+            0, offset, padded_partition_sz_for_each_tensor[tensor_idx])
 
         offset += padded_partition_sz_for_each_tensor[tensor_idx]
     return output_lst

@@ -4,10 +4,12 @@
 # DeepSpeed Team
 
 import time
+
 from numpy import mean
-from deepspeed.utils.logging import log_dist
-from deepspeed.accelerator import get_accelerator
+
 from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
+from deepspeed.utils.logging import log_dist
 
 try:
     import psutil
@@ -17,6 +19,8 @@ except ImportError:
     PSUTILS_INSTALLED = False
     pass
 
+torch_memory_reserved = get_accelerator().memory_reserved
+torch_max_memory_reserved = get_accelerator().max_memory_reserved
 
 class CudaEventTimer(object):
 
@@ -214,7 +218,7 @@ class ThroughputTimer:
                 if report_speed and self.global_step_count % self.steps_per_output == 0:
                     self.logging(
                         "epoch={}/micro_step={}/global_step={}, RunningAvgSamplesPerSec={}, CurrSamplesPerSec={}, "
-                        "MemAllocated={}GB, MaxMemAllocated={}GB".format(
+                        "MemAllocated={}GB, MaxMemAllocated={}GB, CA={}GB, Max_CA={}GB".format(
                             self.epoch_count,
                             self.micro_step_count,
                             self.global_step_count,
@@ -222,6 +226,8 @@ class ThroughputTimer:
                             self.batch_size / self.step_elapsed_time,
                             round(get_accelerator().memory_allocated() / 1024**3, 2),
                             round(get_accelerator().max_memory_allocated() / 1024**3, 2),
+                            round(torch_memory_reserved() / (1024 ** 3), 2),
+                            round(torch_max_memory_reserved() / (1024 ** 3), 2)
                         ))
                     if self.monitor_memory:
                         virt_mem = psutil.virtual_memory()
