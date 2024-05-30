@@ -72,22 +72,21 @@ sub="block"
 ov_opt=""
 ov="overlap"
 t=8
+p=8
 
-for p in 1 8; do
-    for d in 64 128; do
-        for bs in 8M 16M; do
-            SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder ${MAP_DIR}"
-            OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
-            LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
-            cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
+for d in 64 128; do
+    for bs in 8M 16M; do
+        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder_to_device_mapping /workspace/nvme03:0 /workspace/nvme03:1 /workspace/nvme03:2 /workspace/nvme03:3 /workspace/nvme47:4 /workspace/nvme47:5 /workspace/nvme47:6 /workspace/nvme47:7"
+        OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --io_parallel ${t}"
+        LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
+        cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
 
-            echo ${DISABLE_CACHE}
-            echo ${cmd}
-            echo ${SYNC}
-            eval ${DISABLE_CACHE}
-            eval ${cmd}
-            eval ${SYNC}
-            sleep 2
-        done
+        echo ${DISABLE_CACHE}
+        echo ${cmd}
+        echo ${SYNC}
+        eval ${DISABLE_CACHE}
+        eval ${cmd}
+        eval ${SYNC}
+        sleep 2
     done
 done
