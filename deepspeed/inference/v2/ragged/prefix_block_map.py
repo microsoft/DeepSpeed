@@ -38,9 +38,9 @@ class PrefixBlockMap():
                 break
         return cached_blocks
 
-    def extend(self, tokens: torch.Tensor, new_block_ids: List[int]) -> None:
+    def extend(self, tokens: torch.Tensor, new_block_ids: List[int], num_already_cached_blocks: int) -> None:
         n_blocks = len(tokens) // self.block_size
-        for i in range(n_blocks):
+        for i in range(num_already_cached_blocks, n_blocks):
             chunk = tokens[:(i + 1) * self.block_size]
             hash = token_ids_to_hash(chunk)
             if hash not in self.tokens_to_blocks:
