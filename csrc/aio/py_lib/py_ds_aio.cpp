@@ -3,44 +3,214 @@
 
 // DeepSpeed Team
 
-/*
-Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
-*/
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include "deepspeed_aio_base.h"
 
-#include <torch/extension.h>
-#include "deepspeed_py_aio_handle.h"
-#include "deepspeed_py_copy.h"
+namespace py = pybind11;
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-    m.def("aio_read", &deepspeed_py_aio_read, "DeepSpeed Asynchronous I/O Read");
+class DeepSpeedAIOTrampoline : public DeepSpeedAIOBase {
+public:
+    DeepSpeedAIOTrampoline() : device(nullptr) {
+        load_device("nvme");
+    }
 
-    m.def("aio_write", &deepspeed_py_aio_write, "DeepSpeed Asynchronous I/O Write");
+    void load_device(const std::string& device_type) {
+        if (device_type == "nvme") {
+            device = new NVMEDevice();
+        } else {
+            std::cerr << "Unknown device type: " << device_type << std::endl;
+        }
+    }
 
-    m.def("deepspeed_memcpy", &deepspeed_py_memcpy, "DeepSpeed Memory Copy");
+    void aio_read() override {
+        if (device) {
+            device->aio_read();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
 
-    py::class_<deepspeed_aio_handle_t>(m, "aio_handle")
-        .def(py::init<const int, const int, const bool, const bool, const int>())
+    void aio_write() override {
+        if (device) {
+            device->aio_write();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
 
-        .def("get_block_size", &deepspeed_aio_handle_t::get_block_size)
-        .def("get_queue_depth", &deepspeed_aio_handle_t::get_queue_depth)
-        .def("get_single_submit", &deepspeed_aio_handle_t::get_single_submit)
-        .def("get_overlap_events", &deepspeed_aio_handle_t::get_overlap_events)
-        .def("get_thread_count", &deepspeed_aio_handle_t::get_thread_count)
+    void deepspeed_memcpy() override {
+        if (device) {
+            device->deepspeed_memcpy();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
 
-        .def("read", &deepspeed_aio_handle_t::read)
-        .def("write", &deepspeed_aio_handle_t::write)
+    int get_block_size() const override {
+        if (device) {
+            return device->get_block_size();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+            return -1;
+        }
+    }
 
-        .def("pread", &deepspeed_aio_handle_t::pread)
-        .def("pwrite", &deepspeed_aio_handle_t::pwrite)
+    int get_queue_depth() const override {
+        if (device) {
+            return device->get_queue_depth();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+            return -1;
+        }
+    }
 
-        .def("sync_pread", &deepspeed_aio_handle_t::sync_pread)
-        .def("sync_pwrite", &deepspeed_aio_handle_t::sync_pwrite)
-        .def("async_pread", &deepspeed_aio_handle_t::async_pread)
-        .def("async_pwrite", &deepspeed_aio_handle_t::async_pwrite)
+    bool get_single_submit() const override {
+        if (device) {
+            return device->get_single_submit();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+            return false;
+        }
+    }
 
-        .def("new_cpu_locked_tensor", &deepspeed_aio_handle_t::new_cpu_locked_tensor)
-        .def("free_cpu_locked_tensor", &deepspeed_aio_handle_t::free_cpu_locked_tensor)
+    bool get_overlap_events() const override {
+        if (device) {
+            return device->get_overlap_events();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+            return false;
+        }
+    }
 
-        .def("wait", &deepspeed_aio_handle_t::wait);
+    int get_thread_count() const override {
+        if (device) {
+            return device->get_thread_count();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+            return -1;
+        }
+    }
+
+    void read() override {
+        if (device) {
+            device->read();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void write() override {
+        if (device) {
+            device->write();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void pread() override {
+        if (device) {
+            device->pread();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void pwrite() override {
+        if (device) {
+            device->pwrite();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void sync_pread() override {
+        if (device) {
+            device->sync_pread();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void sync_pwrite() override {
+        if (device) {
+            device->sync_pwrite();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void async_pread() override {
+        if (device) {
+            device->async_pread();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void async_pwrite() override {
+        if (device) {
+            device->async_pwrite();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void new_cpu_locked_tensor() override {
+        if (device) {
+            device->new_cpu_locked_tensor();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void free_cpu_locked_tensor() override {
+        if (device) {
+            device->free_cpu_locked_tensor();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    void wait() override {
+        if (device) {
+            device->wait();
+        } else {
+            std::cerr << "No device loaded" << std::endl;
+        }
+    }
+
+    ~DeepSpeedAIOTrampoline() {
+        if (device) {
+            delete device;
+        }
+    }
+
+private:
+    DeepSpeedAIOBase* device;
+};
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    py::class_<DeepSpeedAIOTrampoline>(m, "DeepSpeedAIOTrampoline")
+        .def(py::init<>())
+        .def("load_device", &DeepSpeedAIOTrampoline::load_device)
+        .def("aio_read", &DeepSpeedAIOTrampoline::aio_read)
+        .def("aio_write", &DeepSpeedAIOTrampoline::aio_write)
+        .def("deepspeed_memcpy", &DeepSpeedAIOTrampoline::deepspeed_memcpy)
+        .def("get_block_size", &DeepSpeedAIOTrampoline::get_block_size)
+        .def("get_queue_depth", &DeepSpeedAIOTrampoline::get_queue_depth)
+        .def("get_single_submit", &DeepSpeedAIOTrampoline::get_single_submit)
+        .def("get_overlap_events", &DeepSpeedAIOTrampoline::get_overlap_events)
+        .def("get_thread_count", &DeepSpeedAIOTrampoline::get_thread_count)
+        .def("read", &DeepSpeedAIOTrampoline::read)
+        .def("write", &DeepSpeedAIOTrampoline::write)
+        .def("pread", &DeepSpeedAIOTrampoline::pread)
+        .def("pwrite", &DeepSpeedAIOTrampoline::pwrite)
+        .def("sync_pread", &DeepSpeedAIOTrampoline::sync_pread)
+        .def("sync_pwrite", &DeepSpeedAIOTrampoline::sync_pwrite)
+        .def("async_pread", &DeepSpeedAIOTrampoline::async_pread)
+        .def("async_pwrite", &DeepSpeedAIOTrampoline::async_pwrite)
+        .def("new_cpu_locked_tensor", &DeepSpeedAIOTrampoline::new_cpu_locked_tensor)
+        .def("free_cpu_locked_tensor", &DeepSpeedAIOTrampoline::free_cpu_locked_tensor)
+        .def("wait", &DeepSpeedAIOTrampoline::wait);
 }

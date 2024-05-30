@@ -1,51 +1,38 @@
-# Copyright (c) Microsoft Corporation.
-# SPDX-License-Identifier: Apache-2.0
-
-# DeepSpeed Team
+# Modificication
 
 import distutils.spawn
 import subprocess
 from .plugin_manager import PluginManager
 from .builder import OpBuilder
-import os
 
-class AsyncIOBuilder(OpBuilder):
-    BUILD_VAR = "DS_BUILD_AIO"  
-    NAME = "async_io"
 
-    def __init__(self):
-        super().__init__(name=self.NAME)
-        self.device_type = "nvme" 
+class PluginsBuilder(OpBuilder):
+    BUILD_VAR = "PLUGINS_BUILD_AIO"  
+
+    def __init__(self, device_type):
+        self.device_type = device_type
+        super().__init__(name=self.device_type)
         self.plugin_manager = PluginManager()
         self.device_module = None
+        self.trampoline = None
+        self.initialize_sources_and_paths()
 
-    def set_device_type(self, device_type):
-        self.device_type = device_type
+    def initialize_sources_and_paths(self):
+        plugin_info = self.plugin_manager.get_plugin_info(self.device_type)
+        if plugin_info:
+            self.sources = plugin_info['source_paths']
+            self.include_paths = plugin_info['include_paths']
 
     def absolute_name(self):
-        return f'deepspeed.ops.aio.{self.NAME}_op'
+        return f'deepspeed.ops.plugins.{self.NAME}_op'  
 
     def sources(self):
-        return [
-            'csrc/aio/py_lib/py_ds_aio.cpp',
-            'csrc/aio/py_lib/py_ds_aio_trampoline.cpp'
-        ]
-
-    def load(self, verbose=True):
-        op_module = super().load(verbose)
-        self.trampoline = op_module.DeepSpeedAIOTrampoline(self.device_type)
-        return op_module
-    
-    def __getattr__(self, name):
-        if self.trampoline:
-            return getattr(self.trampoline, name)
-        raise AttributeError(f"'AsyncIOBuilder' object has no attribute '{name}'")
+        return self.plugin_manager.get_plugin_sources(self.NAME)  
     
     def include_paths(self):
-       base_include_path = ['csrc/aio/common']
-       current_dir = os.path.dirname(os.path.abspath(__file__))
-       additional_include_path = [os.path.join(current_dir, '../../deepspeed/ops/plugins')]
-       return base_include_path + additional_include_path
+        base_include_path = ['csrc/aio/common']
+        device_include_paths = self.plugin_manager.get_plugin_include_paths(self.NAME) 
+        return base_include_path + device_include_paths
 
     def cxx_args(self):
         # -O0 for improved debugging, since performance is bound by I/O
