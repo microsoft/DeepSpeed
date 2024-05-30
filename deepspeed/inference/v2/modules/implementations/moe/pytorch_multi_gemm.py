@@ -231,7 +231,6 @@ class DSPytorchMultiGemmMoE(DSMoEBase):
             hidden_states (torch.Tensor): Hidden states tensor. Expected shape is [batch, seq_len, model_dim].
             gate_w (torch.Tensor): Gate weight tensor. Expected shape is [num_experts, model_dim].
         """
-        print("Using DSPytorchMultiGemmMoE forward pass")
 
         moe_input, expert_cumsum, scores, mapped_slots = self._gate(hidden_states, batch_metadata, gate_w)
 

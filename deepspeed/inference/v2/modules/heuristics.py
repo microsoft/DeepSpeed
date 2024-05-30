@@ -132,7 +132,7 @@ def instantiate_moe(moe_config: DSMoEConfig, engine_config: RaggedInferenceEngin
         }
 
     # check if we are on H100 or above
-    if torch.cuda.get_device_capability(0)[0] >= 9: #ignore-cuda
+    if torch.cuda.get_device_capability(0)[0] >= 9:  #ignore-cuda
         config = ConfigBundle(name="pytorch_multi_gemm_moe",
                               config=moe_config,
                               implementation_config=implementation_config)
