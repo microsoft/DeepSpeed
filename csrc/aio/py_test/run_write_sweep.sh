@@ -68,9 +68,9 @@ for sub in single block; do
         fi
         for p in 1 2 4 8; do
             for t in 1 2 4 8; do
-                for d in 16 32 64; do
+                for d in 32 64 128; do
                     for bs in 256K 512K 1M; do
-                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt}--folder ${MAP_DIR}"
+                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder ${MAP_DIR}"
                         OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
                         LOG="${LOG_DIR}/write_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
                         cmd="python ${RUN_SCRIPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
@@ -81,7 +81,7 @@ for sub in single block; do
                         eval ${DISABLE_CACHE}
                         eval ${cmd}
                         eval ${SYNC}
-                        sleep 1
+                        sleep 2
                     done
                 done
         done

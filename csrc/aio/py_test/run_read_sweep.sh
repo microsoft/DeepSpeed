@@ -4,6 +4,15 @@ if [[ $# -lt 2 ]]; then
     exit 1
 fi
 
+function prep_folder()
+{
+    folder=$1
+    if [[ -d ${folder} ]]; then
+        rm -f ${folder}/*
+    else
+        mkdir -p ${folder}
+    fi
+}
 
 function validate_environment()
 {
@@ -36,6 +45,9 @@ USE_GDS=$4
 RUN_SCRIPT=./test_ds_aio.py
 READ_OPT="--read"
 
+prep_folder ${MAP_DIR}
+prep_folder ${LOG_DIR}
+
 if [[ -d ${LOG_DIR} ]]; then
     rm -f ${LOG_DIR}/*
 else
@@ -55,43 +67,27 @@ fi
 
 DISABLE_CACHE="sync; bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
 SYNC="sync"
+sub_opt=""
+sub="block"
+ov_opt=""
+ov="overlap"
+t=8
 
-for sub in single block; do
-    if [[ $sub == "single" ]]; then
-        sub_opt="--single_submit"
-    else
-        sub_opt=""
-    fi
-    for ov in overlap sequential; do
-        if [[ $ov == "sequential" ]]; then
-            ov_opt="--sequential_requests"
-        else
-            ov_opt=""
-        fi
-        for p in 1 2 4 8; do
-            for t in 1 2 4 8; do
-                for d in 32 64 128; do
-                    for bs in 256K 512K 1M; do
-                        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder ${MAP_DIR}"
-                        OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
-                        LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
-                        cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
+for p in 1 8; do
+    for d in 64 128; do
+        for bs in 8M 16M; do
+            SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder ${MAP_DIR}"
+            OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --multi_process ${p} --io_parallel ${t}"
+            LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
+            cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
 
-                        if fileExists ${LOG}; then
-                            echo "Log Exists"
-                            sleep 2
-                        else
-                            echo ${DISABLE_CACHE}
-                            echo ${cmd}
-                            echo ${SYNC}
-                            eval ${DISABLE_CACHE}
-                            eval ${cmd}
-                            eval ${SYNC}
-                            sleep 2
-                        fi
-                    done
-                done
-            done
+            echo ${DISABLE_CACHE}
+            echo ${cmd}
+            echo ${SYNC}
+            eval ${DISABLE_CACHE}
+            eval ${cmd}
+            eval ${SYNC}
+            sleep 2
         done
     done
 done
