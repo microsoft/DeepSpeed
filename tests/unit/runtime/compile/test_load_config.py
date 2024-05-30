@@ -26,10 +26,10 @@ if deepspeed.is_compile_supported():
         custom_backend_called = True
         return gm.forward
 
-    def custom_compiler_fn(module: torch.nn.Module):
+    def custom_compiler_fn(module: torch.nn.Module) -> None:
         global custom_compler_fn_called
         custom_compler_fn_called = True
-        return torch.compile(module)
+        return module.compile()
 
 
 @pytest.fixture

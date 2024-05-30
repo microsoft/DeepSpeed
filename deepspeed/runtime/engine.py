@@ -90,7 +90,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
-from .compiler import get_backend_fn
+from .compiler import get_backend_fn, is_compile_supported
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -1792,15 +1792,13 @@ class DeepSpeedEngine(Module):
             **kwargs: variable length keyword arguments
         """
 
-        if self._config.compile_config.enabled and not self._is_compiled:
-            if self._compiler_fn is None:
-                compiled_model = torch.compile(self.module,
-                                               backend=self._compiler_backend,
-                                               **self._config.compile_config.kwargs)
-            else:
-                compiled_model = self._compiler_fn(self.module)
+        if self._config.compile_config.enabled and not self._is_compiled and is_compile_supported():
+            backend = self._compiler_fn if self._compiler_fn is not None else self._compiler_backend
 
-            self._set_client_model(compiled_model)
+            if self._compiler_fn is None:
+                self.module.compile(backend=backend, **self._compile_kwargs)
+            else:
+                self._compiler_fn(self.module)
             self._is_compiled = True
 
         if self.autotuning_profile_model_info():
@@ -3643,14 +3641,14 @@ class DeepSpeedEngine(Module):
 
     def set_compiler_fn(self, compiler_fn: Callable) -> None:
         """Set a function to be used for compiling the module.
-        This function should take a torch.nn.Module as input and return a compiled module.
+        This function should take a torch.nn.Module as input and call the module's `compile()` method, not `torch.compile()`.
         Note that other compile options are ignored when a compiler_fn is set.
 
         Example:
         ```python
-            def my_compiler_fn(module: torch.nn.Module):
+            def my_compiler_fn(module: torch.nn.Module) -> None:
                 ...
-                return torch.compile(module, ...)
+                return module.compile(...)
 
             engine.set_compiler_fn(my_compiler_fn)
         ```
