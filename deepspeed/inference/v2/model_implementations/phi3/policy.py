@@ -25,7 +25,6 @@ class Phi3Policy(InferenceV2Policy):
 
         map.set_non_transformer_params(Phi3NonTransformerContainer(self.model))
 
-        map.set_unmapped_params(
-            [f'model.layers.{i}.self_attn.rotary_emb.inv_freq' for i in range(self.model.num_layers)])
+        map.set_unmapped_params([])
 
         return map
