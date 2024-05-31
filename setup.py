@@ -208,7 +208,6 @@ else:
     git_hash = "unknown"
     git_branch = "unknown"
 
-
 if sys.platform == "win32":
     shutil.copytree('.\\csrc', '.\\deepspeed\\ops')
     shutil.copytree('.\\op_builder', '.\\deepspeed\\ops')
