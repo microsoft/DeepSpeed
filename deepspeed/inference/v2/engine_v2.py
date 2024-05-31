@@ -260,6 +260,7 @@ class InferenceEngineV2:
             seq.pre_forward(cached_length)
             seq.post_forward()
             seq.extend_kv_cache(block_ids)
+            seq.num_prefix_cache_blocks = len(block_ids)
             self._state_manager.increment_ref_count(block_ids)
             self._state_manager._kv_cache.allocate_blocks(block_ids)
 
