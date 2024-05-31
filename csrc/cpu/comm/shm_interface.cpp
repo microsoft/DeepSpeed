@@ -61,6 +61,19 @@ int inference_all_reduce(torch::Tensor& data, py::object op)
 
     return inference_all_reduce_(data, 0);
 }
+
+/* returns: true -- cannot handle and need caller fallback; false -- can handle */
+bool inference_all_reduce_op_fallback_p(torch::Tensor& data)
+{
+    if (!all_ranks_local_p) return true;
+    switch (data.scalar_type()) {
+        case c10::ScalarType::BFloat16: break;
+        case c10::ScalarType::Float: break;
+        default: return true;
+    }
+    return false;
+}
+
 // Success - return 0
 // Fail (cannot hornor the request and need to fall back) - return -1
 int inference_all_reduce_(torch::Tensor& data, int op)
@@ -125,6 +138,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_rank", &get_rank, "get rank");
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
+    m.def("inference_all_reduce_op_fallback_p", &inference_all_reduce_op_fallback_p, "return 1 if op cannot handle and needs to fallback to PyTorch allreduce");
 }
 
 TORCH_LIBRARY(deepspeed, m) {

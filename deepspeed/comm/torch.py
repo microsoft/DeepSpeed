@@ -152,7 +152,7 @@ class TorchBackend(Backend):
         return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
     def inference_all_reduce(self, tensor, op, group=None):
-        if not hasattr(torch.ops, 'deepspeed') or not hasattr(torch.ops.deepspeed, 'inference_all_reduce_'):
+        if not hasattr(torch.ops, 'deepspeed') or not hasattr(torch.ops.deepspeed, 'inference_all_reduce_') or self.shm_comm_op == None or self.shm_comm_op.inference_all_reduce_op_fallback_p(tensor):
             op = self._reduce_op(op)
             return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=False)
         else:
