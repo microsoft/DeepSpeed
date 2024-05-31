@@ -46,21 +46,7 @@ void initialize(int size, int rank)
     if (all_ranks_local_p) { shm_initialize(size, rank, addr_string, port_string); }
 }
 
-int get_rank(int group = 0) { return world_rank; }
-
-int get_world_size(int group = 0) { return world_size; }
-
 int inference_all_reduce_(torch::Tensor& data, int op);
-
-int inference_all_reduce(torch::Tensor& data, py::object op)
-{
-    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
-
-    assert(py::int_(op.attr("value")) == ReduceOpSum);
-
-    return inference_all_reduce_(data, 0);
-}
 
 /* returns: true -- cannot handle and need caller fallback; false -- can handle */
 bool inference_all_reduce_op_fallback_p(torch::Tensor& data)
@@ -135,9 +121,6 @@ int inference_all_reduce_(torch::Tensor& data, int op)
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("initialize", &initialize, "shm initialize");
-    m.def("get_rank", &get_rank, "get rank");
-    m.def("get_world_size", &get_world_size, "get world size");
-    m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
     m.def("inference_all_reduce_op_fallback_p", &inference_all_reduce_op_fallback_p, "return 1 if op cannot handle and needs to fallback to PyTorch allreduce");
 }
 
