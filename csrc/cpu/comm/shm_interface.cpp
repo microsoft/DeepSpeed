@@ -112,7 +112,7 @@ int inference_all_reduce_(torch::Tensor& data, int op)
                    max_time,
                    total_time / count,
                    sd);
-        }_
+        }
     }
 #endif
     return 0;
