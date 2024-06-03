@@ -271,11 +271,10 @@ class DeepSpeedEngine(Module):
         # Configure wall clock timers
         self.timers = SynchronizedWallClockTimer()
         # Throughput timer
-        self.tput_timer = ThroughputTimer(
-            batch_size=self.train_batch_size(),
-            steps_per_output=self.steps_per_print(),
-            monitor_memory=False,
-        )
+        self.tput_timer = ThroughputTimer(self._config.timers_config,
+                                          batch_size=self.train_batch_size(),
+                                          steps_per_output=self.steps_per_print(),
+                                          monitor_memory=False)
 
         log_dist(f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}", ranks=[0])
 
@@ -1263,7 +1262,7 @@ class DeepSpeedEngine(Module):
         else:
             self.optimizer = basic_optimizer
 
-        log_dist("DeepSpeed Final Optimizer = {}".format(self.optimizer_name()), ranks=[0])
+        log_dist("DeepSpeed Final Optimizer = {}".format(self.optimizer.__class__.__name__), ranks=[0])
 
         self.compression_scheduler = self._configure_compression_scheduler()
         self.quantizer = self._configure_quantization()
