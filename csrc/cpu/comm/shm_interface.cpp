@@ -166,7 +166,7 @@ torch::Tensor inference_all_reduce_cpu(const torch::Tensor& self_)
 
 #include <ATen/FunctionalTensorWrapper.h>
 // The boilerplate functionalization logic, that teaches functionalization
-// how to map foo_() calls into foo() calls.
+// how to map x_() calls into x() calls.
 // Long term, we'd like to not require users to write this logic.
 // HOWEVER, if you have a custom op that is mutable,
 // You will still need to write an out-of-place version of that op!
@@ -177,13 +177,13 @@ at::Tensor& inference_all_reduce__functionalization_glue(at::Tensor& x)
     // First, sync and unwrap and functional tensors
     at::functionalization::impl::sync(x);
     auto x_ = at::functionalization::impl::from_functional_tensor(x);
-    // Grab the dispatcher entry corresponding to the out-of-place op, "foo"
+    // Grab the dispatcher entry corresponding to the out-of-place op, "x"
     static auto op_handle = c10::Dispatcher::singleton()
                                 // specify namespace::op_name, op_overload_name
                                 .findSchemaOrThrow("deepspeed::inference_all_reduce", "")
                                 // Specify the C++ schema of the out-of-place op.
                                 .typed<at::Tensor(const at::Tensor&)>();
-    // Next, redispatch to the out-of-place op, foo() (user called foo_, we call foo)
+    // Next, redispatch to the out-of-place op, x() (user called x_, we call x)
     at::Tensor tmp_output;
     {
         at::AutoDispatchSkipFunctionalize guard;
