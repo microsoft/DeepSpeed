@@ -2624,7 +2624,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             raise NotImplementedError("ZeRO-3 does not yet support elastic checkpointing, please disable for now.")
 
         if checkpoint_folder:
-            self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights, param_shapes)
+            self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights,
+                                            param_shapes)
         else:
             self._rigid_load_state_dict(state_dict_list[dist.get_rank(group=self.dp_process_group)],
                                         load_optimizer_states=load_optimizer_states)
@@ -2645,7 +2646,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.persistent_parameters[0].partition(self.persistent_parameters)
                 # self.persistent_parameters[0].all_gather(self.persistent_parameters) # this will be done in checkpoint_event_epilogue() so remove it to prevent double all_gather
 
-    def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights, param_shapes):
+    def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights,
+                                   param_shapes):
         self.load_hp_checkpoint_state_from_checkpoint_dir_stage3(checkpoint_folder, param_shapes)
 
     def load_hp_checkpoint_state_from_checkpoint_dir_stage3(self, checkpoint_dir, param_shapes):
@@ -2704,12 +2706,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
                 partitioned_param.data = q.data
 
-
     def _load_global_state_stage3(self, sd):
         self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)
         self.dynamic_loss_scale = sd.get('dynamic_loss_scale', self.dynamic_loss_scale)
         self.overflow = sd.get('overflow', self.overflow)
-
 
     def load_hp_checkpoint_state(self, folder, key):
         local_rank = dist.get_local_rank()
@@ -2721,7 +2721,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         checkpoint_state_partition = self.get_data_parallel_partitions(loaded_checkpoint_state)[local_rank]
 
         return checkpoint_state_partition
-
 
     def reset_swap_buffers(self):
         timer_names = set()
