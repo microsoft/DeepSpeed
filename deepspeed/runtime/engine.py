@@ -3610,7 +3610,7 @@ class DeepSpeedEngine(Module):
         if self.is_compiled:
             return
 
-        self.module = self.module.compile(backend=backend, **compile_kwargs)
+        self.module.compile(backend=backend, **compile_kwargs)
         self._is_compiled = True
 
     @property
