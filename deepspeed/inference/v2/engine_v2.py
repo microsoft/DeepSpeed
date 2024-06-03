@@ -132,6 +132,9 @@ class InferenceEngineV2:
             host_seq_desc = self._state_manager.get_or_create_sequence(uid)
             new_block_ids = self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
             if self._config.enable_prefix_cache and new_block_ids is not None:
+                for block_id in new_block_ids:
+                    assert self._state_manager._ref_counts[block_id.item()] == 0
+
                 self._state_manager.increment_ref_count(new_block_ids)
                 self._state_manager._block_map.delete(new_block_ids)
             host_seq_desc.pre_forward(tokens.numel())
