@@ -68,8 +68,8 @@ __device__ __forceinline__ uint32_t MultScale(uint32_t PackedFP16Pair, half Scal
 }
 
 __device__ __forceinline__ void Dequant_32FP6_4Way(uint32_t (*__restrict__ Reg)[4],
-                                                   uint32_t *__restrict__ read_RPTR_Frag1,
-                                                   uint32_t *__restrict__ read_RPTR_Frag2,
+                                                   uint32_t* __restrict__ read_RPTR_Frag1,
+                                                   uint32_t* __restrict__ read_RPTR_Frag2,
                                                    uint32_t* Scales)
 {
     uint32_t* OutputRegs = reinterpret_cast<uint32_t*>(Reg);

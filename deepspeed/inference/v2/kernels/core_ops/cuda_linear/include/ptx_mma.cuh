@@ -56,7 +56,8 @@ __device__ __forceinline__ void B_FromSharedToReg(
         }
     }
 #else
-    assert(("The matrix load functions are only supported on Ampere and newer architectures", false));
+    assert(
+        ("The matrix load functions are only supported on Ampere and newer architectures", false));
 #endif
 }
 #else
@@ -102,7 +103,8 @@ __device__ __forceinline__ void B_FromSharedToReg(
         }
     }
 #else
-    assert(("The matrix load functions are only supported on Ampere and newer architectures", false));
+    assert(
+        ("The matrix load functions are only supported on Ampere and newer architectures", false));
 #endif
 }
 #endif
