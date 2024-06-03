@@ -141,11 +141,6 @@ torch::Tensor& inference_all_reduce__meta(torch::Tensor& self_) { return self_; 
 
 torch::Tensor& inference_all_reduce__cpu(torch::Tensor& self_)
 {
-    static int first = 1;
-    if (first) {
-        printf("[%d] inplace version of inference_all_reduce called\n", world_rank);
-        first = 0;
-    }
     TORCH_INTERNAL_ASSERT(self_.device().type() == torch::DeviceType::CPU);
     torch::Tensor self_tensor = self_.contiguous();
     inference_all_reduce_(self_tensor, 0);
@@ -154,11 +149,6 @@ torch::Tensor& inference_all_reduce__cpu(torch::Tensor& self_)
 
 torch::Tensor inference_all_reduce_cpu(const torch::Tensor& self_)
 {
-    static int first = 1;
-    if (first) {
-        printf("[%d] outplace version of inference_all_reduce called\n", world_rank);
-        first = 0;
-    }
     torch::Tensor result = self_.clone();
     inference_all_reduce__cpu(result);
     return result;
