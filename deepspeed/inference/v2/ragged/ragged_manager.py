@@ -191,9 +191,9 @@ class DSStateManager:
         Update the KV cache for the given sequence id.
         """
         seq = self.get_sequence(uid)
-        num_full_blocks = tokens.numel() // self._kv_configs[0].block_size
+        num_full_blocks = seq.seen_tokens // self._kv_configs[0].block_size
         if num_full_blocks > seq.num_prefix_cache_blocks:
-            self._block_map.extend(tokens, seq.all_block_ids(), seq.num_prefix_cache_blocks)
+            self._block_map.extend(tokens[:seq.seen_tokens], seq.all_block_ids(), seq.num_prefix_cache_blocks)
             seq.num_prefix_cache_blocks = num_full_blocks
 
     def increment_ref_count(self, block_ids: torch.Tensor) -> None:
