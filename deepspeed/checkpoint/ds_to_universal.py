@@ -442,7 +442,8 @@ def _get_checkpoint_files(checkpoint_dir, glob_pattern):
 
 def _get_zero_stage(optim_files):
     state_dict = torch.load(optim_files[0], map_location=torch.device('cpu'))
-    zero_stage = state_dict[OPTIMIZER_STATE_DICT][ZERO_STAGE]
+    optimizer_state = state_dict[OPTIMIZER_STATE_DICT]
+    zero_stage = optimizer_state.get(ZERO_STAGE, 1)
     return zero_stage
 
 
