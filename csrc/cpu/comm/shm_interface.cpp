@@ -4,6 +4,8 @@
 // DeepSpeed Team
 
 #include <torch/extension.h>
+#include <torch/torch.h>
+//#include <torch/distributed.h>
 
 #include "shm.h"
 
@@ -46,7 +48,7 @@ void initialize(int size, int rank)
     if (all_ranks_local_p) { shm_initialize(size, rank, addr_string, port_string); }
 }
 
-int inference_all_reduce_(torch::Tensor& data, int op);
+void inference_all_reduce_(torch::Tensor& data, int op);
 
 /* returns: true -- cannot handle and need caller fallback; false -- can handle */
 bool inference_all_reduce_op_fallback_p(torch::Tensor& data)
@@ -57,14 +59,19 @@ bool inference_all_reduce_op_fallback_p(torch::Tensor& data)
         case c10::ScalarType::Float: break;
         default: return true;
     }
-    return false;
+    return true;
 }
 
 // Success - return 0
 // Fail (cannot hornor the request and need to fall back) - return -1
-int inference_all_reduce_(torch::Tensor& data, int op)
+void inference_all_reduce_(torch::Tensor& data, int op)
 {
-    if (!all_ranks_local_p) return -1;
+    if (inference_all_reduce_op_fallback_p(data)) {
+        // call torch.distributed.all_reduce
+        //static py::object torch_all_reduce = py::module_::import("torch").attr("distributed").attr("all_reduce");
+        //torch::distributed::all_reduce(data);
+        return;
+    }
     assert(op == 0);
 #ifdef DO_PROFILE
     static double total_time = 0.0;
@@ -89,7 +96,7 @@ int inference_all_reduce_(torch::Tensor& data, int op)
         default: data_type_fallback = true;
     }
 
-    if (data_type_fallback) return -1;
+    if (data_type_fallback) return;
 
     all_reduce_outer_loop(data, numel, data_size);
 
@@ -114,15 +121,12 @@ int inference_all_reduce_(torch::Tensor& data, int op)
         }
     }
 #endif
-    return 0;
+    return;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("initialize", &initialize, "shm initialize");
-    m.def("inference_all_reduce_op_fallback_p",
-          &inference_all_reduce_op_fallback_p,
-          "return 1 if op cannot handle and needs to fallback to PyTorch allreduce");
 }
 
 TORCH_LIBRARY(deepspeed, m)
