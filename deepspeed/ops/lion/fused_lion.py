@@ -11,7 +11,7 @@ from .multi_tensor_apply import MultiTensorApply
 
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import FusedLionBuilder
+from deepspeed.ops.op_builder.cuda import FusedLionBuilder
 
 
 class FusedLion(torch.optim.Optimizer):

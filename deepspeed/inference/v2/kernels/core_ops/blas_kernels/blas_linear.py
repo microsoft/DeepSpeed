@@ -6,7 +6,7 @@
 import torch
 
 from ....inference_utils import DtypeEnum
-from deepspeed.ops.op_builder import InferenceCoreBuilder
+from deepspeed.ops.op_builder.cuda import InferenceCoreBuilder
 from ... import DSKernelBase
 
 

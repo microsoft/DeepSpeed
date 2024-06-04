@@ -4,7 +4,7 @@
 # DeepSpeed Team
 import os
 
-from .builder import CUDAOpBuilder, installed_cuda_version
+from ..builder import CUDAOpBuilder, installed_cuda_version
 
 
 class InferenceCutlassBuilder(CUDAOpBuilder):

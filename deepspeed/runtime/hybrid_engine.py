@@ -18,7 +18,7 @@ from deepspeed.accelerator import get_accelerator
 from torch import nn
 from deepspeed.utils import logger
 
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 
 from deepspeed.module_inject.layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
 try:

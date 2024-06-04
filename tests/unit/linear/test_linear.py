@@ -12,7 +12,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.linear import OptimizedLinear, LoRAConfig, QuantizationConfig
 from unit.common import DistributedTest
 
-from deepspeed.ops.op_builder import FPQuantizerBuilder
+from deepspeed.ops.op_builder.cuda import FPQuantizerBuilder
 
 if not deepspeed.ops.__compatible_ops__[FPQuantizerBuilder.NAME]:
     pytest.skip("FPQuantizer op is not available on this system", allow_module_level=True)

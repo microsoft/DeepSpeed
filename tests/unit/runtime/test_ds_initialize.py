@@ -20,7 +20,7 @@ from deepspeed.runtime.config import ADAM_OPTIMIZER
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import FusedAdamBuilder
+from deepspeed.ops.op_builder.cuda import FusedAdamBuilder
 
 
 @pytest.mark.parametrize('zero_stage', [0, 3])

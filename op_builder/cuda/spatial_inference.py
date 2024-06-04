@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from .builder import CUDAOpBuilder, installed_cuda_version
+from ..builder import CUDAOpBuilder, installed_cuda_version
 
 
 class SpatialInferenceBuilder(CUDAOpBuilder):

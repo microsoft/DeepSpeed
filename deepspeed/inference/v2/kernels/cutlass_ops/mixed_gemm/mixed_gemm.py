@@ -7,7 +7,7 @@ import torch
 
 from ... import DSKernelBase
 from ....inference_utils import ActivationType, DtypeEnum
-from deepspeed.ops.op_builder import InferenceCutlassBuilder
+from deepspeed.ops.op_builder.cuda import InferenceCutlassBuilder
 
 from typing import Optional
 

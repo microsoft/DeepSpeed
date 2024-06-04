@@ -11,7 +11,7 @@ import deepspeed
 from transformers import pipeline
 from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("This op had not been implemented on this system.", allow_module_level=True)

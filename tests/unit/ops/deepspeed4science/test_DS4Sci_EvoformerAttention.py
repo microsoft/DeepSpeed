@@ -9,7 +9,7 @@ import pytest
 import torch
 from torch.nn import functional as F
 import deepspeed
-from deepspeed.ops.op_builder import EvoformerAttnBuilder
+from deepspeed.ops.op_builder.cuda import EvoformerAttnBuilder
 from deepspeed.ops.deepspeed4science import DS4Sci_EvoformerAttention
 from deepspeed.accelerator import get_accelerator
 from unit.util import skip_on_arch

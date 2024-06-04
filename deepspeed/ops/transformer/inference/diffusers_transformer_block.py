@@ -10,7 +10,7 @@ from deepspeed import module_inject
 from .diffusers_attention import DeepSpeedDiffusersAttention
 from .bias_add import nhwc_bias_add
 from .diffusers_2d_transformer import Diffusers2DTransformerConfig
-from deepspeed.ops.op_builder import InferenceBuilder, SpatialInferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder, SpatialInferenceBuilder
 from deepspeed.utils.types import ActivationFuncType
 
 # Ops will be loaded on demand

@@ -3,21 +3,19 @@
 
 # DeepSpeed Team
 
-import os
-
-from .builder import CUDAOpBuilder, installed_cuda_version
+from ..builder import CUDAOpBuilder, installed_cuda_version
 
 
-class RaggedUtilsBuilder(CUDAOpBuilder):
-    BUILD_VAR = "DS_BUILD_RAGGED_OPS"
-    NAME = "ragged_ops"
+class InferenceBuilder(CUDAOpBuilder):
+    BUILD_VAR = "DS_BUILD_TRANSFORMER_INFERENCE"
+    NAME = "transformer_inference"
 
     def __init__(self, name=None):
         name = self.NAME if name is None else name
         super().__init__(name=name)
 
     def absolute_name(self):
-        return f'deepspeed.inference.v2.{self.NAME}'
+        return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
 
     def is_compatible(self, verbose=True):
         try:
@@ -27,10 +25,10 @@ class RaggedUtilsBuilder(CUDAOpBuilder):
             return False
 
         cuda_okay = True
-        if not self.is_rocm_pytorch() and torch.cuda.is_available():  #ignore-cuda
+        if not self.is_rocm_pytorch() and torch.cuda.is_available():
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
-            cuda_capability = torch.cuda.get_device_properties(0).major  #ignore-cuda
+            cuda_capability = torch.cuda.get_device_properties(0).major
             if cuda_capability < 6:
                 self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
                 cuda_okay = False
@@ -52,26 +50,25 @@ class RaggedUtilsBuilder(CUDAOpBuilder):
             self.warning(f"Filtered compute capabilities {ccs_pruned}")
         return ccs_retained
 
-    def get_prefix(self):
-        ds_path = self.deepspeed_src_path("deepspeed")
-        return "deepspeed" if os.path.isdir(ds_path) else ".."
-
     def sources(self):
-        sources = [
-            "inference/v2/ragged/csrc/fast_host_buffer.cu",
-            "inference/v2/ragged/csrc/ragged_ops.cpp",
+        return [
+            'csrc/transformer/inference/csrc/pt_binding.cpp',
+            'csrc/transformer/inference/csrc/gelu.cu',
+            'csrc/transformer/inference/csrc/relu.cu',
+            'csrc/transformer/inference/csrc/layer_norm.cu',
+            'csrc/transformer/inference/csrc/rms_norm.cu',
+            'csrc/transformer/inference/csrc/softmax.cu',
+            'csrc/transformer/inference/csrc/dequantize.cu',
+            'csrc/transformer/inference/csrc/apply_rotary_pos_emb.cu',
+            'csrc/transformer/inference/csrc/transform.cu',
+            'csrc/transformer/inference/csrc/pointwise_ops.cu',
         ]
 
-        prefix = self.get_prefix()
-        sources = [os.path.join(prefix, src) for src in sources]
-        return sources
-
     def extra_ldflags(self):
-        return []
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            return []
 
     def include_paths(self):
-        include_dirs = ['inference/v2/ragged/includes', 'inference/v2/kernels/includes']
-        prefix = self.get_prefix()
-        includes = [os.path.join(prefix, include_dir) for include_dir in include_dirs]
-
-        return includes
+        return ['csrc/transformer/inference/includes', 'csrc/includes']

@@ -11,7 +11,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.linear.quantization import QuantizedParameter
 from deepspeed.linear.config import QuantizationConfig
 
-from deepspeed.ops.op_builder import FPQuantizerBuilder
+from deepspeed.ops.op_builder.cuda import FPQuantizerBuilder
 
 from unit.common import DistributedTest
 

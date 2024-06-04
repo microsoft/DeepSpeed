@@ -8,7 +8,7 @@ from typing import Optional
 import torch
 
 from ....inference_utils import ActivationType, DtypeEnum
-from deepspeed.ops.op_builder import InferenceCoreBuilder
+from deepspeed.ops.op_builder.cuda import InferenceCoreBuilder
 from ... import DSKernelBase
 
 

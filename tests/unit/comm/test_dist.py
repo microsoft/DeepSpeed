@@ -13,7 +13,7 @@ from unit.simple_model import SimpleModel
 from deepspeed.accelerator import get_accelerator
 
 import pytest
-from deepspeed.ops.op_builder import FusedAdamBuilder
+from deepspeed.ops.op_builder.cuda import FusedAdamBuilder
 
 if not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]:
     pytest.skip("This op had not been implemented on this system.", allow_module_level=True)

@@ -20,7 +20,7 @@ from deepspeed.inference.v2.kernels.ragged_ops import (
     LinearBlockedKVCopy,
 )
 from deepspeed.inference.v2.ragged import split_kv
-from deepspeed.ops.op_builder import RaggedUtilsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedUtilsBuilder
 
 from .ragged_testing_utils import build_batch_and_manager
 from ....v2.inference_test_utils import allclose

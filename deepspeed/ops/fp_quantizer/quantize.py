@@ -7,7 +7,7 @@ import torch
 import abc
 from abc import ABC
 
-from deepspeed.ops.op_builder import FPQuantizerBuilder
+from deepspeed.ops.op_builder.cuda import FPQuantizerBuilder
 
 fp_quant_module = None
 

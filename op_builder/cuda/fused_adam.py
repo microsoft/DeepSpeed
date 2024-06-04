@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from .builder import CUDAOpBuilder
+from ..builder import CUDAOpBuilder
 
 import sys
 

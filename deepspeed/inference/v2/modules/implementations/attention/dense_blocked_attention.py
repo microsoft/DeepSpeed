@@ -20,7 +20,7 @@ from ....kernels.ragged_ops import (
     LinearBlockedKVCopy,
 )
 from ....ragged import RaggedBatchWrapper, split_kv
-from deepspeed.ops.op_builder import RaggedUtilsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedUtilsBuilder
 
 from ...interfaces import DSSelfAttentionBase, DSSelfAttentionRegistry
 from ...configs import DSSelfAttentionConfig, PositionalEmbeddingType, MaskingType

@@ -7,7 +7,7 @@ import torch
 
 from ... import DSKernelBase
 from ....inference_utils import DtypeEnum
-from deepspeed.ops.op_builder import RaggedOpsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedOpsBuilder
 
 
 class MoEGather(DSKernelBase):

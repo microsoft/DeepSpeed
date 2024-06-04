@@ -10,7 +10,7 @@ from typing import Tuple
 from ... import DSKernelBase
 from ....inference_utils import DtypeEnum
 from ....ragged import RaggedBatchWrapper
-from deepspeed.ops.op_builder import RaggedOpsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedOpsBuilder
 
 
 class RaggedTopKGating(DSKernelBase):

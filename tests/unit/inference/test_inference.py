@@ -26,7 +26,7 @@ from transformers.models.roberta.modeling_roberta import RobertaLayer
 from deepspeed.accelerator import get_accelerator
 from deepspeed.git_version_info import torch_info
 from deepspeed.model_implementations import DeepSpeedTransformerInference
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 from deepspeed.ops.op_builder import OpBuilder
 
 from unit.common import DistributedTest

@@ -7,7 +7,7 @@ import deepspeed
 import torch
 import pytest
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 from .inference_test_utils import allclose, get_dtypes, assert_almost_equal
 try:
     import triton  # noqa: F401 # type: ignore

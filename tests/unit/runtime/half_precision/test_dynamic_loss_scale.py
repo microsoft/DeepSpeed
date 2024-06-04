@@ -10,7 +10,7 @@ import pytest
 import numpy as np
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
-from deepspeed.ops.op_builder import FusedLambBuilder
+from deepspeed.ops.op_builder.cuda import FusedLambBuilder
 
 
 def run_model_step(model, gradient_list):

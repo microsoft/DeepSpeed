@@ -9,7 +9,7 @@ from os import path
 import torch
 
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import RaggedUtilsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedUtilsBuilder
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from .layer_container_base import LayerContainer
 from ..inference_parameter import InferenceParameter, STR_TO_DTYPE

@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import deepspeed
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 import deepspeed.ops.transformer.inference.triton.matmul_ext as matmul_ext
 from deepspeed.ops.transformer.inference.triton.layer_norm import layer_norm, layer_norm_residual
 

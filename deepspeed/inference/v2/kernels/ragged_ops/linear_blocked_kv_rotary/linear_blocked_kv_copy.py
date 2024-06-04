@@ -12,7 +12,7 @@ import torch
 
 from ....inference_utils import DtypeEnum
 from ....ragged import RaggedBatchWrapper
-from deepspeed.ops.op_builder import RaggedOpsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedOpsBuilder
 from ... import DSKernelBase
 
 

@@ -6,7 +6,7 @@
 import pytest
 import torch
 import deepspeed
-from deepspeed.ops.op_builder import SpatialInferenceBuilder
+from deepspeed.ops.op_builder.cuda import SpatialInferenceBuilder
 from deepspeed.ops.transformer.inference.bias_add import nhwc_bias_add
 from deepspeed.accelerator import get_accelerator
 

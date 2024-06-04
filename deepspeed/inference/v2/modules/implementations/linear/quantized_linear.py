@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 import torch
 
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import InferenceCoreBuilder
+from deepspeed.ops.op_builder.cuda import InferenceCoreBuilder
 from ....allocator import empty_from
 from ....inference_utils import is_gated
 from ....kernels.core_ops import (

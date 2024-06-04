@@ -19,7 +19,7 @@ class TestDequantization(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         self.device = torch.device(get_accelerator().device_name(local_rank))
 
-        from deepspeed.ops.op_builder import InferenceBuilder
+        from deepspeed.ops.op_builder.cuda import InferenceBuilder
         if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
             pytest.skip("InferenceBuilder is not implemented")
         else:

@@ -5,7 +5,7 @@
 
 from typing import Optional
 import torch
-from deepspeed.ops.op_builder import SpatialInferenceBuilder
+from deepspeed.ops.op_builder.cuda import SpatialInferenceBuilder
 
 spatial_cuda_module = None
 

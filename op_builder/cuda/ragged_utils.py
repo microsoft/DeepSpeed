@@ -3,19 +3,21 @@
 
 # DeepSpeed Team
 
-from .builder import CUDAOpBuilder, installed_cuda_version
+import os
+
+from ..builder import CUDAOpBuilder, installed_cuda_version
 
 
-class FPQuantizerBuilder(CUDAOpBuilder):
-    BUILD_VAR = "DS_BUILD_FP_QUANTIZER"
-    NAME = "fp_quantizer"
+class RaggedUtilsBuilder(CUDAOpBuilder):
+    BUILD_VAR = "DS_BUILD_RAGGED_OPS"
+    NAME = "ragged_ops"
 
     def __init__(self, name=None):
         name = self.NAME if name is None else name
         super().__init__(name=name)
 
     def absolute_name(self):
-        return f'deepspeed.ops.fp_quantizer.{self.NAME}_op'
+        return f'deepspeed.inference.v2.{self.NAME}'
 
     def is_compatible(self, verbose=True):
         try:
@@ -29,8 +31,8 @@ class FPQuantizerBuilder(CUDAOpBuilder):
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
             cuda_capability = torch.cuda.get_device_properties(0).major  #ignore-cuda
-            if cuda_capability < 8:
-                self.warning("NVIDIA Inference is only supported on Ampere and newer architectures")
+            if cuda_capability < 6:
+                self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
                 cuda_okay = False
             if cuda_capability >= 8:
                 if torch_cuda_major < 11 or sys_cuda_major < 11:
@@ -42,7 +44,7 @@ class FPQuantizerBuilder(CUDAOpBuilder):
         ccs_retained = []
         ccs_pruned = []
         for cc in ccs:
-            if int(cc[0]) >= 8:
+            if int(cc[0]) >= 6:
                 ccs_retained.append(cc)
             else:
                 ccs_pruned.append(cc)
@@ -50,14 +52,26 @@ class FPQuantizerBuilder(CUDAOpBuilder):
             self.warning(f"Filtered compute capabilities {ccs_pruned}")
         return ccs_retained
 
+    def get_prefix(self):
+        ds_path = self.deepspeed_src_path("deepspeed")
+        return "deepspeed" if os.path.isdir(ds_path) else ".."
+
     def sources(self):
-        return [
-            "csrc/fp_quantizer/fp_quantize.cu",
-            "csrc/fp_quantizer/fp_quantize.cpp",
+        sources = [
+            "inference/v2/ragged/csrc/fast_host_buffer.cu",
+            "inference/v2/ragged/csrc/ragged_ops.cpp",
         ]
 
+        prefix = self.get_prefix()
+        sources = [os.path.join(prefix, src) for src in sources]
+        return sources
+
     def extra_ldflags(self):
-        return ['-lcurand']
+        return []
 
     def include_paths(self):
-        return ['csrc/fp_quantizer/includes', 'csrc/includes']
+        include_dirs = ['inference/v2/ragged/includes', 'inference/v2/kernels/includes']
+        prefix = self.get_prefix()
+        includes = [os.path.join(prefix, include_dir) for include_dir in include_dirs]
+
+        return includes

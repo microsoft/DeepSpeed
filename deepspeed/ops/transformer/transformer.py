@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.autograd import Function
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import TransformerBuilder, StochasticTransformerBuilder
+from deepspeed.ops.op_builder.cuda import TransformerBuilder, StochasticTransformerBuilder
 
 # Cuda modules will be imported if needed
 transformer_cuda_module = None

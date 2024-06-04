@@ -7,7 +7,7 @@ import deepspeed
 import torch
 import pytest
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import InferenceBuilder  # type: ignore
+from deepspeed.ops.op_builder.cuda import InferenceBuilder  # type: ignore
 from .inference_test_utils import allclose, get_dtypes
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:

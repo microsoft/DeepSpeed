@@ -6,7 +6,7 @@
 import pytest
 import torch
 import deepspeed
-from deepspeed.ops.op_builder import QuantizerBuilder
+from deepspeed.ops.op_builder.cuda import QuantizerBuilder
 from deepspeed.accelerator import get_accelerator
 
 if not deepspeed.ops.__compatible_ops__[QuantizerBuilder.NAME]:

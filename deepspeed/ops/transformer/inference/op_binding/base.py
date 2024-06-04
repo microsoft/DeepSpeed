@@ -6,7 +6,7 @@
 import torch
 from ..config import DeepSpeedInferenceConfig
 
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 
 
 class BaseOp(torch.nn.Module):

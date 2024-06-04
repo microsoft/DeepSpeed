@@ -16,7 +16,7 @@ from .config import DeepSpeedInferenceConfig
 from ....moe.sharded_moe import TopKGate
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder.cuda import InferenceBuilder
 
 
 class DeepSpeedMoEInferenceConfig(DeepSpeedInferenceConfig):

@@ -8,7 +8,7 @@ from typing import Tuple
 import torch
 
 from ... import DSKernelBase
-from deepspeed.ops.op_builder import RaggedOpsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedOpsBuilder
 from ....ragged import RaggedBatchWrapper
 
 

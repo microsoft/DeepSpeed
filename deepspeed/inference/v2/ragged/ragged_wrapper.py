@@ -8,7 +8,7 @@ from typing import Optional
 import torch
 
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import RaggedUtilsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedUtilsBuilder
 
 from .sequence_descriptor import DSSequenceDescriptor
 from .manager_configs import DSStateManagerConfig

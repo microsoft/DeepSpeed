@@ -7,7 +7,7 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from ....inference_utils import DtypeEnum
-from deepspeed.ops.op_builder import RaggedOpsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedOpsBuilder
 
 from ... import DSKernelBase
 

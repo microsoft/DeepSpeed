@@ -9,7 +9,7 @@ import torch
 
 from ... import DSKernelBase
 from ....inference_utils import ActivationType, elem_size
-from deepspeed.ops.op_builder import InferenceCoreBuilder
+from deepspeed.ops.op_builder.cuda import InferenceCoreBuilder
 
 
 class CUDAGatedActivation(DSKernelBase):

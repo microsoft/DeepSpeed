@@ -5,7 +5,7 @@
 
 import torch
 
-from deepspeed.ops.op_builder import RandomLTDBuilder
+from deepspeed.ops.op_builder.cuda import RandomLTDBuilder
 """
 Returns:
     sampled_indices: [layers, batch_size, reserved_length]

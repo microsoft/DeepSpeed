@@ -7,7 +7,7 @@ import torch
 import pytest
 import deepspeed
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import QuantizerBuilder
+from deepspeed.ops.op_builder.cuda import QuantizerBuilder
 
 if not deepspeed.ops.__compatible_ops__[QuantizerBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)

@@ -5,7 +5,7 @@
 
 import torch
 
-from deepspeed.ops.op_builder import QuantizerBuilder
+from deepspeed.ops.op_builder.cuda import QuantizerBuilder
 
 # Cuda modules will be imported if needed
 quantizer_cuda_module = None

@@ -7,7 +7,7 @@ import torch
 from typing import Any, Dict, Optional, Tuple
 
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import RaggedUtilsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedUtilsBuilder
 from deepspeed.utils.logging import logger
 
 from .blocked_allocator import BlockedAllocator

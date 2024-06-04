@@ -3,19 +3,19 @@
 
 # DeepSpeed Team
 
-from .builder import CUDAOpBuilder, installed_cuda_version
+from ..builder import CUDAOpBuilder, installed_cuda_version
 
 
-class InferenceBuilder(CUDAOpBuilder):
-    BUILD_VAR = "DS_BUILD_TRANSFORMER_INFERENCE"
-    NAME = "transformer_inference"
+class FPQuantizerBuilder(CUDAOpBuilder):
+    BUILD_VAR = "DS_BUILD_FP_QUANTIZER"
+    NAME = "fp_quantizer"
 
     def __init__(self, name=None):
         name = self.NAME if name is None else name
         super().__init__(name=name)
 
     def absolute_name(self):
-        return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
+        return f'deepspeed.ops.fp_quantizer.{self.NAME}_op'
 
     def is_compatible(self, verbose=True):
         try:
@@ -25,12 +25,12 @@ class InferenceBuilder(CUDAOpBuilder):
             return False
 
         cuda_okay = True
-        if not self.is_rocm_pytorch() and torch.cuda.is_available():
+        if not self.is_rocm_pytorch() and torch.cuda.is_available():  #ignore-cuda
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
-            cuda_capability = torch.cuda.get_device_properties(0).major
-            if cuda_capability < 6:
-                self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
+            cuda_capability = torch.cuda.get_device_properties(0).major  #ignore-cuda
+            if cuda_capability < 8:
+                self.warning("NVIDIA Inference is only supported on Ampere and newer architectures")
                 cuda_okay = False
             if cuda_capability >= 8:
                 if torch_cuda_major < 11 or sys_cuda_major < 11:
@@ -42,7 +42,7 @@ class InferenceBuilder(CUDAOpBuilder):
         ccs_retained = []
         ccs_pruned = []
         for cc in ccs:
-            if int(cc[0]) >= 6:
+            if int(cc[0]) >= 8:
                 ccs_retained.append(cc)
             else:
                 ccs_pruned.append(cc)
@@ -52,23 +52,12 @@ class InferenceBuilder(CUDAOpBuilder):
 
     def sources(self):
         return [
-            'csrc/transformer/inference/csrc/pt_binding.cpp',
-            'csrc/transformer/inference/csrc/gelu.cu',
-            'csrc/transformer/inference/csrc/relu.cu',
-            'csrc/transformer/inference/csrc/layer_norm.cu',
-            'csrc/transformer/inference/csrc/rms_norm.cu',
-            'csrc/transformer/inference/csrc/softmax.cu',
-            'csrc/transformer/inference/csrc/dequantize.cu',
-            'csrc/transformer/inference/csrc/apply_rotary_pos_emb.cu',
-            'csrc/transformer/inference/csrc/transform.cu',
-            'csrc/transformer/inference/csrc/pointwise_ops.cu',
+            "csrc/fp_quantizer/fp_quantize.cu",
+            "csrc/fp_quantizer/fp_quantize.cpp",
         ]
 
     def extra_ldflags(self):
-        if not self.is_rocm_pytorch():
-            return ['-lcurand']
-        else:
-            return []
+        return ['-lcurand']
 
     def include_paths(self):
-        return ['csrc/transformer/inference/includes', 'csrc/includes']
+        return ['csrc/fp_quantizer/includes', 'csrc/includes']

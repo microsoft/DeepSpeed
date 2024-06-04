@@ -6,7 +6,7 @@
 import torch
 
 from ... import DSKernelBase
-from deepspeed.ops.op_builder import RaggedOpsBuilder
+from deepspeed.ops.op_builder.cuda import RaggedOpsBuilder
 from ....inference_utils import elem_size
 from ....ragged import RaggedBatchWrapper
 

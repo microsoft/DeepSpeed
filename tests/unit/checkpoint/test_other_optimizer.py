@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import deepspeed
-from deepspeed.ops.op_builder import FusedLambBuilder
+from deepspeed.ops.op_builder.cuda import FusedLambBuilder
 
 from unit.common import DistributedTest
 from unit.simple_model import *
