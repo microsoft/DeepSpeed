@@ -13,7 +13,7 @@ COMPILE_CONFIG = "compile"
 
 
 def is_compile_supported():
-    return hasattr(torch, "compiler")
+    return hasattr(torch, "compiler") and hasattr(torch.nn.Module, "compile")
 
 
 def disable(func):
