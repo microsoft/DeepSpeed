@@ -1167,17 +1167,14 @@ class DeepSpeedEngine(Module):
 
         if dist.get_rank() == 0:
             print(f"DS Engine SP group size : {self.sequence_parallel_size}")
-        ###DistAttn
-        #self.ds_dist_attn = None
         if self.sequence_parallel_size > 1:
             #replace module attention with deespeed dist attention
             for _, module in self.module.named_modules():
-                #print(f"module: {module}")
                 if all(hasattr(module, attr) for attr in ['k_proj', 'v_proj', 'q_proj', 'out_proj']):
 
                     attn = module
                     compute_attn_sp = DistributedAttention(
-                        attn.forward,
+                        attn._flash_attention_forward,
                         self.get_sequence_parallel_group(),
                         2,
                         1,
