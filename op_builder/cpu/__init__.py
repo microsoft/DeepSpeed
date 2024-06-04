@@ -7,4 +7,5 @@
 from .comm import CCLCommBuilder, ShareMemCommBuilder
 from .fused_adam import FusedAdamBuilder
 from .cpu_adam import CPUAdamBuilder
+from .transformer_inference import InferenceBuilder
 from .no_impl import NotImplementedBuilder
