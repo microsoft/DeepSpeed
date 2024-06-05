@@ -18,6 +18,7 @@ build_win.bat
 The wheel will be located at: dist/*.whl
 """
 
+import pathlib
 import os
 import shutil
 import sys
@@ -209,9 +210,12 @@ else:
     git_branch = "unknown"
 
 if sys.platform == "win32":
-    shutil.copytree('.\\csrc', '.\\deepspeed\\ops')
-    shutil.copytree('.\\op_builder', '.\\deepspeed\\ops')
-    shutil.copytree('.\\accelerator', '.\\deepspeed\\accelerator')
+    pathlib.Path('.\\deepspeed\\ops\\csrc').unlink(missing_ok=True)
+    shutil.copytree('.\\csrc', '.\\deepspeed\\ops\\csrc', dirs_exist_ok=True)
+    pathlib.Path('.\\deepspeed\\ops\\op_builder').unlink(missing_ok=True)
+    shutil.copytree('.\\op_builder', '.\\deepspeed\\ops\\op_builder', dirs_exist_ok=True)
+    pathlib.Path('.\\deepspeed\\accelerator').unlink(missing_ok=True)
+    shutil.copytree('.\\accelerator', '.\\deepspeed\\accelerator', dirs_exist_ok=True)
     egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt.
