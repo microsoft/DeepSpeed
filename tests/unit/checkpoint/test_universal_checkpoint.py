@@ -159,7 +159,7 @@ class baseline_ws4(_baseline):
 
 
 @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
-@pytest.mark.parametrize("zero_stage", [1])
+@pytest.mark.parametrize("zero_stage", [1, 3])
 @pytest.mark.parametrize("use_torch_adam", [False, True])
 @pytest.mark.parametrize("load_optim", [False, True])
 class TestZeROUniversalCheckpointDP(DistributedTest):
