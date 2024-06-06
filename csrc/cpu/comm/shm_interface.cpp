@@ -4,8 +4,6 @@
 // DeepSpeed Team
 
 #include <torch/extension.h>
-#include <torch/torch.h>
-//#include <torch/distributed.h>
 
 #include "shm.h"
 
@@ -50,28 +48,10 @@ void initialize(int size, int rank)
 
 void inference_all_reduce_(torch::Tensor& data, int op);
 
-/* returns: true -- cannot handle and need caller fallback; false -- can handle */
-bool inference_all_reduce_op_fallback_p(torch::Tensor& data)
-{
-    if (!all_ranks_local_p) return true;
-    switch (data.scalar_type()) {
-        case c10::ScalarType::BFloat16: break;
-        case c10::ScalarType::Float: break;
-        default: return true;
-    }
-    return true;
-}
-
 // Success - return 0
 // Fail (cannot hornor the request and need to fall back) - return -1
 void inference_all_reduce_(torch::Tensor& data, int op)
 {
-    if (inference_all_reduce_op_fallback_p(data)) {
-        // call torch.distributed.all_reduce
-        //static py::object torch_all_reduce = py::module_::import("torch").attr("distributed").attr("all_reduce");
-        //torch::distributed::all_reduce(data);
-        return;
-    }
     assert(op == 0);
 #ifdef DO_PROFILE
     static double total_time = 0.0;
