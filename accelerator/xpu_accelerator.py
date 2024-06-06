@@ -272,7 +272,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, class_name):
         builder_class = self.get_op_builder(class_name)
-        return None if builder_class is None else builder_class()
+        return builder_class()
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
@@ -280,7 +280,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         if class_name in self.class_dict:
             return self.class_dict[class_name]
         else:
-            return self.class_dict['NotImplementedBuilder'] if 'NotImplementedBuilder' in self.class_dict else None
+            return self.class_dict['NotImplementedBuilder']
 
     def build_extension(self):
         try:
