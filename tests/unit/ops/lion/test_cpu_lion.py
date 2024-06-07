@@ -11,7 +11,7 @@ from cpuinfo import get_cpu_info
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.lion import FusedLion
-from deepspeed.ops.op_builder import CPULionBuilder
+from deepspeed.ops.op_builder.cuda import CPULionBuilder
 from unit.common import DistributedTest
 
 pytest.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()

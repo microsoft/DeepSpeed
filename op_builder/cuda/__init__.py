@@ -4,6 +4,10 @@
 # DeepSpeed Team
 '''Copyright The Microsoft DeepSpeed Team'''
 from .evoformer_attn import EvoformerAttnBuilder
+from .async_io import AsyncIOBuilder
+from .cpu_adagrad import CPUAdagradBuilder
+from .cpu_adam import CPUAdamBuilder
+from .cpu_lion import CPULionBuilder
 from .fp_quantizer import FPQuantizerBuilder
 from .fused_adam import FusedAdamBuilder
 from .fused_lamb import FusedLambBuilder

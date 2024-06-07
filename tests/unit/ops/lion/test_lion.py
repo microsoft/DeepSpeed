@@ -12,7 +12,7 @@ from deepspeed.ops.lion import DeepSpeedCPULion
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import CPULionBuilder
+from deepspeed.ops.op_builder.cuda import CPULionBuilder
 
 if torch.half not in get_accelerator().supported_dtypes():
     pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)

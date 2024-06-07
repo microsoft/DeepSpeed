@@ -12,7 +12,7 @@ from cpuinfo import get_cpu_info
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.adam import FusedAdam, DeepSpeedCPUAdam
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder.cuda import CPUAdamBuilder
 from deepspeed.ops.op_builder.cuda import FusedAdamBuilder
 from unit.common import DistributedTest
 
