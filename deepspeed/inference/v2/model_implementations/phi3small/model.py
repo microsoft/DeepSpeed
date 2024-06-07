@@ -175,10 +175,9 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
         Performs unembedding of the hidden states to logits. This will only sample the final
         token of each sequence.
         """
-        word_unembed = torch.empty(self.vocab_size, self.model_dim, dtype=hidden_states.dtype, device=hidden_states.device)
-        torch.nn.init.xavier_uniform_(word_unembed)
+
         logits = self.unembed(hidden_states,
-                              word_unembed,
+                              self._non_transformer.word_unembed,
                               ragged_batch_info,
                               gamma=self._non_transformer.final_norm_gamma,
                               beta=self._non_transformer.final_norm_beta)

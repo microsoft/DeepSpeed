@@ -79,9 +79,10 @@ class Phi3SmallNonTransformerContainer(LayerContainer):
     word_emb: EmbeddingParameter
     final_norm_gamma: NormParameter
     final_norm_beta: NormParameter
+    word_unembed: UnembedParameter
 
     PARAM_MAPPING = {
-        "model.embed_tokens.weight": "word_emb.params",
+        "model.embed_tokens.weight": ["word_emb.params", "word_unembed.params"],
         "model.final_layernorm.weight": "final_norm_gamma.params",
         "model.final_layernorm.bias": "final_norm_beta.params",
     }
