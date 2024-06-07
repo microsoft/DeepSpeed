@@ -2242,6 +2242,30 @@ class GatheredParameters:
 
 
 class ZeRO3HybridOffload:
+    """NOTE: This feature works only for forward pass.
+    This feature allows users to gather ZeRO3-partitioned params and offload a part of them to host memory. The offloaded parameters are loaded to device memory in pre-forward hook and offloaded back to host memory in post-forward hook.
+
+    Args:
+        model (``torch.nn.Module``): The model whose parameters will be gathered and offloaded. The model must be initialized for ZeRO3.
+        param_threshold (int): The threshold for the number of parameters to offload to host memory.
+
+    Usage:
+    ======
+    You can reduce all-gather's in loop.
+
+    .. code-block:: python
+
+        with deepspeed.zero.ZeRO3HybridOffload(model, param_threshold=1e9):
+            for x in dataset:
+                output = model(x)
+
+    Generation using auto-regressive models is one good example where this feature can be useful.
+
+    ... code-block:: python
+
+        with deepspeed.zero.ZeRO3HybridOffload(model, param_threshold=1e9):
+            output = model.generate(input_ids)
+    """
 
     def __init__(self, model, param_threshold, enabled=True):
         self.enabled = enabled
@@ -2259,6 +2283,7 @@ class ZeRO3HybridOffload:
 
         for m in self.model.modules():
             offloaded_params = []
+            m.disable_z3_fetch = True
 
             for p in m.parameters(recurse=False):
                 p.all_gather(param_list=[p])
@@ -2298,3 +2323,9 @@ class ZeRO3HybridOffload:
         for p in self.gathered_params:
             p.data = p.data.to(self.device)
             p.partition(param_list=[p], has_been_updated=False)
+
+        for h in self.handles:
+            h.remove()
+
+        for m in self.model.modules():
+            m.disable_z3_fetch = False
