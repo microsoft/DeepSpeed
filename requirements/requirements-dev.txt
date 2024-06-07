@@ -1,4 +1,4 @@
-accelerate
+accelerate==0.30.1
 clang-format==16.0.2
 comet_ml>=3.41.0
 deepspeed-kernels ; sys_platform == 'linux'
