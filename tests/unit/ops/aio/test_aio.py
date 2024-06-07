@@ -10,7 +10,7 @@ import torch
 import deepspeed
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import AsyncIOBuilder
+from deepspeed.ops.op_builder.cuda import AsyncIOBuilder
 from unit.common import DistributedTest
 
 KILO_BYTE = 1024

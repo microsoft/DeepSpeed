@@ -6,7 +6,7 @@
 import pytest
 from unit.common import DistributedTest
 from unit.simple_model import UnusedParametersModel, random_dataloader
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder.cuda import CPUAdamBuilder
 
 import deepspeed
 from deepspeed.accelerator import get_accelerator

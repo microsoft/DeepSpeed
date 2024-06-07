@@ -3,4 +3,4 @@
 
 # DeepSpeed Team
 
-from ..op_builder import AsyncIOBuilder
+from ..op_builder.cuda import AsyncIOBuilder

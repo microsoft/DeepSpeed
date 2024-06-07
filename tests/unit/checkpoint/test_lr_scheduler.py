@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import deepspeed
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder.cuda import CPUAdamBuilder
 from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest

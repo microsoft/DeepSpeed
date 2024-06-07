@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import torch
-from deepspeed.ops.op_builder import CPUAdagradBuilder
+from deepspeed.ops.op_builder.cuda import CPUAdagradBuilder
 from deepspeed.utils.logging import should_log_le
 
 
