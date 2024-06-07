@@ -90,7 +90,12 @@ def train_save_convert(ds_config, hidden_dim, load_optim, use_torch_adam, dtype,
         model.backward(loss)
         model.step()
 
-    sd = model.optimizer.optimizer.state_dict() if load_optim else None
+    if ds_config["zero_optimization"]["stage"] == 3:
+        model.optimizer._set_fp32_optimizer_param_groups()
+        sd = model.optimizer.optimizer.state_dict() if load_optim else None
+        model.optimizer._clear_fp32_optimizer_param_groups()
+    else:
+        sd = model.optimizer.optimizer.state_dict() if load_optim else None
 
     client_state = {}
     client_state[UNIVERSAL_CHECKPOINT_INFO] = {}
@@ -114,7 +119,12 @@ def train_save_convert(ds_config, hidden_dim, load_optim, use_torch_adam, dtype,
     model_state = model.state_dict()
     optimizer_state = None
     if load_optim:
-        optimizer_state = gather_opt_state(model.optimizer.optimizer.state_dict())
+        if ds_config["zero_optimization"]["stage"] == 3:
+            model.optimizer._set_fp32_optimizer_param_groups()
+            optimizer_state = gather_opt_state(model.optimizer.optimizer.state_dict())
+            model.optimizer._clear_fp32_optimizer_param_groups()
+        else:
+            optimizer_state = gather_opt_state(model.optimizer.optimizer.state_dict())
 
     if dist.get_rank() == 0:
         torch.save((model_state, optimizer_state), os.path.join(tmpdir, "baseline_state.pt"))
@@ -182,7 +192,12 @@ class TestZeROUniversalCheckpointDP(DistributedTest):
         compare_state_dicts(model_state, loaded_model_state)
 
         if load_optim:
-            optimizer_state = gather_opt_state(univ_model.optimizer.optimizer.state_dict())
+            if ds_config["zero_optimization"]["stage"] == 3:
+                univ_model.optimizer._set_fp32_optimizer_param_groups()
+                optimizer_state = gather_opt_state(univ_model.optimizer.optimizer.state_dict())
+                univ_model.optimizer._clear_fp32_optimizer_param_groups()
+            else:
+                optimizer_state = gather_opt_state(univ_model.optimizer.optimizer.state_dict())
             # padding sizes may differ when dp sizes are different
             param_count = sum(p.numel() for p in univ_model.parameters())
             optimizer_state = remove_pad_in_opt_state(optimizer_state, param_count)

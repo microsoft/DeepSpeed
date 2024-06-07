@@ -157,10 +157,10 @@ def extract_zero_shards_stage3(optim_files, param_shapes, dp_degree, temp_dir, d
     for name, shape in param_shapes.items():
         unpartitioned_numel = shape.numel()
         partitioned_numel, _ = _zero_partitioned_param_info(unpartitioned_numel, dp_degree)
-
+        padding_free_numel = min(partitioned_numel, abs(unpartitioned_numel - dp_index * partitioned_numel))
         for state_key in flat_state.keys():
             dump_param_fragment(temp_dir, 0, dp_index, state_key, flat_state[state_key], name, offset,
-                                partitioned_numel)
+                                padding_free_numel)
         offset += partitioned_numel
 
 
