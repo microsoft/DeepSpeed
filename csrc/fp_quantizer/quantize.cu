@@ -69,10 +69,10 @@ __global__ void apply_quantization(T* val,
                                    std::pair<uint64_t, uint64_t> seed,
                                    float q_range)
 {
-    int tidx = threadIdx.x;
-    int wid = tidx >> 5;
-    int lane = tidx & 0x1f;
-    int gid = blockIdx.x * quantization::warps + wid;
+    unsigned int tidx = threadIdx.x;
+    unsigned int wid = tidx >> 5;
+    unsigned int lane = tidx & 0x1f;
+    unsigned int gid = blockIdx.x * quantization::warps + wid;
 
     constexpr int q_exponent_bits = total_q_bits - q_mantisa_bits - 1;
     constexpr uint32_t _mantisa_mask = (1 << _mantisa_bits) - 1;
@@ -96,7 +96,7 @@ __global__ void apply_quantization(T* val,
     T cur_max;
     reduce::init<ROp::Max>(&cur_max);
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
 
@@ -226,7 +226,7 @@ template <typename T,
 __global__ void apply_dequantization(uint8_t* val, T* q_val, int group_size, int total_num_elements)
 {
     constexpr uint32_t vector_size = quantization::access_granularity / sizeof(T);
-    int tidx = (blockIdx.x * blockDim.x + threadIdx.x) * vector_size;
+    unsigned int tidx = (blockIdx.x * blockDim.x + threadIdx.x) * vector_size;
 
     constexpr int quantized_bits = _mantisa_bits + _exponent_bits + 1;
     constexpr int q_exponent_bits = total_q_bits - q_mantisa_bits - 1;
@@ -306,7 +306,6 @@ __global__ void apply_dequantization(uint8_t* val, T* q_val, int group_size, int
             if (dst_exponent != (1 << q_exponent_bits) - 1)
                 dst_exponent = (dst_exponent - ((1 << (_exponent_bits - 1)) - 1)) +
                                (1 << (q_exponent_bits - 1)) - 1;
-
             q_buf[j] =
                 ((sign << (q_exponent_bits + q_mantisa_bits)) | (dst_exponent << q_mantisa_bits) |
                  (dst_mantisa << (q_mantisa_bits - _mantisa_bits)));
@@ -332,7 +331,7 @@ __global__ void apply_dequantization(uint8_t* val, T* q_val, int group_size, int
 template <typename T, int mantisa, int exponent>
 void launch_quantization(T* val,
                          uint8_t* q_val,
-                         int num_groups,
+                         size_t num_groups,
                          int group_size,
                          cudaStream_t stream,
                          float q_range,
@@ -342,12 +341,12 @@ void launch_quantization(T* val,
 {
     const dim3 grid((num_groups + quantization::warps - 1) / quantization::warps);
     const dim3 block(quantization::threads);
-
     std::pair<uint64_t, uint64_t> seed = FPContext::Instance().IncrementOffset(16);
 
     constexpr int vals_per_unroll = hw_warp_size * quantization::access_granularity / sizeof(T);
 
     const int copy_unroll = (group_size + vals_per_unroll - 1) / vals_per_unroll;
+
     QUANT_SWITCH((q_bits - q_mantisa_bits - 1) * q_mantisa_bits + stochastic_rounding, [&] {
         switch (copy_unroll) {
             LAUNCH_FOR_QUANTIZATION_UNROLL(1)
@@ -361,7 +360,7 @@ void launch_quantization(T* val,
 }
 #define INSTANTIATE_LAUNCH_QUANTIZATION(T, mantisa, exponent) \
     template void launch_quantization<T, mantisa, exponent>(  \
-        T*, uint8_t*, int, int, cudaStream_t, float q_range, int, int, int);
+        T*, uint8_t*, size_t, int, cudaStream_t, float q_range, int, int, int);
 // fp8(E4M3), nearest-rounding
 #ifdef BF16_AVAILABLE
 INSTANTIATE_LAUNCH_QUANTIZATION(__nv_bfloat16, 23, 8);
@@ -371,7 +370,7 @@ INSTANTIATE_LAUNCH_QUANTIZATION(__half, 23, 8);
 template <typename T, int mantisa>
 void launch_dequantization(uint8_t* val,
                            T* q_val,
-                           int num_groups,
+                           size_t num_groups,
                            int group_size,
                            int q_mantisa_bits,
                            int q_exponent_bits,
@@ -388,7 +387,8 @@ void launch_dequantization(uint8_t* val,
     });
 }
 #define INSTANTIATE_LAUNCH_DEQUANTIZATION(T, mantisa) \
-    template void launch_dequantization<T, mantisa>(uint8_t*, T*, int, int, int, int, cudaStream_t);
+    template void launch_dequantization<T, mantisa>(  \
+        uint8_t*, T*, size_t, int, int, int, cudaStream_t);
 // fp8(E4M3)
 #ifdef BF16_AVAILABLE
 INSTANTIATE_LAUNCH_DEQUANTIZATION(__nv_bfloat16, 7);
@@ -404,12 +404,12 @@ __global__ void apply_selective_dequantization(uint8_t* val,
                                                T* q_val,
                                                int32_t* indexes,
                                                int group_size,
-                                               int total_num_elements)
+                                               size_t total_num_elements)
 {
-    int index = indexes[blockIdx.x];
+    unsigned int index = indexes[blockIdx.x];
     constexpr uint32_t vector_size = quantization::access_granularity / sizeof(T);
-    int tidx = (blockIdx.y * blockDim.x + threadIdx.x) * vector_size;
-    int input_index = index * total_num_elements + tidx;
+    unsigned int tidx = (blockIdx.y * blockDim.x + threadIdx.x) * vector_size;
+    unsigned int input_index = index * total_num_elements + tidx;
     constexpr int quantized_bits = _mantisa_bits + _exponent_bits + 1;
     constexpr int q_exponent_bits = total_q_bits - q_mantisa_bits - 1;
     constexpr uint16_t _mantisa_mask = (1 << _mantisa_bits) - 1;
@@ -502,17 +502,17 @@ template <typename T, int mantisa>
 void launch_selective_dequantization(uint8_t* val,
                                      T* q_val,
                                      int32_t* indexes,
-                                     int num_groups,
+                                     size_t num_groups,
                                      int group_size,
                                      int num_indexes,
                                      int q_mantisa_bits,
                                      int q_exponent_bits,
                                      cudaStream_t stream)
 {
-    int total_elements_per_index = (num_groups / num_indexes) * group_size;
-    int blocks = (total_elements_per_index - 1) /
-                     (quantization::threads * (quantization::access_granularity / sizeof(T))) +
-                 1;
+    size_t total_elements_per_index = (num_groups / num_indexes) * group_size;
+    size_t blocks = (total_elements_per_index - 1) /
+                        (quantization::threads * (quantization::access_granularity / sizeof(T))) +
+                    1;
     const dim3 grid(num_indexes, blocks);
     const dim3 block(quantization::threads);
     DEQUANT_SWITCH(q_mantisa_bits * q_exponent_bits, [&] {
@@ -522,7 +522,7 @@ void launch_selective_dequantization(uint8_t* val,
 }
 #define INSTANTIATE_LAUNCH_SELECTIVE_DEQUANTIZATION(T, mantisa) \
     template void launch_selective_dequantization<T, mantisa>(  \
-        uint8_t*, T*, int32_t*, int, int, int, int, int, cudaStream_t);
+        uint8_t*, T*, int32_t*, size_t, int, int, int, int, cudaStream_t);
 // fp8(E4M3)
 #ifdef BF16_AVAILABLE
 INSTANTIATE_LAUNCH_SELECTIVE_DEQUANTIZATION(__nv_bfloat16, 7);
