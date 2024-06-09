@@ -452,7 +452,10 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            unsigned layer_id,
                                            unsigned num_layers,
                                            at::Tensor& alibi,
-                                           float rope_theta)
+                                           float rope_theta,
+                                           std::optional<bool> is_prompt,
+                                           std::optional<at::Tensor> token_idx,
+                                           std::optional<at::Tensor> position_ids)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
