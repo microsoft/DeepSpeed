@@ -3,4 +3,4 @@
 
 # DeepSpeed Team
 
-from ..builder import OpBuilder, CUDAOpBuilder, TorchCPUOpBuilder
+from ..builder import OpBuilder, CUDAOpBuilder, TorchCPUOpBuilder, installed_cuda_version, get_default_compute_capabilities, assert_no_cuda_mismatch
