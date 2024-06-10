@@ -1039,6 +1039,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             stream = self.reduction_stream
             if not get_accelerator().resolves_data_dependency():
                 stream.wait_stream(get_accelerator().current_stream())
+                get_accelerator().current_stream().wait_stream(stream)
         else:
             stream = get_accelerator().current_stream()
 
@@ -1962,8 +1963,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
-            if clip > 1:
-                combined_scale = clip * self.loss_scale
+            clip = torch.clamp(clip, min=1.0)
+            combined_scale = clip * self.loss_scale
 
         for grad in grad_groups_flat:
             if isinstance(grad, list):
