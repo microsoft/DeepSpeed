@@ -108,6 +108,11 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
     def positional_embedding_config(self) -> Optional[RotateHalfConfig]:
         return RotateHalfConfig(theta_base=self._config.rope_embedding_base)
 
+    @property
+    def mup_embedding_multiplier(self) -> float:
+        return 10.0
+
+
     """
     Forward implementations
     """
@@ -126,6 +131,9 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
 
         if embed.shape[-1] != self.model_dim:
             raise ValueError(f"Embedding output shape {embed.shape} does not match model_dim {self.model_dim}")
+
+        if self.mup_embedding_multiplier > 0.0:
+            embed = embed * self.mup_embedding_multiplier
 
         return embed
 
