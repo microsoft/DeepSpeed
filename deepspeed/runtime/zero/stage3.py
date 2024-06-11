@@ -2718,7 +2718,16 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         loaded_checkpoint_state = torch.load(os.path.join(folder, f"{key}.pt")).view(-1)
 
         # Partition the loaded data according to the local rank
-        checkpoint_state_partition = self.get_data_parallel_partitions(loaded_checkpoint_state)[local_rank]
+        world_size = dist.get_world_size(group=self.dp_process_group)
+        unpartitioned_numel = loaded_checkpoint_state.numel()
+        partitioned_numel = math.ceil(unpartitioned_numel / world_size)
+
+        if world_size * partitioned_numel != unpartitioned_numel:
+            padding_size = world_size * partitioned_numel - unpartitioned_numel
+            padding_tensor = torch.zeros(padding_size, dtype=loaded_checkpoint_state.dtype)
+            loaded_checkpoint_state = torch.cat([loaded_checkpoint_state, padding_tensor])
+        checkpoint_state_partition = loaded_checkpoint_state.narrow(0, local_rank * partitioned_numel,
+                                                                    partitioned_numel)
 
         return checkpoint_state_partition
 
