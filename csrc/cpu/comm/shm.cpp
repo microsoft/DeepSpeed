@@ -474,8 +474,6 @@ void symmetric_naive_all_reduce(char* data_ptr,
     static double total_t1_t0 = 0.0;
     static double total_t2_t1 = 0.0;
     static double total_t3_t2 = 0.0;
-    static double total_t4_t3 = 0.0;
-    static double total_t5_t4 = 0.0;
     static int count = -16;  // warmup
     auto t0 = std::chrono::system_clock::now();
 #endif
@@ -627,7 +625,7 @@ void distributed_naive_reduce(char* data_ptr,
 
     for (int i = 0; i < world_size; i++) {
         // wait until all the other ranks copy the buffer
-        wait_buffer_state_until_2(i, copy_current, reduce_current, state_group);
+        if (i != world_rank) wait_buffer_state_until_2(i, copy_current, reduce_current, state_group);
     }
 
 #ifdef DO_PROFILE
@@ -649,14 +647,14 @@ void distributed_naive_reduce(char* data_ptr,
 #endif
 
     for (int i = 0; i < world_size; i++) {
-        wait_buffer_state_until_2(i, reduce_current, copy_next, state_group);
+        // wait until all the other ranks reduce the buffer
+        if (i != world_rank) wait_buffer_state_until_2(i, reduce_current, copy_next, state_group);
     }
 
     auto t4 = std::chrono::system_clock::now();
 
     for (int i = 0; i < world_size; i++) {
         int rank = (i + world_rank) % world_size;
-        // wait until the other rank reduce the buffer
         parallel_memcpy(
             slice_data(data_ptr, chunk_el, data_size, rank),
             slice_data(
