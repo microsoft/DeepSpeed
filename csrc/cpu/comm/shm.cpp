@@ -625,7 +625,8 @@ void distributed_naive_reduce(char* data_ptr,
 
     for (int i = 0; i < world_size; i++) {
         // wait until all the other ranks copy the buffer
-        if (i != world_rank) wait_buffer_state_until_2(i, copy_current, reduce_current, state_group);
+        if (i != world_rank)
+            wait_buffer_state_until_2(i, copy_current, reduce_current, state_group);
     }
 
 #ifdef DO_PROFILE
