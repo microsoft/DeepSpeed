@@ -160,6 +160,7 @@ def apply_to_tensors_only(function, value, warning_msg_fn=None):
                 warned = True
         return value
 
+
 @contextmanager
 def unwrap_model_for_generation(model):
     """
