@@ -1409,7 +1409,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         norm_is_nan = total_norm.isnan()
         inf_or_nan = norm_is_nan.logical_or(norm_is_inf)
 
-        err = torch.tensor(-1.0, device=self.device, dtype=torch.float)
+        err = torch.tensor(-1.0, device=inf_or_nan.device, dtype=torch.float)
         total_norm = inf_or_nan * err + inf_or_nan.logical_not() * total_norm
 
         return total_norm
@@ -1575,7 +1575,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for param_id in self.is_grad_computed[i][partition_id]:
             param = self.param_dict[param_id]
             if param.grad is None:
-                param.grad = torch.zero_like(param)
+                param.grad = torch.zeros_like(param)
 
     ######################Reduction Related Methods##############################
 

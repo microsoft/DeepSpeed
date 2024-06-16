@@ -71,9 +71,7 @@ class PipelineEngine(DeepSpeedEngine):
 
     def __init__(self, has_bool_tensors=False, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
-        assert isinstance(self.module, PipelineModule) \
-            or (hasattr(self.module, 'wrapped') and isinstance(self.module.wrapped, PipelineModule)), \
-            "model must base PipelineModule"
+        assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
         assert self.zero_optimization_stage(
         ) < ZeroStageEnum.gradients, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
@@ -123,7 +121,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         self._force_grad_boundary = False
 
-        self.batch_timer = ThroughputTimer(batch_size=self.train_batch_size(),
+        self.batch_timer = ThroughputTimer(self._config.timers_config,
+                                           batch_size=self.train_batch_size(),
                                            logging_fn=self.tput_log,
                                            monitor_memory=False,
                                            steps_per_output=self.steps_per_print())
@@ -861,7 +860,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
-            self.optimizer.update_hp_grads(clear_lp_grads=False)
+            if not self._config.bfloat16_immediate_grad_update:
+                self.optimizer.update_hp_grads(clear_lp_grads=False)
 
         # Free up the memory from the output of forward()
         self.pipe_buffers['output_tensors'][buffer_id] = None

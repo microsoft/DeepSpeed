@@ -1039,6 +1039,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             stream = self.reduction_stream
             if not get_accelerator().resolves_data_dependency():
                 stream.wait_stream(get_accelerator().current_stream())
+                get_accelerator().current_stream().wait_stream(stream)
         else:
             stream = get_accelerator().current_stream()
 
@@ -1474,7 +1475,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for param_id in self.is_grad_computed[i][partition_id]:
             param = self.param_dict[param_id]
             if param.grad is None:
-                param.grad = torch.zero_like(param)
+                param.grad = torch.zeros_like(param)
 
     ######################Reduction Related Methods##############################
     def allreduce_bucket(self, bucket, rank=None, log=None, divide=True, process_group=None):
@@ -1962,8 +1963,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
-            if clip > 1:
-                combined_scale = clip * self.loss_scale
+            clip = torch.clamp(clip, min=1.0)
+            combined_scale = clip * self.loss_scale
 
         for grad in grad_groups_flat:
             if isinstance(grad, list):
@@ -2432,7 +2433,9 @@ def estimate_zero2_model_states_mem_needs(total_params,
         gpu_mem = 2 * total_params
         cpu_mem = total_params * max(4 * total_gpus, 16) * additional_buffer_factor
     else:
-        gpu_mem = 4 * total_params + int(16 * total_params / total_gpus)
+        # GPU's total_params multipliers: 2 = params_16bit,
+        # 18 = 2_grads_16bit + 4_grads_32bit + 4_params_32bit + 8_optimizer_states_32bit(momentum and variance)
+        gpu_mem = 2 * total_params + int(18 * total_params / total_gpus)
         cpu_mem = total_params * 4 * num_gpus_per_node * additional_buffer_factor
 
     return int(cpu_mem), int(gpu_mem)
