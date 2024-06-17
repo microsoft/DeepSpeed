@@ -1,6 +1,6 @@
 hjson
 ninja
-numpy
+numpy<2.0.0
 nvidia-ml-py
 packaging>=20.0
 psutil
