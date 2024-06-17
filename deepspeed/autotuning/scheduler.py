@@ -5,7 +5,7 @@
 
 import copy
 
-from numpy import BUFSIZE
+from numpy import getbufsize
 import json
 import subprocess
 import sys
@@ -28,7 +28,7 @@ thread-N: start each experiment in its own thread
 from deepspeed import comm as dist
 
 TIMEOUT = 5
-
+BUFSIZE = getbufsize()
 
 class ResourceManager:
 

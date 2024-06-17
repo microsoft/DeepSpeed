@@ -20,7 +20,6 @@ DEFAULT_TEMPLATE_PATH_ZERO_3 = os.path.join(os.path.dirname(os.path.realpath(__f
 
 METRIC_PERCENT_DIFF_CONST = 0.05
 DS_CONFIG = "ds_config"
-BUFSIZE = 1  # line buffer size for writing files
 
 #########################################
 # autotuner configuration constants
