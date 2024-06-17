@@ -6,7 +6,7 @@
 from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
-from torch.distributed.elastic.utils.distributed import get_free_port as _get_free_port
+from torch.distributed.elastic.utils.distributed import get_free_port
 from torch.distributed.elastic.metrics import put_metric
 from torch.distributed.elastic.agent.server.api import (
     RunResult,
@@ -48,7 +48,7 @@ class DSElasticAgent(LocalElasticAgent):
                               master_port: Optional[int],
                               local_addr: Optional[str] = None):
         if master_port is None:
-            master_port  = _get_free_port()
+            master_port  = get_free_port()
 
         if master_addr is None:
             # master_addr = _get_fq_hostname()
