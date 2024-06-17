@@ -1699,7 +1699,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # ds_numel is unpadded, so the last chunk of the secondary tensor might not be secondary_partition_size
             sec_numel = max(0, min(param.ds_numel - secondary_start, secondary_partition_size))
 
-
             # copy from full tensor to secondary tensor
             param.ds_secondary_tensor.narrow(0, 0,
                                              sec_numel).copy_(one_dim_param.narrow(0, secondary_start, sec_numel))
