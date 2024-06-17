@@ -144,10 +144,7 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
 }
 
 __m512 cvt_fp16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
-inline __m512 cvt_fp16_to_fp32(const __m256i src)
-{
-    return _mm512_cvtph_ps(src);
-}
+inline __m512 cvt_fp16_to_fp32(const __m256i src) { return _mm512_cvtph_ps(src); }
 
 inline __m256i cvt_fp32_to_fp16(const __m512 src) __attribute__((target("avx512bw")));
 inline __m256i cvt_fp32_to_fp16(const __m512 src)
