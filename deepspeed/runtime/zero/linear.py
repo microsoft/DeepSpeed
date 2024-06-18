@@ -33,8 +33,8 @@ def print_rank_0(message, debug=False, force=False):
 
 
 try:
-    autocast_custom_fwd = get_accelerator().amp().custom_fwd
-    autocast_custom_bwd = get_accelerator().amp().custom_bwd
+    autocast_custom_fwd = amp().custom_fwd
+    autocast_custom_bwd = amp().custom_bwd
 except (ImportError, AttributeError) as exp:
     autocast_custom_fwd = noop_decorator
     autocast_custom_bwd = noop_decorator
