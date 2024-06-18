@@ -92,7 +92,7 @@ class BF16_Optimizer(ZeROOptimizer):
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
 
-        see_memory_usage('end bf16_optimizer', force=True)
+        see_memory_usage('end bf16_ optimizer', force=True)
 
     def destroy(self):
         for i, _ in enumerate(self.optimizer.param_groups):
@@ -551,9 +551,7 @@ class BF16_Optimizer(ZeROOptimizer):
                         def accumulate_hp_grads_and_remove_lp(*notneeded):
                             self.accumulate_hp_grads_and_remove_lp(param, i, j)
 
-                        self._grad_acc_hooks.append(
-                            grad_acc.register_hook(accumulate_hp_grads_and_remove_lp)
-                        )
+                        self._grad_acc_hooks.append(grad_acc.register_hook(accumulate_hp_grads_and_remove_lp))
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i, j)
