@@ -96,7 +96,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
     def destroy(self):
         for i, _ in enumerate(self.optimizer.param_groups):
-            for p in self.bit16_groups[i]:
+            for p in self.bf16_groups[i]:
                 if getattr(p, '_hp_mapping', None):
                     p._hp_mapping = None
         for hook in self._grad_acc_hooks:
