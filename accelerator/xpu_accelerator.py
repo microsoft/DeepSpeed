@@ -74,8 +74,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def manual_seed_all(self, seed):
         return torch.xpu.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        return torch.xpu.initial_seed(seed)
+    def initial_seed(self):
+        return torch.xpu.initial_seed()
 
     def default_generator(self, device_index):
         return torch.xpu.default_generators[device_index]
@@ -159,7 +159,10 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def lazy_call(self, callback):
-        return torch.xpu.lazy_init._lazy_call(callback)
+        if hasattr(torch.xpu, "_lazy_call"):
+            return torch.xpu._lazy_call(callback)
+        else:
+            return torch.xpu.lazy_init._lazy_call(callback)
 
     def communication_backend_name(self):
         return self._communication_backend_name
@@ -222,7 +225,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         if align_bytes == 1:
             return tensor.pin_memory(device=self.current_device_name())
         elif align_bytes == 0:
-            from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+            from deepspeed.ops.op_builder.xpu import AsyncIOBuilder
             self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
             aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
             aligned_t = aligned_t[:tensor.numel()].copy_(tensor)
@@ -267,9 +270,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder
+            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder, PackbitsBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder
+            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder, PackbitsBuilder
 
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder
@@ -279,6 +282,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return CPUAdamBuilder
         elif class_name == "FusedAdamBuilder":
             return FusedAdamBuilder
+        elif class_name == "PackbitsBuilder":
+            return PackbitsBuilder
         else:
             return None
 
