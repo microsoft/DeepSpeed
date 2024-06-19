@@ -249,11 +249,6 @@ void reduce_bf16_buffers(int start_elements, int num_elements, char* to_buffer, 
         inout_val = _mm512_add_ps(inout_val, in##x##_val);                                   \
     } while (0)
 
-// Reduce functions down below use vectorized algorithm, the number of bytes processed each
-// iteration depends on vector length.  256bit vector ==> 32 bytes, 512bit vector ==> 64 bytes
-// If you change implementation of reduce_2_fp16_buffers_iio or reduce_2_fp32_buffers_iio, check
-// whether this number needs to be changed
-
 void reduce_fp16_buffers(int start_elements, int num_elements, char* to_buffer, char** buffers)
 {
     const int element_size = 2;
