@@ -222,8 +222,7 @@ void reduce_bf16_buffers(int start_elements, int num_elements, char* to_buffer, 
             case 4: CVT_ADD_BF16(3);
             case 3: CVT_ADD_BF16(2);
             case 2: CVT_ADD_BF16(1);
-            case 1:
-                break;
+            case 1: break;
             default:
                 for (int j = 1; j < world_size; j++) {
                     auto in_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(buffers[j] + i)));
@@ -283,8 +282,7 @@ void reduce_fp16_buffers(int start_elements, int num_elements, char* to_buffer, 
             case 4: CVT_ADD_FP16(3);
             case 3: CVT_ADD_FP16(2);
             case 2: CVT_ADD_FP16(1);
-            case 1:
-                break;
+            case 1: break;
             default:
                 for (int j = 1; j < world_size; j++) {
                     auto in_val = cvt_fp16_to_fp32(_mm256_loadu_si256((__m256i*)(buffers[j] + i)));
@@ -339,8 +337,7 @@ void reduce_fp32_buffers(int start_elements, int num_elements, char* to_buffer, 
             case 4: CVT_ADD_F32(3);
             case 3: CVT_ADD_F32(2);
             case 2: CVT_ADD_F32(1);
-            case 1:
-                break;
+            case 1: break;
             default:
                 for (int j = 1; j < world_size; j++) {
                     auto in_val = _mm256_loadu_ps((float*)(buffers[j] + i));
