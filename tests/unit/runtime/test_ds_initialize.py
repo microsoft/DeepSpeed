@@ -17,7 +17,10 @@ import deepspeed
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WarmupLR
 from deepspeed.runtime.config import ADAM_OPTIMIZER
-from deepspeed.runtime.utils import see_memory_usage, required_torch_version
+from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.utils.torch import required_torch_version
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import FusedAdamBuilder
 
 
 @pytest.mark.parametrize('zero_stage', [0, 3])
@@ -30,9 +33,6 @@ class TestNoOptim(DistributedTest):
 
         ds_config = {
             'train_batch_size': self.world_size,
-            'fp16': {
-                'enabled': True
-            },
             'zero_optimization': {
                 "stage": zero_stage,
                 "offload_param": {
@@ -40,6 +40,10 @@ class TestNoOptim(DistributedTest):
                 }
             }
         }
+        if get_accelerator().is_fp16_supported():
+            ds_config["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            ds_config["bf16"] = {"enabled": True}
         # 20B test
         #hidden_dim = 16 * 1024
         hidden_dim = 4
@@ -49,11 +53,7 @@ class TestNoOptim(DistributedTest):
         see_memory_usage('pre-init', force=True)
         model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
         see_memory_usage('post-init', force=True)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for batch in data_loader:
             model(batch[0], batch[1])
         see_memory_usage('post-fwds', force=True)
@@ -67,6 +67,9 @@ class TestClientOptimizer(DistributedTest):
 
         def _optimizer_callable(params) -> Optimizer:
             return AdamW(params=params)
+
+        if (optimizer_type is None) and (not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]):
+            pytest.skip("FusedAdam is not compatible")
 
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
@@ -96,6 +99,8 @@ class TestClientOptimizer(DistributedTest):
 class TestConfigOptimizer(DistributedTest):
     world_size = 1
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME],
+                        reason="FusedAdam is not compatible")
     def test(self, client_parameters):
         ds_config = {"train_batch_size": 1, "optimizer": {"type": "Adam", "params": {"lr": 0.001}}}
 
@@ -120,6 +125,9 @@ class TestOptimizerImplementation(DistributedTest):
     reuse_dist_env = True
 
     def test(self, optimizer_extension, model_dtype, grad_accum_dtype):
+        if not get_accelerator().is_fp16_supported():
+            if model_dtype == 'fp16' or grad_accum_dtype == 'fp16':
+                pytest.skip("fp16 is not supported")
         if optimizer_extension == 'zero1':
             zero_stage = 1
         elif optimizer_extension == 'zero2':
