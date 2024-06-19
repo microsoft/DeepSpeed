@@ -74,8 +74,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def manual_seed_all(self, seed):
         return torch.xpu.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        return torch.xpu.initial_seed(seed)
+    def initial_seed(self):
+        return torch.xpu.initial_seed()
 
     def default_generator(self, device_index):
         return torch.xpu.default_generators[device_index]
@@ -159,7 +159,10 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def lazy_call(self, callback):
-        return torch.xpu.lazy_init._lazy_call(callback)
+        if hasattr(torch.xpu, "_lazy_call"):
+            return torch.xpu._lazy_call(callback)
+        else:
+            return torch.xpu.lazy_init._lazy_call(callback)
 
     def communication_backend_name(self):
         return self._communication_backend_name
@@ -222,7 +225,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         if align_bytes == 1:
             return tensor.pin_memory(device=self.current_device_name())
         elif align_bytes == 0:
-            from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+            from deepspeed.ops.op_builder.xpu import AsyncIOBuilder
             self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
             aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
             aligned_t = aligned_t[:tensor.numel()].copy_(tensor)
