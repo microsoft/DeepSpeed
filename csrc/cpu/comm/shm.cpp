@@ -207,7 +207,6 @@ void reduce_all_buffers(int start_elements,
                                           to_buffer + start_elements * 4,
                                           to_buffer + start_elements * 4);
             } else {
-                assert(world_size > 2);
                 reduce_fp32_buffers(start_elements, num_elements, to_buffer, buffers);
             }
             break;
