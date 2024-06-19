@@ -185,7 +185,8 @@ class InferenceEngine(Module):
     def destroy(self):
         DeepSpeedTransformerInference.layer_id = 0
         DeepSpeedSelfAttention.num_layers = 0
-        self.workspace.release_workspace()
+        if self.workspace.is_op_implemented():
+            self.workspace.release_workspace()
 
     def profile_model_time(self, use_cuda_events=True):
         if not self.model_profile_enabled and not self._config.enable_cuda_graph:

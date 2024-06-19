@@ -85,7 +85,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                        requires_grad=False)
         self.layer_past = None
         self.layer_norm = LayerNormOp()
-        DeepSpeedTransformerInference.workspace = WorkspaceOp(self.config)
+        self.workspace = WorkspaceOp(self.config)
         self._should_allocate_workspace = True
         self.allocate_workspace_func = self.workspace.allocate_workspace
 
@@ -103,7 +103,8 @@ class DeepSpeedTransformerInference(nn.Module):
     def reset_cache(cls):
         if cls.workspace is None:
             cls.workspace = WorkspaceOp()
-        cls.workspace.reset_cache()
+        if cls.workspace.is_op_implemented():
+            cls.workspace.reset_cache()
 
     def forward(
             self,

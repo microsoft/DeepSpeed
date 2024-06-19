@@ -27,7 +27,7 @@ class SoftmaxContextOp(BaseOp):
 
     @staticmethod
     def transform4d_0213(x, seq_length):
-        assert x.dim() == 3, F"{x.dim()=} is not supported"
+        assert x.dim() == 3, F"Dim {x.dim()} is not supported"
         batch_size, num_heads, seq_length_head_dim = x.shape
         head_dim = seq_length_head_dim // seq_length
         x = x.view(batch_size, num_heads, seq_length, head_dim)
@@ -47,8 +47,8 @@ class SoftmaxContextOp(BaseOp):
 
     @staticmethod
     def bias_add_transform_0213(input, bias, num_heads, trans_count, perform_bias=False):
-        assert trans_count == 1 or trans_count == 3, F"{trans_count=} is not supported"
-        assert input.dim() == 3, F"{input.dim()=} is not supported"
+        assert trans_count == 1 or trans_count == 3, F"Trans count {trans_count} is not supported"
+        assert input.dim() == 3, F"Dim {input.dim()} is not supported"
         input_biased = torch.add(input, bias) if perform_bias else input
         batch_size, seq_length, value_size = input_biased.shape
         hid_dim = value_size // trans_count

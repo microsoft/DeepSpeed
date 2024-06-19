@@ -153,7 +153,11 @@ class WorkspaceOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig = None):
         if config is None:
             config = DeepSpeedInferenceConfig()
-        super(WorkspaceOp, self).__init__(config)
+        try:
+            super(WorkspaceOp, self).__init__(config)
+            self.is_implemented = True
+        except ValueError:
+            self.is_implemented = False
 
         self.inference_context = InferenceContext.Instance()
         try:
@@ -203,3 +207,6 @@ class WorkspaceOp(BaseOp):
 
     def retake_workspace_fallback(self):
         return self.inference_context.retake_workspace()
+
+    def is_op_implemented(self):
+        return self.is_implemented
