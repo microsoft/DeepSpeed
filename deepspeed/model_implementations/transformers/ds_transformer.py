@@ -85,7 +85,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                        requires_grad=False)
         self.layer_past = None
         self.layer_norm = LayerNormOp()
-        self.workspace = WorkspaceOp(self.config)
+        DeepSpeedTransformerInference.workspace = WorkspaceOp(self.config)
         self._should_allocate_workspace = True
         self.allocate_workspace_func = self.workspace.allocate_workspace
 
