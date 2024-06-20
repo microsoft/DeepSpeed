@@ -13,9 +13,10 @@ from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from packaging import version as pkg_version
 from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
-                                     align_dense_tensors, all_gather_dp_groups, is_model_parallel_parameter,
-                                     see_memory_usage, graph_process, get_norm_with_moe_layers)
-from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups
+                                     CheckOverflow, align_dense_tensors, all_gather_dp_groups,
+                                     is_model_parallel_parameter, see_memory_usage, graph_process,
+                                     get_norm_with_moe_layers)
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups, logger
 from deepspeed.moe.utils import is_moe_param, is_moe_param_group
 from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.checkpoint import enable_universal_checkpoint
@@ -31,6 +32,7 @@ class BF16_Optimizer(ZeROOptimizer):
     def __init__(self,
                  init_optimizer,
                  param_names,
+                 deepspeed=None,
                  mpu=None,
                  clip_grad=0.0,
                  norm_type=2,
@@ -91,6 +93,10 @@ class BF16_Optimizer(ZeROOptimizer):
         self.graph_harvesting = graph_harvesting
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
+
+        # Overflow check init
+        self.overflow = False
+        self.overflow_checker = CheckOverflow(self.bf16_groups, mpu=self.mpu, deepspeed=deepspeed)
 
         see_memory_usage('end bf16_optimizer', force=True)
 
@@ -279,6 +285,16 @@ class BF16_Optimizer(ZeROOptimizer):
     def step(self, closure=None):
         if closure is not None:
             raise NotImplementedError(f'{self.__class__} does not support closure.')
+
+        self.overflow = self.overflow_checker.check()
+        if self.overflow:
+            logger.warning(f"all_groups_norm Overflow in BF16_Optimizer. Skipping step.")
+            see_memory_usage('After overflow before clearing gradients')
+            self.clear_hp_grads()
+            see_memory_usage('After overflow after clearing gradients')
+            #TODO: add timer
+            #TODO: save ckpt, then crash
+            return
 
         non_expert_grads_for_norm, expert_grads_for_norm = self.get_grads_for_norm()
         non_expert_groups_norm = get_global_norm_of_tensors(input_tensors=non_expert_grads_for_norm,
