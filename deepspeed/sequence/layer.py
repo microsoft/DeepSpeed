@@ -42,14 +42,13 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False,hand
     if scatter_idx < 2:
         output = output.transpose(0, 1).contiguous()
     if async_op:
-       
-        c=output.reshape(
-            inp_shape[: gather_idx] + \
+        shape=( inp_shape[: gather_idx] + \
             [inp_shape[gather_idx] * seq_world_size,] + \
-            inp_shape[gather_idx + 1:]).contiguous()
+            inp_shape[gather_idx + 1:])
+        c=output.reshape(shape).contiguous()
         if type=='dq' or type=='dk':
             handle[type+'_grad']=output
-     
+            handle[type+'_grad_shape']=shape
         return c, work
     #!! need to delete
     c= output.reshape(
@@ -181,32 +180,18 @@ class DistributedAttention(torch.nn.Module):
             tmp=self.bwd_all2all_handels['dq_grad']
             notneeded=list(notneeded)
             notneeded[0]=list(notneeded[0])
-            notneeded[0][0]=tmp.reshape(1,4096,16,128).contiguous()
-            if(dist.get_rank()==0):
-                # import pydevd  
-                # pydevd.settrace()
-                b=0
+            notneeded[0][0]=tmp.reshape(self.bwd_all2all_handels['dq_grad_shape']).contiguous()
             notneeded[0]=tuple(notneeded[0])
             notneeded=tuple(notneeded)
             
          
-        def k_hook(*notneeded):
-            # torch.cuda.default_stream().wait_stream(self.sp_stream)
-            
-            # if(dist.get_rank()==0):
-            #     import pydevd  
-            #     pydevd.settrace()
-                
-            
+        def k_hook(*notneeded):            
             self.bwd_all2all_handels['dk'].wait()
             self.sp_stream.wait_stream(torch.cuda.default_stream())
-
-
             tmp=self.bwd_all2all_handels['dk_grad']
             notneeded=list(notneeded)
             notneeded[0]=list(notneeded[0])
-            notneeded[0][0]=tmp.reshape(1,4096,16,128).contiguous()
-        
+            notneeded[0][0]=tmp.reshape(self.bwd_all2all_handels['dk_grad_shape']).contiguous()
             notneeded[0]=tuple(notneeded[0])
             notneeded=tuple(notneeded)
             
