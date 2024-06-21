@@ -26,6 +26,11 @@ from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OP
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
 
+def print_rank_0(message, debug=False, force=False):
+    if dist.get_rank() == 0 and (debug or force):
+        print(message)
+
+
 class BF16_Optimizer(ZeROOptimizer):
 
     def __init__(self,
@@ -101,7 +106,7 @@ class BF16_Optimizer(ZeROOptimizer):
                     p._hp_mapping = None
         for hook in self._grad_acc_hooks:
             hook.remove()
-        self.print_rank_0("Removed grad acc hooks")
+        print_rank_0("Removed grad acc hooks")
 
     def _configure_moe_settings(self):
         assert any(
