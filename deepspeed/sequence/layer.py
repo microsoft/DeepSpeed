@@ -32,17 +32,23 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, han
     output = torch.empty_like(input_t)
     work = dist.all_to_all_single(output, input_t, group=group, async_op=async_op)
 
-    # if scattering the seq-dim, transpose the heads back to the original dimension
-    if scatter_idx < 2:
-        output = output.transpose(0, 1).contiguous()
+
     res_shape=( inp_shape[: gather_idx] + \
         [inp_shape[gather_idx] * seq_world_size,] + \
         inp_shape[gather_idx + 1:])
-    res = output.reshape(res_shape).contiguous()
+    transpose = True if scatter_idx<2 else False
     if async_op:
         if type in ('dq', 'dk'):
             handle[type + '_grad'] = output
             handle[type + '_grad_shape'] = res_shape
+            handle['transpose'] = transpose
+            # placeholder on the same device with the same shape.
+            res = output.reshape(res_shape)
+            return res, work
+    # if scattering the seq-dim, transpose the heads back to the original dimension
+    if transpose:
+        output = output.transpose(0, 2).contiguous()
+    res = output.reshape(res_shape).contiguous()
     return res, work
 
 
@@ -122,7 +128,7 @@ class DistributedAttention(torch.nn.Module):
         self.overlap_handles = {}
         self.dafult_stream = get_accelerator().default_stream()
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any) -> Tensor:
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any, **kwargs) -> Tensor:
         """ forward
 
         Arguments:
@@ -147,6 +153,8 @@ class DistributedAttention(torch.nn.Module):
                 self.sp_stream.wait_stream(torch.cuda.default_stream())
                 all2all_output = self.overlap_handles['d' + type + '_grad']
                 grad = list(grad)
+                if self.overlap_handles['transpose']==True:
+                    all2all_output=all2all_output.transpose(0, 2).contiguous()
                 grad[0] = all2all_output.reshape(self.overlap_handles['d' + type + '_grad_shape']).contiguous()
                 grad = tuple(grad)
 
@@ -174,7 +182,8 @@ class DistributedAttention(torch.nn.Module):
 
         #out shape : e.g., [s:h/p:]
 
-        context_layer = self.local_attn(query_layer, key_layer, value_layer, *args)
+
+        context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
 
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx, self.sp_stream)
 

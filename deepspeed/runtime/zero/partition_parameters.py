@@ -56,7 +56,7 @@ class NoGatherHandle:
         self.__param = param
 
     def wait(self) -> None:
-        if not get_accelerator().is_synchronized_device():
+        if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().synchronize()
         self.__param.ds_status = ZeroParamStatus.AVAILABLE
 
@@ -82,7 +82,7 @@ class NoGatherCoalescedHandle:
         if self.__complete:
             return
 
-        if not get_accelerator().is_synchronized_device():
+        if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().synchronize()
         for param in self.__params:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
@@ -933,15 +933,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         _ds_config = deepspeed.runtime.config.DeepSpeedConfig(config_dict_or_path,
                                                               mpu) if config_dict_or_path is not None else None
         if _ds_config is not None:
-            if _ds_config.zero_config.memory_efficient_linear and _ds_config.compile_config.enabled:
-                # memory_efficient_linear displays numerous errors when torch.compile is enabled.
-                # Refer to https://github.com/pytorch/pytorch/issues/119059 for details.
-                # Further investigation into performance is necessary, even after resolving this issue because
-                # the `memory_efficient_linear` module may lead to more graph breaks compared to the original implementation.
-                logger.warning(f'memory_efficient_linear is disabled when torch.compile is enabled.')
-                mem_efficient_linear = False
-            else:
-                mem_efficient_linear = _ds_config.zero_config.memory_efficient_linear
+            mem_efficient_linear = _ds_config.zero_config.memory_efficient_linear
 
         super().__init__(enabled=enabled, mem_efficient_linear=mem_efficient_linear, ds_config=_ds_config, dtype=dtype)
         if not dist.is_initialized():
@@ -1664,6 +1656,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         ##support for NVME secondary param offload
         #print_rank_0(f"SEC Param id {param.ds_id} status is {param.ds_status}", force=True)
         if param.ds_status is ZeroParamStatus.AVAILABLE:
+            if param.ds_secondary_tensor is not None and not has_been_updated:  ##param already partitioned
+                return
             #check padding
             tensor_size = self._aligned_size(param)
             partition_size = tensor_size // self.dp_world_size
@@ -1695,14 +1689,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             one_dim_param = param.contiguous().view(-1)
 
             # ds_numel is unpadded, so the last chunk of the secondary tensor might not be secondary_partition_size
-            sec_numel = param.ds_numel - secondary_start if secondary_end > param.ds_numel else secondary_partition_size
+            sec_numel = max(0, min(param.ds_numel - secondary_start, secondary_partition_size))
 
             # copy from full tensor to secondary tensor
             param.ds_secondary_tensor.narrow(0, 0,
                                              sec_numel).copy_(one_dim_param.narrow(0, secondary_start, sec_numel))
 
             # TODO: This is a temporary fix to avoid the issue that 2nd tensor all-gather happens before 2nd tensor partition is done
-            get_accelerator().current_stream().synchronize()
+            if not get_accelerator().resolves_data_dependency():
+                get_accelerator().current_stream().synchronize()
 
             print_rank_0(f"{param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}",
                          force=False)
@@ -1737,7 +1732,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             f'After allocate allgather param {debug_param2name_id_shape_status(param)} {aligned_param_size} {partition_size} ',
             force=False)
 
-        get_accelerator().synchronize()
+        if not get_accelerator().resolves_data_dependency():
+            get_accelerator().synchronize()
 
         print_rank_0(
             f"{'--'* hierarchy}----allgather param with {debug_param2name_id_shape_status(param)} partition size={partition_size}"
@@ -1870,7 +1866,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             param.data = gathered_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape).data
 
         # guarantee the communication to be completed
-        get_accelerator().synchronize()
+        if not get_accelerator().resolves_data_dependency():
+            get_accelerator().synchronize()
 
         return None
 
