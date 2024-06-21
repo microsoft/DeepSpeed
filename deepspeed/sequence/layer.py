@@ -150,7 +150,7 @@ class DistributedAttention(torch.nn.Module):
 
             def pre_hook_fun(grad):
                 self.overlap_handles['d' + type].wait()
-                self.sp_stream.wait_stream(torch.cuda.default_stream())
+                self.sp_stream.wait_stream(get_accelerator().default_stream())
                 all2all_output = self.overlap_handles['d' + type + '_grad']
                 grad = list(grad)
                 if self.overlap_handles['transpose'] == True:
