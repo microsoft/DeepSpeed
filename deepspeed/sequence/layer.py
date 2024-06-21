@@ -47,8 +47,8 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False,hand
             inp_shape[: gather_idx] + \
             [inp_shape[gather_idx] * seq_world_size,] + \
             inp_shape[gather_idx + 1:]).contiguous()
-
-        handle[type+'_grad']=output
+        if type=='dq' or type=='dk':
+            handle[type+'_grad']=output
      
         return c, work
     #!! need to delete
@@ -62,7 +62,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False,hand
 class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx: Any, group: dist.ProcessGroup, input: Tensor, scatter_idx: int, gather_idx: int, stream=None, fwd_async=False,bwd_async=False, handle=None,type=None) -> Tensor:
+    def forward(ctx: Any, group: dist.ProcessGroup, input: Tensor, scatter_idx: int, gather_idx: int, stream=None, fwd_async=False,bwd_async=False, handle=None,type=None,is_fwd=True) -> Tensor:
 
         ctx.group = group
         ctx.scatter_idx = scatter_idx
@@ -73,14 +73,24 @@ class _SeqAllToAll(torch.autograd.Function):
         ctx.handle=handle
         ctx.type=type
         
-        if fwd_async and stream!=None:
+        # if fwd_async and stream!=None:
+        if not is_fwd and type=='o':
+            assert stream!=None
             # print0('')
             res , work=single_all_to_all(input, scatter_idx, gather_idx, group,False)
 
             get_accelerator().current_stream().wait_stream(ctx.stream)
-        elif fwd_async and handle!=None:
-            res , work=single_all_to_all(input, scatter_idx, gather_idx, group,fwd_async,handle,type)
+        # elif fwd_async and handle!=None:
+        elif not is_fwd and (type=='q' or type=='k'):
+            assert fwd_async==True
+            type='d'+type
+            res , work=single_all_to_all(input, scatter_idx, gather_idx, group,True,handle,type)
           
+            handle[type]=work
+        elif is_fwd and (type=='q' or type=='k'):
+            type='fwd_'+type
+
+            res , work=single_all_to_all(input, scatter_idx, gather_idx, group,True,handle,type)
             handle[type]=work
         else:
             res , work=single_all_to_all(input, scatter_idx, gather_idx, group,False)
@@ -95,7 +105,7 @@ class _SeqAllToAll(torch.autograd.Function):
         # pydevd.settrace()
         
         #def forward(ctx: Any, group: dist.ProcessGroup, input: Tensor, scatter_idx: int, gather_idx: int, stream=None, fwd_async=False,bwd_async=False) -> Tensor:
-        q= (None, _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx, ctx.stream,ctx.bwd_async,False,ctx.handle,ctx.type), None, None,None,None,None,None,None)
+        q= (None, _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx, ctx.stream,ctx.bwd_async,False,ctx.handle,ctx.type,False), None, None,None,None,None,None,None,None)
         # print0("all2all o after")
 
         return q
@@ -133,7 +143,7 @@ class DistributedAttention(torch.nn.Module):
         self.bwd_all2all_handels['dq_grad']=None
         self.bwd_all2all_handels['dk']=None
         self.bwd_all2all_handels['dk_grad']=None
-
+        self.dafult_stream=get_accelerator().default_stream()
   
         self.hook_register=False
 
@@ -182,6 +192,12 @@ class DistributedAttention(torch.nn.Module):
          
         def k_hook(*notneeded):
             # torch.cuda.default_stream().wait_stream(self.sp_stream)
+            
+            # if(dist.get_rank()==0):
+            #     import pydevd  
+            #     pydevd.settrace()
+                
+            
             self.bwd_all2all_handels['dk'].wait()
             self.sp_stream.wait_stream(torch.cuda.default_stream())
 
@@ -190,19 +206,25 @@ class DistributedAttention(torch.nn.Module):
             notneeded=list(notneeded)
             notneeded[0]=list(notneeded[0])
             notneeded[0][0]=tmp.reshape(1,4096,16,128).contiguous()
-            if(dist.get_rank()==0):
-                # import pydevd  
-                # pydevd.settrace()
-                b=0
+        
             notneeded[0]=tuple(notneeded[0])
             notneeded=tuple(notneeded)
             
             
 
         
-        async_bwd_comm_q=False
-        async_bwd_comm_k=False
+        async_bwd_comm_q=True
+        async_bwd_comm_k=True
 
+
+            
+        self.dafult_stream.wait_event(query.done_event)
+        query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_q,self.bwd_all2all_handels,'q') #[1,512,32,32]
+        self.dafult_stream.wait_event(key.done_event)
+        key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_k, self.bwd_all2all_handels,'k') #[1,512,32,32]
+        self.dafult_stream.wait_stream(self.sp_stream)
+        value_layer= _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx,None,False,False,  self.bwd_all2all_handels,'v') #[1,512,32,32]
+        
         if True:
             async_bwd_comm_q=True
             async_bwd_comm_k=True
@@ -211,15 +233,12 @@ class DistributedAttention(torch.nn.Module):
             fn_q.register_prehook(q_hook)
             fn_k = key.grad_fn.next_functions[0][0]
             fn_k.register_prehook(k_hook)
-            
-        torch.cuda.current_stream().wait_event(query.done_event)
-        query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_q,self.bwd_all2all_handels,'dq') #[1,512,32,32]
-        torch.cuda.current_stream().wait_event(key.done_event)
-        key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_k, self.bwd_all2all_handels,'dk') #[1,512,32,32]
-        torch.cuda.current_stream().wait_stream(self.sp_stream)
-        value_layer= _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx) #[1,512,32,32]
-        
-        
+        #do dq qk   k v
+        # def forward(ctx: Any, group: dist.ProcessGroup, input: Tensor, scatter_idx: int, gather_idx: int, stream=None, fwd_async=False,bwd_async=False, handle=None,type=None) -> Tensor:
+
+        self.bwd_all2all_handels['fwd_q'].wait()
+        self.bwd_all2all_handels['fwd_k'].wait()
+        # self.bwd_all2all_handels['fwd_q'].wait()
         #all2all ayns to k_dense_bwd wait
         #out shape : e.g., [s:h/p:]
         # print(query_layer) #2,8, 2,4  sp=2 2gpus
