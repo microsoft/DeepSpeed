@@ -36,7 +36,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, han
     res_shape=( inp_shape[: gather_idx] + \
         [inp_shape[gather_idx] * seq_world_size,] + \
         inp_shape[gather_idx + 1:])
-    transpose = True if scatter_idx<2 else False
+    transpose = True if scatter_idx < 2 else False
     if async_op:
         if type in ('dq', 'dk'):
             handle[type + '_grad'] = output
@@ -75,17 +75,17 @@ class _SeqAllToAll(torch.autograd.Function):
             assert stream != None
             res, work = single_all_to_all(input, scatter_idx, gather_idx, group, False)
             get_accelerator().current_stream().wait_stream(ctx.stream)
-            
+
         elif not is_fwd and type in ('q', 'k'):
             type = 'd' + type
             res, work = single_all_to_all(input, scatter_idx, gather_idx, group, True, handle, type)
             handle[type] = work
-            
+
         elif is_fwd and type in ('q', 'k'):
             type = 'fwd_' + type
             res, work = single_all_to_all(input, scatter_idx, gather_idx, group, True, handle, type)
             handle[type] = work
-            
+
         else:
             res, work = single_all_to_all(input, scatter_idx, gather_idx, group, False)
 
@@ -153,8 +153,8 @@ class DistributedAttention(torch.nn.Module):
                 self.sp_stream.wait_stream(torch.cuda.default_stream())
                 all2all_output = self.overlap_handles['d' + type + '_grad']
                 grad = list(grad)
-                if self.overlap_handles['transpose']==True:
-                    all2all_output=all2all_output.transpose(0, 2).contiguous()
+                if self.overlap_handles['transpose'] == True:
+                    all2all_output = all2all_output.transpose(0, 2).contiguous()
                 grad[0] = all2all_output.reshape(self.overlap_handles['d' + type + '_grad_shape']).contiguous()
                 grad = tuple(grad)
 
@@ -181,7 +181,6 @@ class DistributedAttention(torch.nn.Module):
         self.overlap_handles['fwd_k'].wait()
 
         #out shape : e.g., [s:h/p:]
-
 
         context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
 
