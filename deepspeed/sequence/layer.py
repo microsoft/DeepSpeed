@@ -43,20 +43,13 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False,hand
         output = output.transpose(0, 1).contiguous()
     if async_op:
        
-        # work.wait()
-        # if(dist.get_rank()==0):
-        #     k=0
         c=output.reshape(
             inp_shape[: gather_idx] + \
             [inp_shape[gather_idx] * seq_world_size,] + \
             inp_shape[gather_idx + 1:]).contiguous()
-        # return c,work
-        # qq = torch.empty_like(c,device='meta')
+
         handle[type+'_grad']=output
-        # if(dist.get_rank()==0):
-        #     import pydevd  
-        #     pydevd.settrace()
-        #     b=0
+     
         return c, work
     #!! need to delete
     c= output.reshape(
@@ -79,27 +72,17 @@ class _SeqAllToAll(torch.autograd.Function):
         ctx.bwd_async=bwd_async
         ctx.handle=handle
         ctx.type=type
-        # if stream != None:
-        #     with get_accelerator().stream(stream):
-        #         res, work=single_all_to_all(input, scatter_idx, gather_idx, group,fwd_async)
-        # else:
-        #     res , work=single_all_to_all(input, scatter_idx, gather_idx, group,fwd_async)
-        # def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False):
-        # print0(f"fwd_async:{fwd_async},type:{type},handle:{handle}")
+        
         if fwd_async and stream!=None:
-            # print0('11')
+            # print0('')
             res , work=single_all_to_all(input, scatter_idx, gather_idx, group,False)
 
             get_accelerator().current_stream().wait_stream(ctx.stream)
         elif fwd_async and handle!=None:
-            # print0('22')
             res , work=single_all_to_all(input, scatter_idx, gather_idx, group,fwd_async,handle,type)
-            # import pydevd  
-            # pydevd.settrace()
+          
             handle[type]=work
-            b=0
         else:
-            # print0('33')
             res , work=single_all_to_all(input, scatter_idx, gather_idx, group,False)
 
         return  res 
@@ -135,8 +118,6 @@ class DistributedAttention(torch.nn.Module):
         scatter_idx: int = 2,
         gather_idx: int = 0,
         sp_stream=None,
-        q_linear=None,
-        k_linear=None
     ) -> None:
 
         super(DistributedAttention, self).__init__()
@@ -144,9 +125,8 @@ class DistributedAttention(torch.nn.Module):
         self.spg = sequence_process_group
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
-        # self.q_stream=get_accelerator().Stream()
-        # self.k_stream=get_accelerator().Stream()
-        # self.v_stream=get_accelerator().Stream()
+
+        
         self.sp_stream=sp_stream
         self.bwd_all2all_handels={}
         self.bwd_all2all_handels['dq']=None
@@ -154,20 +134,9 @@ class DistributedAttention(torch.nn.Module):
         self.bwd_all2all_handels['dk']=None
         self.bwd_all2all_handels['dk_grad']=None
 
-        self.q_linear=q_linear
-        self.k_linear=k_linear
+  
         self.hook_register=False
-        # def q_hook(module, grad_input):
-        
-            # grad_input= grad_input.reshape(
-            #     inp_shape[: scatter_idx] + \
-            #     [inp_shape[scatter_idx] * seq_world_size,] + \
-            #     inp_shape[scatter_idx + 1:]).contiguous()
-            
-        
-        # q_linear.register_full_backward_pre_hook(q_hook)
-        # k_linear.register_full_backward_pre_hook(k_hook)
-        
+
         
 
     # query = slef.linearq(hidden)
@@ -196,12 +165,6 @@ class DistributedAttention(torch.nn.Module):
         
         def q_hook(*notneeded):
 
-            #4096 1 2046
-            # print("hookq")
-            # grad_input.contiguous()
-            # import pydevd  
-            # pydevd.settrace()
-            # torch.cuda.default_stream().wait_stream(self.sp_stream)
             self.bwd_all2all_handels['dq'].wait()
             self.sp_stream.wait_stream(torch.cuda.default_stream())
 
@@ -216,25 +179,7 @@ class DistributedAttention(torch.nn.Module):
             notneeded[0]=tuple(notneeded[0])
             notneeded=tuple(notneeded)
             
-            # for_check=tmp.reshape(4096,1,16,128).contiguous()
-            # assert torch.equal(for_check,notneeded[0][0])
-            
-            # print0("pass q")
-            # if(dist.get_rank()==0):
-            #     import pydevd  
-            #     pydevd.settrace()
-            #     b=0
-            # notneeded[0]=tuple(notneeded[0])
-            # notneeded=tuple(notneeded)
-            # notneeded[0][0]=notneeded[0][0].reshape(
-            #     inp_shape[: gather_idx] + \
-            #     [inp_shape[gather_idx] * seq_world_size,] + \
-            #     inp_shape[gather_idx + 1:]).contiguous()
-            # grad_input= grad_input.reshape(
-            #     inp_shape[: scatter_idx] + \
-            #     [inp_shape[scatter_idx] * seq_world_size,] + \
-            #     inp_shape[scatter_idx + 1:]).contiguous()
-        # def k_hook(module, grad_input):
+         
         def k_hook(*notneeded):
             # torch.cuda.default_stream().wait_stream(self.sp_stream)
             self.bwd_all2all_handels['dk'].wait()
@@ -253,22 +198,11 @@ class DistributedAttention(torch.nn.Module):
             notneeded=tuple(notneeded)
             
             
-            # for_check=tmp.reshape(4096,1,16,128).contiguous()
-            # assert torch.equal(for_check,notneeded[0][0])
-            # print0("pass k")
 
-            # print("hookk")
-            # grad_input.contiguous()
-            b=0
         
         async_bwd_comm_q=False
         async_bwd_comm_k=False
-        # if self.q_linear!=None:
-        #     async_bwd_comm_q=True
-        # if self.k_linear!=None:
-        #     async_bwd_comm_k=True
-        # if self.hook_register==False:
-        # if True:
+
         if True:
             async_bwd_comm_q=True
             async_bwd_comm_k=True
@@ -282,10 +216,8 @@ class DistributedAttention(torch.nn.Module):
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_q,self.bwd_all2all_handels,'dq') #[1,512,32,32]
         torch.cuda.current_stream().wait_event(key.done_event)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_k, self.bwd_all2all_handels,'dk') #[1,512,32,32]
-        # torch.cuda.current_stream().wait_event(value.done_event)
         torch.cuda.current_stream().wait_stream(self.sp_stream)
         value_layer= _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx) #[1,512,32,32]
-        ##all2all ayns to v_dense_bwd wait
         
         
         #all2all ayns to k_dense_bwd wait
@@ -301,7 +233,6 @@ class DistributedAttention(torch.nn.Module):
             bwd_o_async=True
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx,self.sp_stream,False,bwd_o_async)
 
-        # dO=wdY        
 
         #out e.g., [s/p::h]
         return output
