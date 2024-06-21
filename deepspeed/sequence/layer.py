@@ -201,7 +201,10 @@ class DistributedAttention(torch.nn.Module):
             # grad_input.contiguous()
             # import pydevd  
             # pydevd.settrace()
+            # torch.cuda.default_stream().wait_stream(self.sp_stream)
             self.bwd_all2all_handels['dq'].wait()
+            self.sp_stream.wait_stream(torch.cuda.default_stream())
+
             tmp=self.bwd_all2all_handels['dq_grad']
             notneeded=list(notneeded)
             notneeded[0]=list(notneeded[0])
@@ -217,10 +220,10 @@ class DistributedAttention(torch.nn.Module):
             # assert torch.equal(for_check,notneeded[0][0])
             
             # print0("pass q")
-            if(dist.get_rank()==0):
-                # import pydevd  
-                # pydevd.settrace()
-                b=0
+            # if(dist.get_rank()==0):
+            #     import pydevd  
+            #     pydevd.settrace()
+            #     b=0
             # notneeded[0]=tuple(notneeded[0])
             # notneeded=tuple(notneeded)
             # notneeded[0][0]=notneeded[0][0].reshape(
@@ -233,7 +236,11 @@ class DistributedAttention(torch.nn.Module):
             #     inp_shape[scatter_idx + 1:]).contiguous()
         # def k_hook(module, grad_input):
         def k_hook(*notneeded):
-            # self.bwd_all2all_handels['dk'].wait()
+            # torch.cuda.default_stream().wait_stream(self.sp_stream)
+            self.bwd_all2all_handels['dk'].wait()
+            self.sp_stream.wait_stream(torch.cuda.default_stream())
+
+
             tmp=self.bwd_all2all_handels['dk_grad']
             notneeded=list(notneeded)
             notneeded[0]=list(notneeded[0])
@@ -270,11 +277,13 @@ class DistributedAttention(torch.nn.Module):
             fn_q.register_prehook(q_hook)
             fn_k = key.grad_fn.next_functions[0][0]
             fn_k.register_prehook(k_hook)
-        
+            
+        torch.cuda.current_stream().wait_event(query.done_event)
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_q,self.bwd_all2all_handels,'dq') #[1,512,32,32]
+        torch.cuda.current_stream().wait_event(key.done_event)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx,None,False,async_bwd_comm_k, self.bwd_all2all_handels,'dk') #[1,512,32,32]
-        
-        
+        # torch.cuda.current_stream().wait_event(value.done_event)
+        torch.cuda.current_stream().wait_stream(self.sp_stream)
         value_layer= _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx) #[1,512,32,32]
         ##all2all ayns to v_dense_bwd wait
         
