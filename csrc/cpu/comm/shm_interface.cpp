@@ -104,10 +104,7 @@ void inference_all_reduce_(torch::Tensor& data, int op)
     return;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-    m.def("initialize", &initialize, "shm initialize");
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("initialize", &initialize, "shm initialize"); }
 
 TORCH_LIBRARY(deepspeed, m)
 {
