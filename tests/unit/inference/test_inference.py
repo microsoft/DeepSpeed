@@ -99,7 +99,7 @@ def _hf_model_list() -> List[ModelInfo]:
 
     # Update the cache if it has expired
     if ((model_data["cache_time"] + cache_expiration_seconds) < current_time) or os.getenv("FORCE_UPDATE_HF_CACHE",
-                                                                                           default=False) :
+                                                                                           default=False):
         api = HfApi()
         model_data["model_list"] = [
             ModelInfo(modelId=m.modelId, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in api.list_models()
