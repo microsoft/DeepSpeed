@@ -42,7 +42,7 @@ class PartitionedParameterProfiler(object):
             return
 
         if name not in self.event_counters:
-            self.event_counters[name] = __class__.EventCounter(name=name, count=0, num_elem=0)
+            self.event_counters[name] = __class__.EventCounter(name=name, count=0, num_elem=0, max_partition_numel=0, min_partition_numel=0)
         self.timers(name).start()
 
     def stop_event(self, name, num_elem):
