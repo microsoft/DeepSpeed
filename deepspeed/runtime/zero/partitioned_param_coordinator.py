@@ -21,7 +21,7 @@ import deepspeed.runtime.compiler as compiler
 
 import logging
 
-ENABLE_PROFILER = False
+ENABLE_PROFILER = True
 
 
 def debug_rank0(message: str) -> None:
@@ -288,7 +288,11 @@ class PartitionedParameterCoordinator:
             if logger.isEnabledFor(logging.DEBUG):
                 for param in params_to_fetch:
                     debug_rank0(f"-fetch: {param.ds_summary()}")
+            # disable all_gather
             self.__all_gather_params(params_to_fetch, forward)
+            # for param in params_to_fetch:
+            #     param.ds_status = ZeroParamStatus.AVAILABLE
+            #     param.d
             self.__profiler.stop_event(event_name, fetch_numel)
 
         wait_numel = 0

@@ -14,14 +14,20 @@ class PartitionedParameterProfiler(object):
         name: str
         count: int
         num_elem: int
+        max_partition_numel: int
+        min_partition_numel: int
 
         def reset(self):
             self.count = 0
             self.num_elem = 0
+            self.max_partition_numel = 0
+            self.min_partition_numel = 0
 
         def increment(self, numel):
             self.count += 1
             self.num_elem += numel
+            self.max_partition_numel = max(numel, self.max_partition_numel)
+            self.min_partition_numel = min(numel, self.min_partition_numel)
 
     def __init__(self, timers):
         self.timers = timers
@@ -54,8 +60,8 @@ class PartitionedParameterProfiler(object):
     def _log_event_counters(self):
         for event_ctr in self.event_counters.values():
             log_dist(
-                f'{event_ctr.name}: count = {event_ctr.count}, numel = {event_ctr.num_elem}',
-                #f'{event_ctr.name}: time = {self._log_timers()},count = {event_ctr.count}, numel = {event_ctr.num_elem}',
+                f'{event_ctr.name}: count = {event_ctr.count}, numel = {event_ctr.num_elem}',max_partition_numel = {event_ctr.max_partition_numel}, min_partition_numel = {event_ctr.min_partition_numel},
+                #f'{event_ctr.name}: time = {self._log_timers()},count = {event_ctr.count}, numel = {event_ctr.num_elem}', 
                 ranks=[0])
 
     def log_events(self):

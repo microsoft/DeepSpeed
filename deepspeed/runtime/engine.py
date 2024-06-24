@@ -1461,7 +1461,8 @@ class DeepSpeedEngine(Module):
 
         log_dist('Creating BF16 optimizer', ranks=[0])
 
-        timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
+        # timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
+        timers = self.timers
         optimizer = BF16_Optimizer(optimizer,
                                    self.param_names,
                                    mpu=self.mpu,
