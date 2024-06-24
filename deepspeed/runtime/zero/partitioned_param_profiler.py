@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass
 from deepspeed.utils import log_dist
-
+import sys
 
 class PartitionedParameterProfiler(object):
 
@@ -21,7 +21,7 @@ class PartitionedParameterProfiler(object):
             self.count = 0
             self.num_elem = 0
             self.max_partition_numel = 0
-            self.min_partition_numel = 0
+            self.min_partition_numel = sys.maxint
 
         def increment(self, numel):
             self.count += 1
@@ -42,7 +42,7 @@ class PartitionedParameterProfiler(object):
             return
 
         if name not in self.event_counters:
-            self.event_counters[name] = __class__.EventCounter(name=name, count=0, num_elem=0, max_partition_numel=0, min_partition_numel=0)
+            self.event_counters[name] = __class__.EventCounter(name=name, count=0, num_elem=0, max_partition_numel=0, min_partition_numel=(sys.maxint))
         self.timers(name).start()
 
     def stop_event(self, name, num_elem):
@@ -60,7 +60,7 @@ class PartitionedParameterProfiler(object):
     def _log_event_counters(self):
         for event_ctr in self.event_counters.values():
             log_dist(
-                f'{event_ctr.name}: count = {event_ctr.count}, numel = {event_ctr.num_elem}',max_partition_numel = {event_ctr.max_partition_numel}, min_partition_numel = {event_ctr.min_partition_numel},
+                f'{event_ctr.name}: count = {event_ctr.count}, numel = {event_ctr.num_elem},max_partition_numel = {event_ctr.max_partition_numel}, min_partition_numel = {event_ctr.min_partition_numel}',
                 #f'{event_ctr.name}: time = {self._log_timers()},count = {event_ctr.count}, numel = {event_ctr.num_elem}', 
                 ranks=[0])
 
