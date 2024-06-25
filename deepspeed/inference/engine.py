@@ -6,6 +6,7 @@
 import torch
 import time
 import os
+import deepspeed.utils.nvtx
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
@@ -646,6 +647,9 @@ class InferenceEngine(Module):
 
         if self._is_compiled:
             return
+
+        # Avoid graph breaks
+        nvtx.enable_nvtx = False
         self.module.compile(backend=backend, **compile_kwargs)
         self._is_compiled = True
 
