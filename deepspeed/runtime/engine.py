@@ -3610,7 +3610,7 @@ class DeepSpeedEngine(Module):
         """
         # Avoid graph breaks
         deepspeed.utils.nvtx.enable_nvtx = False
-        
+
         if not is_compile_supported():
             raise RuntimeError("compile is not supported in your version of PyTorch.")
 
