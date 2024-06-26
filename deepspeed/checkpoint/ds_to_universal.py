@@ -419,6 +419,39 @@ def _save_optimizer_state(args, ds_checkpoint):
     _save_checkpoint(output_file_path, output_sd)
 
 
+def _save_optimizer_state_stage3(args, optim_files):
+    sd = torch.load(optim_files[0], map_location=torch.device('cpu'))
+    output_sd = sd[OPTIMIZER_STATE_DICT]
+    output_sd[PARAM_GROUPS] = output_sd[OPTIMIZER_STATE_DICT][PARAM_GROUPS]
+    zero_output_folder = os.path.join(args.output_folder, "zero")
+    output_file_path = os.path.join(zero_output_folder, f"optimizer_state.pt")
+    _save_checkpoint(output_file_path, output_sd)
+
+
+def _get_optim_files(checkpoint_dir):
+    return _get_checkpoint_files(checkpoint_dir, "*_optim_states.pt")
+
+
+def _get_model_state_files(checkpoint_dir):
+    return _get_checkpoint_files(checkpoint_dir, "*_model_states.pt")
+
+
+def _get_checkpoint_files(checkpoint_dir, glob_pattern):
+    ckpt_files = sorted(glob.glob(os.path.join(checkpoint_dir, glob_pattern)), key=natural_keys)
+
+    if len(ckpt_files) == 0:
+        raise FileNotFoundError(f"can't find {glob_pattern} files in directory '{checkpoint_dir}'")
+
+    return ckpt_files
+
+
+def _get_zero_stage(optim_files):
+    state_dict = torch.load(optim_files[0], map_location=torch.device('cpu'))
+    optimizer_state = state_dict[OPTIMIZER_STATE_DICT]
+    zero_stage = optimizer_state.get(ZERO_STAGE, 1)
+    return zero_stage
+
+
 def _inject_missing_state(ds_checkpoint):
     if UNIVERSAL_CHECKPOINT_INFO not in ds_checkpoint.global_state:
         sd = torch.load(ds_checkpoint.mp_rank_files[0], map_location=torch.device('cpu'))
@@ -438,11 +471,25 @@ def main(args):
 
     print(f'Converting DeepSpeed checkpoint in {args.input_folder} to Universal checkpoint in {args.output_folder}')
 
-    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
-    if args.inject_missing_state:
-        _inject_missing_state(ds_checkpoint)
-    else:
-        _check_for_required_state(ds_checkpoint)
+    optim_files = _get_optim_files(args.input_folder)
+    zero_stage = _get_zero_stage(optim_files)
+
+    if zero_stage <= 2:
+        ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
+        if args.inject_missing_state:
+            _inject_missing_state(ds_checkpoint)
+        else:
+            _check_for_required_state(ds_checkpoint)
+
+        iteration = ds_checkpoint.get_iteration()
+        #_create_latest_file(args.output_folder, iteration)
+        checkpoint_paths = _create_checkpoint_paths(args.output_folder, iteration, ds_checkpoint.tp_degree,
+                                                    ds_checkpoint.pp_degree)
+
+        slice_shapes = []
+        for mp_rank_file in ds_checkpoint.mp_rank_files:
+            mp_sd = torch.load(mp_rank_file, map_location=torch.device('cpu'))
+            slice_shapes += mp_sd[PARAM_SHAPES]
 
         # fix back to normal flat dict, merge duplicates for tp>1
         slice_shapes = dict((k, v) for d in slice_shapes for k, v in d.items())
