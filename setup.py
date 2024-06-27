@@ -288,7 +288,7 @@ with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
 if sys.platform == "win32":
     scripts = ['bin/deepspeed.bat', 'bin/ds', 'bin/ds_report.bat', 'bin/ds_report']
 else:
-    scripts=[
+    scripts = [
         'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
         'bin/ds_elastic'
     ]
