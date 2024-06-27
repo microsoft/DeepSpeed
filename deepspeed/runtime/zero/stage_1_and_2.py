@@ -552,6 +552,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._param_slice_mappings = self._create_param_mapping()
 
     def destroy(self):
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for p in self.bit16_groups[i]:
+                if getattr(p, '_hp_mapping', None):
+                    p._hp_mapping = None
         for hook in self._grad_acc_hooks:
             hook.remove()
         self.print_rank_0("Removed grad acc hooks")
@@ -573,14 +577,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return param_mapping
 
     def _link_all_hp_params(self):
-        dp_world_size = dist.get_world_size(group=self.dp_process_group)
         if self.cpu_offload:
             self._get_offload_gradient_dict()
 
         for i, _ in enumerate(self.optimizer.param_groups):
             # Link bit16 and fp32 params in partition
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
-            partition_size = self.bit16_groups_flat[i].numel() // dp_world_size
+            partition_size = self.bit16_groups_flat[i].numel() // dist.get_world_size(
+                group=self.real_dp_process_group[i])
             flat_hp_partition = self.single_partition_of_fp32_groups[i]
             link_hp_params(lp_param_list=self.bit16_groups[i],
                            flat_hp_partition=flat_hp_partition,
@@ -2286,7 +2290,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
                         checkpoint_folder=None,
-                        load_serial=None):
+                        load_serial=None,
+                        param_shapes=None):
         if checkpoint_folder:
             self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:
