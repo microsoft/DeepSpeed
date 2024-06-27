@@ -15,6 +15,7 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.lion import DeepSpeedCPULion, FusedLion
 from deepspeed.utils.nvtx import instrument_w_nvtx
 from deepspeed.accelerator import get_accelerator
+from deepspeed.zero import GatheredParameters
 from contextlib import contextmanager
 
 
@@ -166,7 +167,7 @@ def unwrap_model_for_generation(model):
     """
     For ZeRO-3 models, we gather the weights once to speed up generation.
     """
-    with deepspeed.zero.GatheredParameters(model.parameters()):
+    with GatheredParameters(model.parameters()):
         # Removes the optimizer hooks from a DeepSpeed ZeRO-3 model.
 
         # Remove hooks
