@@ -5,7 +5,7 @@
 """
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
-
+import torch
 from deepspeed.ops.op_builder import AsyncIOBuilder
 from deepspeed import comm as dist
 
@@ -154,6 +154,8 @@ class PipelinedOptimizerSwapper(OptimizerSwapper):
 
     def _complete_swap_out(self, swap_out_type):
         self.swap_ops[swap_out_type].wait()
+        for i in range(len(self.swap_ops[swap_out_type].state_buffers)):
+            self.swap_ops[swap_out_type].state_buffers[i] = torch.Tensor()
         self.swap_buffer_manager.free(self.swap_ops[swap_out_type].allocated_buffers)
         self.swap_ops[swap_out_type] = None
 
@@ -179,6 +181,7 @@ class PipelinedOptimizerSwapper(OptimizerSwapper):
             for pinned_dst, unpinned_src in zip(new_alloc_buffers, unpinned_tensors):
                 dst = get_sized_buffer(pinned_dst, unpinned_src.numel())
                 dst.data.copy_(unpinned_src.data)
+                unpinned_src.data = torch.Tensor()
 
         swap_paths = param_info.swap_paths.copy()
         assert len(swap_paths) == len(swap_buffers)
