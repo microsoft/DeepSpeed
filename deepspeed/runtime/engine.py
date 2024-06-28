@@ -90,7 +90,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
-from .compiler import CompiledModuleWrapper
+from .compiler import is_compile_supported
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -361,8 +361,7 @@ class DeepSpeedEngine(Module):
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
 
-        if self._config.compile_config.enabled:
-            self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
+        self._is_compiled = False
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -2663,7 +2662,10 @@ class DeepSpeedEngine(Module):
             mp_rank_str = f"{mp_rank:02d}"
 
         if self.zero_optimization_partition_weights():
-            filename = "zero_pp_rank_{}".format(dist.get_rank(group=self.optimizer.dp_process_group))
+            if self.load_universal_checkpoint():
+                filename = "zero_pp_rank_0"
+            else:
+                filename = "zero_pp_rank_{}".format(dist.get_rank(group=self.optimizer.dp_process_group))
             ckpt_name = os.path.join(
                 checkpoints_path,
                 str(tag),
@@ -2790,7 +2792,7 @@ class DeepSpeedEngine(Module):
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
 
-        if self.load_universal_checkpoint():
+        if self.load_universal_checkpoint() and not self.zero_optimization_partition_weights():
             self.optimizer.update_lp_params()
 
         return load_path, client_states
@@ -2957,11 +2959,13 @@ class DeepSpeedEngine(Module):
             if zero_sd_list is None:
                 return False
 
+        param_shapes = self._get_zero_param_shapes()
         self.optimizer.load_state_dict(state_dict_list=zero_sd_list,
                                        load_optimizer_states=load_optimizer_states,
                                        load_from_fp32_weights=self.zero_load_from_fp32_weights(),
                                        checkpoint_folder=checkpoint_folder,
-                                       load_serial=load_serial)
+                                       load_serial=load_serial,
+                                       param_shapes=param_shapes)
 
         if self.load_universal_checkpoint():
             logger.info(f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}')
@@ -3604,3 +3608,23 @@ class DeepSpeedEngine(Module):
             self.optimizer.empty_partition_cache()
             gc.collect()
             get_accelerator().empty_cache()
+
+    def compile(self, backend=get_accelerator().get_compile_backend(), compile_kwargs={}) -> None:
+        """Compile the module using the specified backend and kwargs.
+        If a compiler_fn is set, it will be used instead of torch.compile().
+        """
+        # Avoid graph breaks
+        deepspeed.utils.nvtx.enable_nvtx = False
+
+        if not is_compile_supported():
+            raise RuntimeError("compile is not supported in your version of PyTorch.")
+
+        if self.is_compiled:
+            return
+
+        self.module.compile(backend=backend, **compile_kwargs)
+        self._is_compiled = True
+
+    @property
+    def is_compiled(self) -> bool:
+        return self._is_compiled
