@@ -154,8 +154,8 @@ class PipelinedOptimizerSwapper(OptimizerSwapper):
 
     def _complete_swap_out(self, swap_out_type):
         self.swap_ops[swap_out_type].wait()
-        for i in range(len(self.swap_ops[swap_out_type].state_buffers)):
-            self.swap_ops[swap_out_type].state_buffers[i] = torch.Tensor()
+        for buffer in self.swap_ops[swap_out_type].state_buffers:
+            buffer = torch.Tensor()
         self.swap_buffer_manager.free(self.swap_ops[swap_out_type].allocated_buffers)
         self.swap_ops[swap_out_type] = None
 
