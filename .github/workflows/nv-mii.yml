@@ -61,7 +61,7 @@ jobs:
 
       - name: MII unit tests
         run: |
-          BRANCH="loadams/remove-transformers-conversation"
+          BRANCH="main"
           if [[ ! -z "${{ github.event.inputs.mii_branch }}" ]]; then
               BRANCH="${{ github.event.inputs.mii_branch }}"
           fi
