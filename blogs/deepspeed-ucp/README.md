@@ -1,3 +1,9 @@
+<div align="center">
+
+# DeepSpeed Universal Checkpointing: Efficient and Flexible Checkpointing for Large Scale Distributed Training
+
+</div>
+
 <img src="./media/image1.png" style="width:6.5in;height:3.65625in" />
 
 To cite DeepSpeed Universal Checkpoint, please cite our [arxiv report](https://arxiv.org/abs/2406.18820):
