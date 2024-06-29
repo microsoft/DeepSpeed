@@ -36,7 +36,7 @@ class InferenceContext:
 
     def gen_workspace(self, num_layers, num_heads, batch_size, prompt_len, hidden_dim, mp_size, external_cache,
                       elem_dtype, rank, max_out_tokens, min_out_tokens):
-        assert mp_size == 1, f"{mp_size=} not supported"
+        assert mp_size == 1, f"mp_size={mp_size} is not supported"
         self.allocate_called = True
         self.kv_cache = None
         if not external_cache:

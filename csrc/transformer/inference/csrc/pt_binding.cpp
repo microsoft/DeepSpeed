@@ -462,7 +462,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     int k = query_key_value.size(2) / (heads + 2 * (num_kv > 0 ? num_kv : heads));
     unsigned hidden_dim = heads * k;
 
-    bool is_prompt = (seq_len > 1);
+    is_prompt = (seq_len > 1);
 
     if (is_prompt) InferenceContext::Instance().reset_tokens(seq_len);
     unsigned soft_len = InferenceContext::Instance().current_tokens();
