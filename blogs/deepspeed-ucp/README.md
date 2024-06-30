@@ -120,8 +120,6 @@ researchers and practitioners may switch between fp16 and bfloat16 mixed
 precision training. By keeping the fp32 weight/optimizer values, the
 training can resume either with fp16 or bfloat16.
 
-## 
-
 ## Universal Checkpoint Language
 
 <img src="./media/flowchart.png" style="width:6.5in;height:2.22222in" />
