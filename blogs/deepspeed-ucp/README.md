@@ -12,8 +12,8 @@ To cite DeepSpeed Universal Checkpoint, please cite our [arxiv report](https://a
 @article{lian2024-ucp,
 title={Universal Checkpointing: Efficient and Flexible Checkpointing for
 Large Scale Distributed Training},
-author={Xinyu Lian and Sam Ade Jacobs and Masahiro Tanaka and Lev
-Kurilenko and Stas Bekman and Olatunji Ruwase and Minjia Zhang},
+author={Xinyu Lian and Sam Ade Jacobs and Lev Kurilenko and Masahiro Tanaka
+and Stas Bekman and Olatunji Ruwase and Minjia Zhang},
 journal={arxiv preprint arxiv:406.18820},
 year={2024},
 
@@ -124,13 +124,12 @@ training can resume either with fp16 or bfloat16.
 
 ## Universal Checkpoint Language
 
-# <img src="./media/flowchart.png" style="width:6.5in;height:2.22222in" />
+<img src="./media/flowchart.png" style="width:6.5in;height:2.22222in" />
 
 Figure 2: UCP language helps transform distributed checkpoints into the
 UCP format and load UCP checkpoints based on the Target parallel
 technique and new hardware configuration.
 
-# 
 
 While *UCP* provides a common interface for different parallelism
 strategies, the development of transformation from arbitrary distributed
