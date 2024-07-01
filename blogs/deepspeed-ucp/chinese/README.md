@@ -115,7 +115,7 @@ alt="A graph of training step Description automatically generated" />
 我们感谢伊利诺伊大学厄巴纳-香槟分校、Statosphere和英特尔Habana的合作。
 
 贡献者：
-Xinyu Lian $^1$, Sam Ade Jacobs $^2$, Lev Kurilenko $^2$, Masahiro Tanaka $^2$, 
+Xinyu Lian $^1$, Sam Ade Jacobs $^2$, Lev Kurilenko $^2$, Masahiro Tanaka $^2$,
 Stas Bekman $^3$, Olatunji Ruwase $^2$, Minjia Zhang $^1$, Moshe Island $^4$
 
 1: 伊利诺伊大学厄巴纳-香槟分校
