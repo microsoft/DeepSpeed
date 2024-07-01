@@ -244,10 +244,11 @@ iteration 501 with a new Target TP=PP=DP=2.
 # General Availability of DeepSpeed Universal Checkpoint
 
 We are excited to release DeepSpeed Universal Checkpoint. DeepSpeed
-Universal Checkpoint has been fully integrated with a rebased version of
-Megatron-DeepSpeed and accessible through both DeepSpeed and
-Megatron-DeepSpeed GitHub repos. Detailed tutorial on usage is available on [DeepSpeed
-tutorial page](https://www.deepspeed.ai/tutorials/universal-checkpointing/).
+Universal Checkpoint is available in DeepSpeed versions >= 
+[0.14.4](https://github.com/microsoft/DeepSpeed/releases/tag/v0.14.4), 
+has been fully integrated with [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed) ([commit c3a13be](https://github.com/microsoft/Megatron-DeepSpeed/commit/c3a13be721da0d0de16c338d0d665b0f7d13d14f)). 
+Detailed tutorial on usage is available on 
+[DeepSpeed tutorial page](https://www.deepspeed.ai/tutorials/universal-checkpointing/).
 
 We welcome contributions and collaboration from the broader open-source
 community. DeepSpeed Universal Checkpoint is part of the bigger
