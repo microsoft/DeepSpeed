@@ -9,8 +9,47 @@ import pytest
 import gc
 from unit.common import DistributedTest
 from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
+import deepspeed.comm as dist
+from deepspeed import get_accelerator
+from deepspeed.moe.sharded_moe import top1gating
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer, is_moe_param
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
+
+
+@pytest.mark.parametrize("zero_stage", [0, 1, 2])
+class TestSimpleMoE(DistributedTest):
+    world_size = 2
+
+    def test(self, zero_stage):
+        if not required_torch_version(min_version=1.8):
+            pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                }
+            },
+            "fp16": {
+                "enabled": True
+            },
+            "zero_optimization": {
+                "stage": zero_stage
+            }
+        }
+        # should automatically create moe param groups in deepspeed backend
+        hidden_dim = 16
+        model = SimpleMoEModel(hidden_dim=hidden_dim, ep_size=1)
+        model, optimizer, _, _ = deepspeed.initialize(config=config_dict, model=model)
+        data_loader = sequence_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
+
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
 
 
 @pytest.mark.parametrize("ep_size", [2, 4])
@@ -132,3 +171,23 @@ class TestPRMoE(DistributedTest):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
+
+
+class TestTopk(DistributedTest):
+    world_size = 2
+
+    def test(self):
+        device = get_accelerator().current_device_name()
+        if dist.get_rank() == 0:
+            logits = torch.rand(2, 2, device=device)
+        elif dist.get_rank() == 1:
+            logits = torch.rand(10, 2, device=device)
+
+        output = top1gating(logits=logits,
+                            capacity_factor=1,
+                            min_capacity=0,
+                            used_token=None,
+                            noisy_gate_policy=None,
+                            drop_tokens=False,
+                            use_rts=True,
+                            use_tutel=False)
