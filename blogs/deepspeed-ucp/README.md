@@ -36,7 +36,7 @@ scenarios. Several methods such as ZeRO data parallelism (ZeRO-DP),
 pipeline parallelism (PP), tensor parallelism (TP) and sequence
 parallelism (SP) are great technologies for accelerating LLMs training
 but are incompatible with traditional or default (Torch) save and load
-checkpointing mechanism. Moreso, elastic and flexible composition of
+checkpointing mechanism. More so, elastic and flexible composition of
 these different parallelism topologies with checkpointing are not
 currently available, in part, because these techniques shard model
 and/or optimizer states making it difficult to resume training with a
