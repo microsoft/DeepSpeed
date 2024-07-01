@@ -22,39 +22,36 @@ year={2024},
 
 # Introduction
 
-Checkpointing is a crucial technique for reducing the cost of training
-LLMs, as it enables saving the model state during the process. This way,
-if the system fails, the training can continue from the last saved point
+Checkpointing is a crucial technique for reducing the cost of training 
+machine learning models, as it enables saving the model state during the process. 
+This way, if the system fails, the training can resume from the most recent checkpoint
 instead of from the beginning. Additionally, checkpointing allows for
-assessing the model performance at various stages of training, which
+evaluating the model performance at various stages of training, which
 facilitates hyperparameter tuning and finetuning for different and
 varied downstream tasks.
 
-However, there are challenges to design, implementation and usage of
+However, there are challenges in the design, implementation and usage of
 checkpointing especially in distributed training and finetuning
-scenarios. Several methods such as ZeRO data parallelism (ZeRO-DP),
+scenarios. Parallel training methods such as ZeRO data parallelism (ZeRO-DP),
 pipeline parallelism (PP), tensor parallelism (TP) and sequence
-parallelism (SP) are great technologies for accelerating LLMs training
-but are incompatible with traditional or default (Torch) save and load
-checkpointing mechanism. Moreso, elastic and flexible composition of
-these different parallelism topologies with checkpointing are not
-currently available, in part, because these techniques shard model
-and/or optimizer states making it difficult to resume training with a
-checkpoint that was created on a different number of GPUs or
+parallelism (SP) are popular technologies for accelerating LLMs training.  
+However, elastic and flexible composition of these different parallelism 
+topologies with checkpointing is not currently available, in part, because 
+these techniques shard model and/or optimizer states making it difficult to 
+resume training with a checkpoint that was created on a different number of GPUs or
 accelerators.
 
 In this release, we are excited to introduce DeepSpeed Universal
 Checkpointing (*UCP*), a most comprehensive solution to the problem of
 distributed checkpointing. *UCP* enables efficient checkpoint creation
 while providing the flexibility of resuming on arbitrary parallelism
-strategy and hardware configurations. *UCP* also unlocks unprecedented
+strategies and hardware configurations. *UCP* also unlocks unprecedented
 capabilities for large-scale training such as improved resilience to
 hardware failures through continued training on remaining healthy
 hardware, and reduced training time through opportunistic exploitation
 of elastic capacity.
 
-In summary, the following capabilities that are unlocked with current
-release of *UCP*:
+In summary, this release of *UCP* unlocks the following capabilities:
 
 - Flexible checkpoints reshape along any of the training parallelism
   techniques (i.e., PP, TP, DP, ZeRO-DP, SP, MoE)
@@ -72,8 +69,8 @@ representation in each phase of the checkpointing life cycle:
 distributed representation for saving, and consolidated representation
 for loading. This is achieved using two key mechanisms. First, the
 universal checkpoint format, which consists of a consolidated
-representation of each model parameter and metadata for mapping
-parameter fragments into training ranks of arbitrary model-parallelism
+representation of each model parameter, and metadata for mapping
+parameter fragments to the ranks of an arbitrary parallel training 
 configuration. Second, the universal checkpoint language, a simple but
 powerful and robust specification language for converting distributed
 checkpoints into the universal checkpoint format.
@@ -84,30 +81,28 @@ checkpoints into the universal checkpoint format.
 
 Figure 1: UCP overview: top row and bottom row are Source and Target
 parallelism configurations respectively. The middle row shows UCP as
-intermediary block of translation from Source to Target.
+an intermediate format of translating from Source to Target.
 
 Figure 1 shows high level schematic description of *UCP* conversion
 process and format. Conversion starts with top block of checkpointing in
-any parallel strategies format or form e.g, DP, TP, PP, SP. Allowing
-saving in native format of training eliminates any overhead that may be
-incurred with synchronized global checkpoint saving. To ensure that
-saved checkpoints (herein called *Source*) can easily be converted and
-loaded to any parallel strategies for continuous training (herein called
-Target), we introduce the idea of atomic checkpoint format as
-intermediate block.
+any parallel format e.g, DP, TP, PP, SP. Saving in the native format of parallel training avoids any overhead of 
+consolidating into a single global checkpoint. To ensure that
+a checkpoint saved in one parallel configuration (herein called *Source*) can be 
+easily converted and loaded for continuous training in another parallel configuration (herein called *Target*), 
+we introduce the idea of atomic checkpoint as an intermediate format.
 
-The concept of atom checkpoint is central to *UCP*. These are
+The concept of atomic checkpoint is central to *UCP*. These are
 fine-grained files containing the consolidated representation of each
 model parameter, along with optimizer states. The atomic checkpoint
 format is useful for three reasons. First, the atomic representation of
 checkpoints decouples the dependencies of distributed checkpoints and
 specific parallelism techniques and hardware configurations. As such,
-one does not need to implement individual converters from each *Source*
-to *Target*. Instead, *UCP* can act as a common interchange format
+one does not need to implement individual converters for each *Source*
+and *Target* pair. Instead, *UCP* can act as a common interchange format
 between different distributed training techniques, which then can be
 easily transformed into other distributed training strategies, as shown
 in Fig 2. By keeping the consolidated representation of each model
-parameter, *UCP* enables easy split and flexible mapping of model states
+parameter, *UCP* enables easy splitting and flexible mapping of model states
 or fragmented states to different GPUs on a parameter-by-parameter
 basis, effectively reducing the working memory needed to load large
 model checkpoints. Second, the *UCP* conversion happens lazily and
@@ -131,15 +126,13 @@ technique and new hardware configuration.
 
 While *UCP* provides a common interface for different parallelism
 strategies, the development of transformation from arbitrary distributed
-checkpoints to *UCP* can still have a high engineering and
-implementation cost. This is because each GPU in distributed training
-calls a persist method (e.g., torch.save() in PyTorch) to save a
-checkpoint file of the GPU model states it owns to the disk, and the
-exact content of each checkpoint varies across different techniques.
+checkpoints to *UCP* can still incur a high engineering and
+implementation cost. This is because the number of distributed checkpoint files 
+and their contents can vary across the different parallel training techniques. 
 
 To tackle this challenge, *UCP* provides *UCP* language, which is a
-simple but powerful specification language for converting several types
-of distributed checkpoints into the common format described in previous
+simple but powerful specification language for converting a distributed checkpoint 
+into the atomic checkpoint format, described in previous
 section. *UCP* does this in two ways. First, it provides a declarative
 system with pre-defined *parameter patterns*, which cover a wide range
 of parallelism strategies for model states. Parameter patterns contain
@@ -149,9 +142,9 @@ with a GPU rank, which is the most common pattern seen in techniques
 such as ZeRO-1/2 and PP (see our technical report for a completed list
 of currently supported parameter patterns). Second, *UCP* language
 provides a set of common operators that facilitate the transformation of
-distributed checkpoints into consolidated atom checkpoints. At a
-high-level, as illustrated in Figure 3, *UCP* language is invoked when a
-new *Target* parallelism technique is needed or the hardware
+distributed checkpoints into consolidated atomic checkpoints. At a
+high-level, as illustrated in Figure 3, *UCP* language is invoked when 
+support for a new *Target* is needed or the hardware
 configuration changes. It first transforms distributed checkpoints into
 the *UCP* format. It then loads the *UCP* checkpoints based on the
 *Target* parallel technique and new hardware configuration.
