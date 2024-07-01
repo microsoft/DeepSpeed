@@ -254,15 +254,15 @@ We are excited to release DeepSpeed Universal Checkpoint. DeepSpeed
 Universal Checkpoint has been fully integrated with a rebased version of
 Megatron-DeepSpeed and accessible through both DeepSpeed and
 Megatron-DeepSpeed GitHub repos. Detailed tutorial on usage is available on [DeepSpeed
-tutorial page](https://www.deepspeed.ai/tutorials/universal-checkpointing/). 
+tutorial page](https://www.deepspeed.ai/tutorials/universal-checkpointing/).
 
 We welcome contributions and collaboration from the broader open-source
 community. DeepSpeed Universal Checkpoint is part of the bigger
 DeepSpeed ecosystem of large-scale AI training and inference. For more
-details on all DeepSpeed technologies and innovations, please visit our 
+details on all DeepSpeed technologies and innovations, please visit our
 [website]((https://www.deepspeed.ai/)) and follow us
-on X, formerly Twitter, ([English](https://twitter.com/MSFTDeepSpeed), 
-[Japanese](https://twitter.com/MSFTDeepSpeedJP)) 
+on X, formerly Twitter, ([English](https://twitter.com/MSFTDeepSpeed),
+[Japanese](https://twitter.com/MSFTDeepSpeedJP))
 and [Chinese Zhihu](https://www.zhihu.com/people/deepspeed).
 
 # Acknowledgements and Contributions
@@ -270,7 +270,7 @@ We thank the collaboration of University of Illinois at Urbana-Champaign,
 Statosphere, and Intel Habana.
 
 Contributions:
-Xinyu Lian $^1$, Sam Ade Jacobs $^2$, Lev Kurilenko $^2$, Masahiro Tanaka $^2$, 
+Xinyu Lian $^1$, Sam Ade Jacobs $^2$, Lev Kurilenko $^2$, Masahiro Tanaka $^2$,
 Stas Bekman $^3$, Olatunji Ruwase $^2$, Minjia Zhang $^1$, Moshe Island $^4$
 
 1: University of Illinois at Urbana-Champaign
