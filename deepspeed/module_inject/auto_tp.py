@@ -426,12 +426,12 @@ class AutoTP():
     def update_mp_params(self, child):
         if getattr(child, "replaced", False) == True:
             return
-        for param in [
-                "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads", "kv_n_heads",
-                "d_model", "num_attention_heads_per_partition", "num_multi_query_groups_per_partition",
-                "hidden_size_per_partition"
-        ]:
+        param_list = [
+            "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads", "all_head_size",
+            "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads", "kv_n_heads", "d_model",
+            "num_attention_heads_per_partition", "num_multi_query_groups_per_partition", "hidden_size_per_partition"
+        ]
+        for param in param_list:
             if "Yuan" in str(child) and 'embed_dim' in param_list:
                 param_list.remove('embed_dim')
             if hasattr(child, param):
