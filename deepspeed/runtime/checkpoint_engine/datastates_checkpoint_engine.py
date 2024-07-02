@@ -2,14 +2,14 @@
 from deepspeed.utils import logger, log_dist
 from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
     CheckpointEngine
-from datastates import DataStates
+from datastates.llm import Checkpointing
 
 
 class DataStatesCheckpointEngine(CheckpointEngine):
 
     def __init__(self, deepspeed_config, rank):
         super().__init__(deepspeed_config)
-        self.ckpt_engine = DataStates(deepspeed_config, rank)
+        self.ckpt_engine = Checkpointing(deepspeed_config, rank)
     
     def create(self, tag):
         log_dist(f"[DataStates] Checkpoint {tag} is about to be saved!", ranks=[0])

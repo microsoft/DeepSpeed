@@ -584,7 +584,7 @@ class PipelineModule(nn.Module):
         layer_list = self.forward_funcs[start:end]
 
         checkpoint_engine.makedirs(save_dir, exist_ok=True)
-        debloat_memory = "DataStatesCheckpointEngine" not in str(type(checkpoint_engine))
+        debloat_memory = False #"DataStatesCheckpointEngine" not in str(type(checkpoint_engine))
         for idx, layer in enumerate(layer_list):
             model_ckpt_path = self.ckpt_layer_path(save_dir, start + idx)
             if not hasattr(layer, 'state_dict'):
