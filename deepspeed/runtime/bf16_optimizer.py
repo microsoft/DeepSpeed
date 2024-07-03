@@ -498,8 +498,7 @@ class BF16_Optimizer(ZeROOptimizer):
                         checkpoint_folder,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
-                        load_serial=None,
-                        param_shapes=None):
+                        load_serial=None):
         if checkpoint_folder:
             self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:
