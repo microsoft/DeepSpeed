@@ -47,7 +47,7 @@ class DSElasticAgent(LocalElasticAgent):
                               master_port: Optional[int],
                               local_addr: Optional[str] = None):
         if master_port is None:
-            sock = get_free_port() 
+            sock = get_free_port()
             with closing(sock):
                 master_port = sock.getsockname()[1]
 
