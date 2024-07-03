@@ -6,7 +6,7 @@
 from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
-from torch.distributed.elastic.agent.server.api import log, _get_socket_with_port
+from torch.distributed.elastic.utils.distributed import get_free_port
 from torch.distributed.elastic.metrics import put_metric
 from torch.distributed.elastic.agent.server.api import (
     RunResult,
@@ -24,6 +24,9 @@ import copy
 from contextlib import closing
 import subprocess
 
+from torch.distributed.elastic.utils.logging import get_logger
+
+log = get_logger(__name__)
 
 class DSElasticAgent(LocalElasticAgent):
 
@@ -44,7 +47,7 @@ class DSElasticAgent(LocalElasticAgent):
                               master_port: Optional[int],
                               local_addr: Optional[str] = None):
         if master_port is None:
-            sock = _get_socket_with_port()
+            sock = get_free_port() 
             with closing(sock):
                 master_port = sock.getsockname()[1]
 

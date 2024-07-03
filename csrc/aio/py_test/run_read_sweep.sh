@@ -16,7 +16,7 @@ function prep_folder()
 
 function validate_environment()
 {
-    validate_cmd="TORCH_EXTENSIONS_DIR=./torch_extentions python ./validate_async_io.py"
+    validate_cmd="TORCH_EXTENSIONS_DIR=./torch_extentions python3 ./validate_async_io.py"
     eval ${validate_cmd}
     res=$?
     if [[ $res != 0 ]]; then
@@ -38,12 +38,12 @@ function fileExists() {
 validate_environment
 
 IO_SIZE=$1
-LOG_DIR=$2/aio_perf_sweep
+LOG_DIR=./1nvme_cpu_write
 MAP_DIR=$2/aio
 GPU_MEM=$3
 USE_GDS=$4
 RUN_SCRIPT=./test_ds_aio.py
-READ_OPT="--read"
+READ_OPT=""
 
 prep_folder ${MAP_DIR}
 prep_folder ${LOG_DIR}
@@ -65,21 +65,21 @@ else
     gds_opt=""
 fi
 
-DISABLE_CACHE="sync; bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
-SYNC="sync"
+DISABLE_CACHE="sudo sync; sudo bash -c 'echo 1 > /proc/sys/vm/drop_caches' "
+SYNC="sudo sync"
 sub_opt=""
 sub="block"
 ov_opt=""
 ov="overlap"
 t=8
-p=8
+p=1
 
 for d in 64 128; do
     for bs in 8M 16M; do
-        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder_to_device_mapping /workspace/nvme03:0 /workspace/nvme03:1 /workspace/nvme03:2 /workspace/nvme03:3 /workspace/nvme47:4 /workspace/nvme47:5 /workspace/nvme47:6 /workspace/nvme47:7"
+        SCHED_OPTS="${sub_opt} ${ov_opt} --handle ${gpu_opt} ${gds_opt} --folder_to_device_mapping /mnt/nvmed0:0"
         OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --io_parallel ${t}"
-        LOG="${LOG_DIR}/read_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
-        cmd="python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
+        LOG="${LOG_DIR}/write_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
+        cmd="/usr/bin/time python3 ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
 
         echo ${DISABLE_CACHE}
         echo ${cmd}
