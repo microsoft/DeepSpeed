@@ -7,6 +7,7 @@ import functools
 import os
 import pkgutil
 import importlib
+import sys
 
 from .abstract_accelerator import DeepSpeedAccelerator
 # During setup stage torch may not be installed, pass on no torch will
@@ -24,7 +25,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
         self._name = 'cuda'
-        self._communication_backend_name = 'nccl'
+        self._communication_backend_name = 'nccl' if sys.platform != 'win32' else 'gloo'
         self._compile_backend = "inductor"
         if pynvml is None:
             self._init_pynvml()
@@ -99,8 +100,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def manual_seed_all(self, seed):
         return torch.cuda.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        return torch.cuda.initial_seed(seed)
+    def initial_seed(self):
+        return torch.cuda.initial_seed()
 
     def default_generator(self, device_index):
         return torch.cuda.default_generators[device_index]

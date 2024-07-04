@@ -742,7 +742,7 @@ class PipelineEngine(DeepSpeedEngine):
                 raise ValueError("expecting a tensor or a tuple of tensors")
             part = PartitionedTensor(tensor=first_output, group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
-            first_output.data = torch.zeros(1)
+            first_output.data = torch.zeros(1, device=first_output.data.device)
             self.pipe_buffers['output_tensors'][buffer_id] = first_output
             # Inject the partitioned tensor into the output before sending
             outputs = (part.to_meta(), part.data(), *outputs_tail)
@@ -852,7 +852,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
-            self.optimizer.update_hp_grads(clear_lp_grads=False)
+            if not self._config.bfloat16_immediate_grad_update:
+                self.optimizer.update_hp_grads(clear_lp_grads=False)
 
         # Free up the memory from the output of forward()
         self.pipe_buffers['output_tensors'][buffer_id] = None
