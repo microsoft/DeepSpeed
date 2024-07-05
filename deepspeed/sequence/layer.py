@@ -45,7 +45,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, han
     post_all2all_fun = post_all2all(transpose, res_shape)
     
     if async_op:
-        if type in ('dq', 'dk'):
+        if type in ('dq', 'dk','dv'):
             handle[type+'_work']=work
             handle[type + '_grad'] = output
             handle[type+'_post_all2all_func'] = post_all2all_fun
@@ -55,9 +55,6 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, han
     return res
 
             
-        
-        
-
 class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
@@ -82,12 +79,13 @@ class _SeqAllToAll(torch.autograd.Function):
         else:
             # overlap communcation path
             if not is_fwd and type == 'o':
-                # The computation of d o_weight can overlap with the communication of d o_input
-                assert stream != None
+                assert ctx.stream != None
                 res = single_all_to_all(input, scatter_idx, gather_idx, group, False)
                 get_accelerator().current_stream().wait_stream(ctx.stream)
+                del ctx.stream.activation_buffer_list
+                # The computation of d o_weight can overlap with the communication of d o_input
 
-            elif not is_fwd and type in ('q', 'k'):
+            elif not is_fwd and type in ('q', 'k','v'):
                 # Achieve communication overlap by pipelining the matrix computation and communication of q, k, and v
                 type = 'd' + type
                 res = single_all_to_all(input, scatter_idx, gather_idx, group, True, handle, type)
@@ -189,14 +187,17 @@ class DistributedAttention(torch.nn.Module):
 
         
         if self.sp_overlap_comm:
-            # Register a hook to synchronize dq and dk after the all-to-all operation 
-            # when the gradient data is used. Place this logic after the q, k, v 
-            # all-to-all operation to improve interpreter speed by enabling an earlier 
+            # Register a hook to synchronize dq and dk after the all-to-all 
+            # operation when the gradient data is used. 
+            # Place this logic after the q, k, v all-to-all operation to 
+            # improve interpreter speed to 
             # call and launch of the forward all-to-all communication.
             grad_fn_q = query.grad_fn.next_functions[0][0]
             grad_fn_q.register_prehook(bwd_hook(layer_type='q'))
             grad_fn_k = key.grad_fn.next_functions[0][0]
             grad_fn_k.register_prehook(bwd_hook(layer_type='k'))
+            grad_fn_k = value.grad_fn.next_functions[0][0]
+            grad_fn_k.register_prehook(bwd_hook(layer_type='v'))
 
 
         #out shape : e.g., [s:h/p:]
