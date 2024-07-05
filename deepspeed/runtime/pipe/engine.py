@@ -67,9 +67,7 @@ class PipelineEngine(DeepSpeedEngine):
 
     def __init__(self, has_bool_tensors=False, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
-        assert isinstance(self.module, PipelineModule) \
-            or (hasattr(self.module, 'wrapped') and isinstance(self.module.wrapped, PipelineModule)), \
-            "model must base PipelineModule"
+        assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
         assert self.zero_optimization_stage(
         ) < ZeroStageEnum.gradients, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
@@ -119,7 +117,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         self._force_grad_boundary = False
 
-        self.batch_timer = ThroughputTimer(batch_size=self.train_batch_size(),
+        self.batch_timer = ThroughputTimer(self._config.timers_config,
+                                           batch_size=self.train_batch_size(),
                                            logging_fn=self.tput_log,
                                            monitor_memory=False,
                                            steps_per_output=self.steps_per_print())
@@ -743,7 +742,7 @@ class PipelineEngine(DeepSpeedEngine):
                 raise ValueError("expecting a tensor or a tuple of tensors")
             part = PartitionedTensor(tensor=first_output, group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
-            first_output.data = torch.zeros(1)
+            first_output.data = torch.zeros(1, device=first_output.data.device)
             self.pipe_buffers['output_tensors'][buffer_id] = first_output
             # Inject the partitioned tensor into the output before sending
             outputs = (part.to_meta(), part.data(), *outputs_tail)
@@ -853,7 +852,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
-            self.optimizer.update_hp_grads(clear_lp_grads=False)
+            if not self._config.bfloat16_immediate_grad_update:
+                self.optimizer.update_hp_grads(clear_lp_grads=False)
 
         # Free up the memory from the output of forward()
         self.pipe_buffers['output_tensors'][buffer_id] = None

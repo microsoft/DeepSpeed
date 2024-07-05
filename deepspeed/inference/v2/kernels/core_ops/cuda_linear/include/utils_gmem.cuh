@@ -5,8 +5,8 @@
 
 // This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
 
-#ifndef UTILS_GMEM_CUH
-#define UTILS_GMEM_CUH
+#ifndef DEEPSPEED_CUDA_LINEAR_UTILS_GMEM_CUH
+#define DEEPSPEED_CUDA_LINEAR_UTILS_GMEM_CUH
 
 #include <assert.h>
 #include "configs.h"
@@ -57,7 +57,7 @@ __device__ __forceinline__ void CopyFromGlobalToShared_Scales(half* SPTR_QuantSc
  */
 template <int MaxNumOfLinesToCopy, int BLOCK_WARPS>
 __device__ __forceinline__ void CopyFromGlobalToShared(
-    half __restrict__ (*SharedPTR)[WARP_K + PADDING_SHARED_MEM_FOR_B_8],
+    half (*__restrict__ SharedPTR)[WARP_K + PADDING_SHARED_MEM_FOR_B_8],
     const half* GlobalPTR,
     const int GlobalStride,
     const int NumOfLinesLeft,  // To support arbitrary N dimensions.
