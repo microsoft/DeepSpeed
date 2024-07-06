@@ -18,7 +18,9 @@ build_win.bat
 The wheel will be located at: dist/*.whl
 """
 
+import pathlib
 import os
+import shutil
 import sys
 import subprocess
 from setuptools import setup, find_packages
@@ -207,21 +209,16 @@ else:
     git_hash = "unknown"
     git_branch = "unknown"
 
-
-def create_dir_symlink(src, dest):
-    if not os.path.islink(dest):
-        if os.path.exists(dest):
-            os.remove(dest)
-        assert not os.path.exists(dest)
-        os.symlink(src, dest)
-
-
 if sys.platform == "win32":
-    # This creates a symbolic links on Windows.
-    # It needs Administrator privilege to create symlinks on Windows.
-    create_dir_symlink('.\\deepspeed\\ops\\csrc', '..\\..\\csrc')
-    create_dir_symlink('.\\deepspeed\\ops\\op_builder', '..\\..\\op_builder')
-    create_dir_symlink('.\\deepspeed\\accelerator', '..\\accelerator')
+    shutil.rmtree('.\\deepspeed\\ops\\csrc', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\ops\\csrc').unlink(missing_ok=True)
+    shutil.copytree('.\\csrc', '.\\deepspeed\\ops\\csrc', dirs_exist_ok=True)
+    shutil.rmtree('.\\deepspeed\\ops\\op_builder', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\ops\\op_builder').unlink(missing_ok=True)
+    shutil.copytree('.\\op_builder', '.\\deepspeed\\ops\\op_builder', dirs_exist_ok=True)
+    shutil.rmtree('.\\deepspeed\\accelerator', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\accelerator').unlink(missing_ok=True)
+    shutil.copytree('.\\accelerator', '.\\deepspeed\\accelerator', dirs_exist_ok=True)
     egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt.
