@@ -3,12 +3,14 @@
 
 # DeepSpeed Team
 
+import deepspeed
 from deepspeed import utils
 
 from .utils import *
 from .backend import *
 from .comm import *
 from ..runtime import compiler
+from deepspeed.utils.torch import required_torch_version
 import os
 
 DS_COMM_ALL_GATHER_OFF = False
@@ -18,25 +20,13 @@ DS_COMM_ALL_REDUCE_OFF = False
 DS_COMM_REDUCE_OFF = False
 
 
-def is_torch_ver_eq_2_0():
-    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
-    if TORCH_MAJOR == 2 and TORCH_MINOR == 0:
-        return True
-    return False
-
-
-def is_torch_ver_ge_2_1():
-    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
-    if TORCH_MAJOR >= 2 and TORCH_MINOR >= 1:
-        return True
-    return False
-
-
-def torch_ver_ge_1_13():
-    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
-    if TORCH_MAJOR >= 1 and TORCH_MINOR >= 13:
-        return True
-    return False
+def build_shm_op():
+    builder = get_accelerator().create_op_builder("ShareMemCommBuilder")
+    if builder is None or not deepspeed.ops.__compatible_ops__[builder.NAME]:
+        return None
+    shm_cpp_module = builder.load()
+    print(f'DeepSpeed {builder.absolute_name()} built successfully')
+    return shm_cpp_module
 
 
 def has_coalescing_manager():
@@ -45,13 +35,13 @@ def has_coalescing_manager():
 
 
 def has_all_reduce_coalesced():
-    return hasattr(torch.distributed, "all_reduce_coalesced") and torch_ver_ge_1_13()
+    return hasattr(torch.distributed, "all_reduce_coalesced") and required_torch_version(min_version=1.13)
 
 
 def get_coalescing_manager(group, device, reqs, async_op):
-    if is_torch_ver_eq_2_0():
+    if required_torch_version(min_version=2.0, max_version=2.0):
         return torch.distributed.distributed_c10d._coalescing_manager(group, device=device, reqs=reqs)
-    elif is_torch_ver_ge_2_1():
+    elif required_torch_version(min_version=2.1):
         return torch.distributed.distributed_c10d._coalescing_manager(group, device=device, async_ops=async_op)
     else:
         return torch.distributed.distributed_c10d._coalescing_manager(group, reqs)
@@ -108,6 +98,7 @@ class TorchBackend(Backend):
 
     def __init__(self, backend, timeout, init_method, rank=-1, world_size=-1, name='torch'):
         super(TorchBackend, self).__init__()
+        self.shm_comm_op = build_shm_op()
         self.has_all_reduce_coalesced = has_all_reduce_coalesced()
         self.has_coalescing_manager = has_coalescing_manager()
         self.all_gather_function = self.get_all_gather_function()
@@ -119,6 +110,8 @@ class TorchBackend(Backend):
         # it is not so we can run on a single GPU without doing any init_process_group
         self.single_gpu_mode = True
         self.init_process_group(backend, timeout, init_method, rank, world_size)
+        if self.shm_comm_op != None:
+            self.shm_comm_op.initialize(self.get_world_size(), self.get_rank())
 
     @classmethod
     @compiler.disable
@@ -159,9 +152,10 @@ class TorchBackend(Backend):
         return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
     @compiler.disable
-    def inference_all_reduce(self, tensor, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):
-        op = self._reduce_op(op)
-        return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
+    def inference_all_reduce(self, tensor, op, group=None):
+        if self.shm_comm_op == None or self.shm_comm_op.inference_all_reduce(tensor, op) == -1:
+            op = self._reduce_op(op)
+            return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=False)
 
     @compiler.disable
     def all_reduce_coalesced(self, tensors, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):

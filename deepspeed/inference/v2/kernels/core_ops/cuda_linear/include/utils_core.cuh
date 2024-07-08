@@ -5,8 +5,8 @@
 
 // This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
 
-#ifndef UTILS_CORE_CUH
-#define UTILS_CORE_CUH
+#ifndef DEEPSPEED_CUDA_LINEAR_UTILS_CORE_CUH
+#define DEEPSPEED_CUDA_LINEAR_UTILS_CORE_CUH
 
 #include <assert.h>
 
@@ -32,7 +32,7 @@ __device__ __forceinline__ void initialize_mma_slice(
     uint32_t (*b)[4],
     uint32_t* __restrict__ A1_SPTR_read,
     uint32_t* __restrict__ A2_SPTR_read,
-    half __restrict__ (*B_SPTR_read)[WARP_K + PADDING_SHARED_MEM_FOR_B_8],
+    half (*__restrict__ B_SPTR_read)[WARP_K + PADDING_SHARED_MEM_FOR_B_8],
     uint32_t* RPTR_Scales)
 {
     // Writing registers
@@ -54,7 +54,7 @@ __device__ __forceinline__ void core_mma_slice(
     uint32_t (*b)[4],
     uint32_t* __restrict__ A1_SPTR_read,
     uint32_t* __restrict__ A2_SPTR_read,
-    half __restrict__ (*B_SPTR_read)[WARP_K + PADDING_SHARED_MEM_FOR_B_8],
+    half (*__restrict__ B_SPTR_read)[WARP_K + PADDING_SHARED_MEM_FOR_B_8],
     uint32_t* RPTR_Scales,
     int slice_id)  // writing slice[slice_id] to registers, k=0 -> slice_id=1 for prefetching
 {
