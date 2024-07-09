@@ -104,8 +104,11 @@ def _hf_model_list() -> List[ModelInfo]:
         api = HfApi()
         while True:
             try:
+                model_list = []
+                for model in _test_models:
+                    model_list.extend(api.list_models(model_name=model))
                 model_data["model_list"] = [
-                    ModelInfo(modelId=m.modelId, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in api.list_models()
+                    ModelInfo(modelId=m.modelId, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in model_list
                 ]
                 break  # Exit the loop if the operation is successful
             except requests.exceptions.HTTPError as e:
