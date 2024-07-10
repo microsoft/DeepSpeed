@@ -27,7 +27,4 @@ class DataStatesCheckpointEngine(CheckpointEngine):
     def wait(self):
         return self.ckpt_engine.wait()
 
-    def __del__(self):
-        return self.ckpt_engine.shutdown()
-
    

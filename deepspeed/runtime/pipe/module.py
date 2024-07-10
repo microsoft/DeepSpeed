@@ -584,7 +584,7 @@ class PipelineModule(nn.Module):
         layer_list = self.forward_funcs[start:end]
 
         checkpoint_engine.makedirs(save_dir, exist_ok=True)
-        debloat_memory = False #"DataStatesCheckpointEngine" not in str(type(checkpoint_engine))
+        debloat_memory = "DataStatesCheckpointEngine" not in str(type(checkpoint_engine))
         for idx, layer in enumerate(layer_list):
             model_ckpt_path = self.ckpt_layer_path(save_dir, start + idx)
             if not hasattr(layer, 'state_dict'):
@@ -596,9 +596,9 @@ class PipelineModule(nn.Module):
                     del orig_state_dict[n]
                 
             if debloat_memory:
-                final_state_dict = orig_state_dict
-            else:
                 final_state_dict = clone_tensors_for_torch_save(orig_state_dict)
+            else:
+                final_state_dict = orig_state_dict
             checkpoint_engine.save(final_state_dict, model_ckpt_path)
 
     def load_state_dir(self, load_dir, checkpoint_engine, strict=True):
