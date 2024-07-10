@@ -45,11 +45,11 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, han
     post_all2all_fun = post_all2all(transpose, res_shape)
     
     if async_op:
-        if type in ('dq', 'dk','dv'):
+        if type in ('dq', 'dk'):
             handle[type+'_work']=work
             handle[type + '_grad'] = output
             handle[type+'_post_all2all_func'] = post_all2all_fun
-            return None
+            return output.view(res_shape)
 
     res=post_all2all_fun(output)
     return res
@@ -85,7 +85,7 @@ class _SeqAllToAll(torch.autograd.Function):
                 del ctx.stream.activation_buffer_list
                 # The computation of d o_weight can overlap with the communication of d o_input
 
-            elif not is_fwd and type in ('q', 'k','v'):
+            elif not is_fwd and type in ('q', 'k'):
                 # Achieve communication overlap by pipelining the matrix computation and communication of q, k, and v
                 type = 'd' + type
                 res = single_all_to_all(input, scatter_idx, gather_idx, group, True, handle, type)
@@ -165,7 +165,7 @@ class DistributedAttention(torch.nn.Module):
             def pre_hook_fun(grad):
                 type='d' + layer_type
                 self.overlap_handles[type +'_work'].wait()
-                self.sp_stream.wait_stream(get_accelerator().default_stream())
+                self.sp_stream.wait_stream(self.dafult_stream)
                 all2all_output = self.overlap_handles[type + '_grad']
                 grad = list(grad)
                 grad[0]=self.overlap_handles[type + '_post_all2all_func'](all2all_output)
@@ -185,7 +185,6 @@ class DistributedAttention(torch.nn.Module):
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx, None,
                                          self.overlap_handles, 'v')
 
-        
         if self.sp_overlap_comm:
             # Register a hook to synchronize dq and dk after the all-to-all 
             # operation when the gradient data is used. 
@@ -196,8 +195,6 @@ class DistributedAttention(torch.nn.Module):
             grad_fn_q.register_prehook(bwd_hook(layer_type='q'))
             grad_fn_k = key.grad_fn.next_functions[0][0]
             grad_fn_k.register_prehook(bwd_hook(layer_type='k'))
-            grad_fn_k = value.grad_fn.next_functions[0][0]
-            grad_fn_k.register_prehook(bwd_hook(layer_type='v'))
 
 
         #out shape : e.g., [s:h/p:]
