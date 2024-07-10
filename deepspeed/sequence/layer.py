@@ -11,14 +11,18 @@ from torch.nn import Module
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 
+
 def post_all2all(transpose, res_shape):
+
     def post_func(input):
         if transpose:
-            input=input.transpose(0, 2).contiguous()
-        input=input.reshape(res_shape)
+            input = input.transpose(0, 2).contiguous()
+        input = input.reshape(res_shape)
         return input
+
     return post_func
-    
+
+
 def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, handle=None, type=None):
     seq_world_size = dist.get_world_size(group)
     inp_shape = list(input.shape)
@@ -43,18 +47,18 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, async_op=False, han
         inp_shape[gather_idx + 1:])
     transpose = True if scatter_idx < 2 else False
     post_all2all_fun = post_all2all(transpose, res_shape)
-    
+
     if async_op:
         if type in ('dq', 'dk'):
-            handle[type+'_work']=work
+            handle[type + '_work'] = work
             handle[type + '_grad'] = output
-            handle[type+'_post_all2all_func'] = post_all2all_fun
+            handle[type + '_post_all2all_func'] = post_all2all_fun
             return output.view(res_shape)
 
-    res=post_all2all_fun(output)
+    res = post_all2all_fun(output)
     return res
 
-            
+
 class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
@@ -75,9 +79,9 @@ class _SeqAllToAll(torch.autograd.Function):
         ctx.type = type
         if ctx.handle is None:
             res = single_all_to_all(input, scatter_idx, gather_idx, group, False)
-            
+
         else:
-            # overlap communcation path
+            # overlap communication path
             if not is_fwd and type == 'o':
                 assert ctx.stream != None
                 res = single_all_to_all(input, scatter_idx, gather_idx, group, False)
@@ -86,12 +90,12 @@ class _SeqAllToAll(torch.autograd.Function):
                 # The computation of d o_weight can overlap with the communication of d o_input
 
             elif not is_fwd and type in ('q', 'k'):
-                # Achieve communication overlap by pipelining the matrix computation and communication of q, k, and v
+                # Achieve communication overlap by pipelining the matrix computation and communication of dq, dk, and dv
                 type = 'd' + type
                 res = single_all_to_all(input, scatter_idx, gather_idx, group, True, handle, type)
-                
+
             elif is_fwd and type in ('q', 'k'):
-                # Achieve communication overlap by pipelining the matrix computation and communication of dq, dk, and dv
+                # Achieve communication overlap by pipelining the matrix computation and communication of q, k, and v
                 type = 'fwd_' + type
                 res = single_all_to_all(input, scatter_idx, gather_idx, group, False, handle, type)
 
@@ -137,12 +141,13 @@ class DistributedAttention(torch.nn.Module):
         self.sp_stream = sp_stream
         if sp_stream is not None:
             self.overlap_handles = {}
-            self.sp_overlap_comm =True
+            self.sp_overlap_comm = True
             self.dafult_stream = get_accelerator().default_stream()
 
     def layer_sync(self, layer):
         if self.sp_overlap_comm and hasattr(layer, 'done_event'):
             self.dafult_stream.wait_event(layer.done_event)
+
     def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any, **kwargs) -> Tensor:
         """ forward
 
@@ -163,12 +168,12 @@ class DistributedAttention(torch.nn.Module):
         def bwd_hook(layer_type):
 
             def pre_hook_fun(grad):
-                type='d' + layer_type
-                self.overlap_handles[type +'_work'].wait()
+                type = 'd' + layer_type
+                self.overlap_handles[type + '_work'].wait()
                 self.sp_stream.wait_stream(self.dafult_stream)
                 all2all_output = self.overlap_handles[type + '_grad']
                 grad = list(grad)
-                grad[0]=self.overlap_handles[type + '_post_all2all_func'](all2all_output)
+                grad[0] = self.overlap_handles[type + '_post_all2all_func'](all2all_output)
                 grad = tuple(grad)
 
             return pre_hook_fun
@@ -181,27 +186,27 @@ class DistributedAttention(torch.nn.Module):
                                        'k')
         if self.sp_overlap_comm:
             self.dafult_stream.wait_stream(self.sp_stream)
-            
+
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx, None,
                                          self.overlap_handles, 'v')
 
         if self.sp_overlap_comm:
-            # Register a hook to synchronize dq and dk after the all-to-all 
-            # operation when the gradient data is used. 
-            # Place this logic after the q, k, v all-to-all operation to 
-            # improve interpreter speed to 
+            # Register a hook to synchronize dq and dk after the all-to-all
+            # operation when the gradient data is used.
+            # Place this logic after the q, k, v all-to-all operation to
+            # improve interpreter speed to
             # call and launch of the forward all-to-all communication.
             grad_fn_q = query.grad_fn.next_functions[0][0]
             grad_fn_q.register_prehook(bwd_hook(layer_type='q'))
             grad_fn_k = key.grad_fn.next_functions[0][0]
             grad_fn_k.register_prehook(bwd_hook(layer_type='k'))
 
-
         #out shape : e.g., [s:h/p:]
 
         context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
 
-        output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx, self.sp_stream, self.overlap_handles,'o')
+        output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx, self.sp_stream,
+                                    self.overlap_handles, 'o')
 
         #out e.g., [s/p::h]
         return output
