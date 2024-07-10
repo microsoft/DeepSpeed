@@ -1,5 +1,5 @@
-# Copyright ______
-# Maintained by ______
+# Copyright by DataStates Team (Argonne National Laboratory): https://github.com/DataStates/
+# Maintained by DataStates Team (Argonne National Laboratory): https://github.com/DataStates/
 
 #########################################
 # DataStates-LLM checkpointing engine.

@@ -1,5 +1,5 @@
-# Copyright ______
-# Maintained by ______
+# Copyright DataStates Team (Argonne National Laboratory): https://github.com/DataStates/
+# Maintained by DataStates Team (Argonne National Laboratory): https://github.com/DataStates/
 
 from deepspeed.runtime.config_utils import DeepSpeedConfigObject
 class DeepSpeedDataStatesConfig(DeepSpeedConfigObject):

@@ -30,5 +30,5 @@ class CheckpointEngine(object):
         pass
 
     def wait(self):
-        # To wait in DataStates checkpoint engine for the previous snapshot to finish
+        # To wait in asynchronous checkpoint engines (e.g. DataStates-LLM) for the previous snapshot to finish
         pass
