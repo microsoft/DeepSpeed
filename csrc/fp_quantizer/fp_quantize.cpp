@@ -108,9 +108,22 @@ void selective_dequantize(torch::Tensor& val,
 #endif
 }
 
+at::Tensor get_scales(torch::Tensor& out, int num_groups)
+{
+    auto options = at::TensorOptions()
+                       .dtype(torch::kFloat)
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+    auto scales =
+        torch::from_blob(out.data_ptr(), {num_groups, 1}, {out.stride(0) / 4, 1}, options);
+    return scales;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quantize", &quantize, "quantize function");
     m.def("dequantize", &dequantize, "dequantize function");
+    m.def("get_scales", &get_scales, "get scales function");
     m.def("selective_dequantize", &selective_dequantize, "selective dequantize function");
 }
