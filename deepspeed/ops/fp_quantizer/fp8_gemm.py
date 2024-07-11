@@ -1,12 +1,10 @@
-
-
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
 
 ######## Fused MoE kernel #########
-# These kernels are implemented for 
+# These kernels are implemented for
 # fusing GeMM with dequantization of
 # fp8 weight data when using bit-16
 # activation.
@@ -18,26 +16,10 @@ import triton.language as tl
 
 
 @triton.jit
-def matmul_kernel_fp8_bf16(
-        inp_ptr, 
-        weight_ptr, 
-        out_ptr, 
-        scale_ptr,
-        M, 
-        N, 
-        K,
-        stride_am, 
-        stride_ak,
-        stride_bk, 
-        stride_bn,
-        stride_cm, 
-        stride_cn,
-        BLOCK_SIZE_M: tl.constexpr, 
-        BLOCK_SIZE_N: tl.constexpr, 
-        BLOCK_SIZE_K: tl.constexpr,
-        GROUP_SIZE_M: tl.constexpr,
-        quantization_group_size: tl.constexpr
-):
+def matmul_kernel_fp8_bf16(inp_ptr, weight_ptr, out_ptr, scale_ptr, M, N, K, stride_am, stride_ak, stride_bk,
+                           stride_bn, stride_cm, stride_cn, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
+                           BLOCK_SIZE_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr,
+                           quantization_group_size: tl.constexpr):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -54,7 +36,8 @@ def matmul_kernel_fp8_bf16(
 
     inp_data = inp_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     weight_data = weight_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-    weight_ptrs_offset = offs_k[:, None] * (stride_bk // quantization_group_size) + ((pid_n * BLOCK_SIZE_N) // quantization_group_size)
+    weight_ptrs_offset = offs_k[:, None] * (stride_bk // quantization_group_size) + (
+        (pid_n * BLOCK_SIZE_N) // quantization_group_size)
 
     weight = tl.load(weight_data, mask=offs_k[:, None] < K, other=0.0)
     scale = tl.load(scale_ptr + weight_ptrs_offset)
@@ -71,9 +54,10 @@ def matmul_kernel_fp8_bf16(
         weight_data += BLOCK_SIZE_K * stride_bk
 
         weight = tl.load(weight_data, mask=offs_k[:, None] < K - (k + 1) * BLOCK_SIZE_K, other=0.0)
-        scale = tl.load(scale_ptr + (weight_ptrs_offset + (((k + 1) * BLOCK_SIZE_K * stride_bk) // quantization_group_size)))
+        scale = tl.load(scale_ptr + (weight_ptrs_offset +
+                                     (((k + 1) * BLOCK_SIZE_K * stride_bk) // quantization_group_size)))
 
-        accumulator = tl.dot(inp, w, accumulator)
+        accumulator += tl.dot(inp, w)
 
     out = accumulator.to(tl.bfloat16)
 
@@ -82,27 +66,12 @@ def matmul_kernel_fp8_bf16(
     out_data = out_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     tl.store(out_data, out, mask=(offs_cm[:, None] < M) & (offs_cn[None, :] < N))
 
+
 @triton.jit
-def matmul_kernel_fp8_fp16(
-        inp_ptr, 
-        weight_ptr, 
-        out_ptr, 
-        scale_ptr,
-        M, 
-        N, 
-        K,
-        stride_am, 
-        stride_ak,
-        stride_bk, 
-        stride_bn,
-        stride_cm, 
-        stride_cn,
-        BLOCK_SIZE_M: tl.constexpr, 
-        BLOCK_SIZE_N: tl.constexpr, 
-        BLOCK_SIZE_K: tl.constexpr,
-        GROUP_SIZE_M: tl.constexpr,
-        quantization_group_size: tl.constexpr
-):
+def matmul_kernel_fp8_fp16(inp_ptr, weight_ptr, out_ptr, scale_ptr, M, N, K, stride_am, stride_ak, stride_bk,
+                           stride_bn, stride_cm, stride_cn, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
+                           BLOCK_SIZE_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr,
+                           quantization_group_size: tl.constexpr):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -119,7 +88,8 @@ def matmul_kernel_fp8_fp16(
 
     inp_data = inp_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     weight_data = weight_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-    weight_ptrs_offset = offs_k[:, None] * (stride_bk // quantization_group_size) + ((pid_n * BLOCK_SIZE_N) // quantization_group_size)
+    weight_ptrs_offset = offs_k[:, None] * (stride_bk // quantization_group_size) + (
+        (pid_n * BLOCK_SIZE_N) // quantization_group_size)
 
     weight = tl.load(weight_data, mask=offs_k[:, None] < K, other=0.0)
     scale = tl.load(scale_ptr + weight_ptrs_offset)
@@ -136,10 +106,11 @@ def matmul_kernel_fp8_fp16(
         weight_data += BLOCK_SIZE_K * stride_bk
 
         weight = tl.load(weight_data, mask=offs_k[:, None] < K - (k + 1) * BLOCK_SIZE_K, other=0.0)
-        scale = tl.load(scale_ptr + (weight_ptrs_offset + (((k + 1) * BLOCK_SIZE_K * stride_bk) // quantization_group_size)))
+        scale = tl.load(scale_ptr + (weight_ptrs_offset +
+                                     (((k + 1) * BLOCK_SIZE_K * stride_bk) // quantization_group_size)))
 
-        accumulator = tl.dot(inp, w, accumulator)
-        
+        accumulator += tl.dot(inp, w)
+
     out = accumulator.to(tl.float16)
 
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
@@ -148,10 +119,7 @@ def matmul_kernel_fp8_fp16(
     tl.store(out_data, out, mask=(offs_cm[:, None] < M) & (offs_cn[None, :] < N))
 
 
-def matmul_fp8(inp, 
-               weight, 
-               scale, 
-               quantization_group_size):
+def matmul_fp8(inp, weight, scale, quantization_group_size):
 
     assert inp.shape[1] == weight.shape[0], \
         f"Incompatible dimensions (input: {inp.shape}, weight: {weight.shape})"
@@ -177,27 +145,25 @@ def matmul_fp8(inp,
         num_warps = 8
 
     grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
-    params = (inp, 
-        weight, 
-        out, 
-        scale,
-        M, 
-        N, 
-        K,
-        inp.stride(0), 
-        inp.stride(1),
-        weight.stride(0), 
-        weight.stride(1),
-        out.stride(0), 
-        out.stride(1),
-        quantization_group_size=quantization_group_size,
-        BLOCK_SIZE_M=BLOCK_SIZE_M,
-        BLOCK_SIZE_N=BLOCK_SIZE_N,
-        BLOCK_SIZE_K=BLOCK_SIZE_K,
-        GROUP_SIZE_M=GROUP_SIZE_M,
-        num_stages=num_stages,
-        num_warps=num_warps
-    )
     kernel = matmul_kernel_fp8_bf16 if inp.dtype == torch.bfloat16 else matmul_kernel_fp8_fp16
-    kernel[grid](**params)
+    kernel[grid](inp,
+                 weight,
+                 out,
+                 scale,
+                 M,
+                 N,
+                 K,
+                 inp.stride(0),
+                 inp.stride(1),
+                 weight.stride(0),
+                 weight.stride(1),
+                 out.stride(0),
+                 out.stride(1),
+                 quantization_group_size=quantization_group_size,
+                 BLOCK_SIZE_M=BLOCK_SIZE_M,
+                 BLOCK_SIZE_N=BLOCK_SIZE_N,
+                 BLOCK_SIZE_K=BLOCK_SIZE_K,
+                 GROUP_SIZE_M=GROUP_SIZE_M,
+                 num_stages=num_stages,
+                 num_warps=num_warps)
     return out
