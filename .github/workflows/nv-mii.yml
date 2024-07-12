@@ -30,7 +30,7 @@ jobs:
     runs-on: [self-hosted, nvidia, cu117, v100]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
@@ -46,7 +46,7 @@ jobs:
           git clone https://github.com/huggingface/transformers
           cd transformers
           # if needed switch to the last known good SHA until transformers@master is fixed
-          # git checkout 1cc453d33
+          git checkout bdf36dc
           git rev-parse --short HEAD
           pip install .
 

@@ -82,8 +82,12 @@ def set_accelerator_visible():
                 if match:
                     num_accelerators += 1
         elif get_accelerator().device_name() == 'hpu':
-            hl_smi = subprocess.check_output(['hl-smi', "-L"])
-            num_accelerators = re.findall(r"Module ID\s+:\s+(\d+)", hl_smi.decode())
+            try:
+                hl_smi = subprocess.check_output(['hl-smi', "-L"])
+                num_accelerators = re.findall(r"Module ID\s+:\s+(\d+)", hl_smi.decode())
+            except FileNotFoundError:
+                sim_list = subprocess.check_output(['ls', '-1', '/dev/accel'])
+                num_accelerators = re.findall(r"accel(\d+)", sim_list.decode())
             num_accelerators = sorted(num_accelerators, key=int)
             os.environ["HABANA_VISIBLE_MODULES"] = ",".join(num_accelerators)
         elif get_accelerator().device_name() == 'npu':
@@ -199,10 +203,13 @@ class DistributedExec(ABC):
         master_port = get_master_port()
         skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
         processes = []
+        prev_start_method = mp.get_start_method()
+        mp.set_start_method('spawn', force=True)
         for local_rank in range(num_procs):
             p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, skip_msg))
             p.start()
             processes.append(p)
+        mp.set_start_method(prev_start_method, force=True)
 
         # Now loop and wait for a test to complete. The spin-wait here isn't a big
         # deal because the number of processes will be O(#GPUs) << O(#CPUs).
@@ -247,6 +254,10 @@ class DistributedExec(ABC):
             pytest.skip(
                 f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
             )
+
+        if get_accelerator().device_name() == 'xpu':
+            self.non_daemonic_procs = True
+            self.reuse_dist_env = False
 
         # Set start method to `forkserver` (or `fork`)
         mp.set_start_method('forkserver', force=True)
@@ -439,7 +450,7 @@ class DistributedTest(DistributedExec):
                 world_size = mark.args[0]
                 break
         else:
-            world_size = self.world_size
+            world_size = self._fixture_kwargs.get("world_size", self.world_size)
 
         if isinstance(world_size, int):
             world_size = [world_size]
