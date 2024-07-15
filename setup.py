@@ -132,7 +132,7 @@ else:
     TORCH_MAJOR = "0"
     TORCH_MINOR = "0"
 
-if torch_available and get_accelerator().device_name() == 'cuda' and not torch.cuda.is_available():
+if torch_available and not get_accelerator().device_name() == 'cuda':
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486.
     print("[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
           "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
