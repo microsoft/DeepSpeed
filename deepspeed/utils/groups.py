@@ -402,8 +402,6 @@ def _get_data_parallel_group():
     assert dist.is_initialized(), 'dist is not initialized'
     global mpu
     if mesh_device is not None:
-        if dist.get_rank() == 0:
-            print(f"Using mesh device for data parallel group")
         return mesh_device.get_group(mesh_dim="data_parallel")
     if mpu is not None:
         return mpu.get_data_parallel_group()
@@ -496,8 +494,6 @@ def _get_sequence_parallel_group():
     if mpu is not None and hasattr(mpu, 'get_sequence_parallel_group'):
         return mpu.get_sequence_parallel_group()
     elif mesh_device is not None:
-        if dist.get_rank() == 0:
-            print(f"Using mesh device for sequence parallel group")
         return mesh_device.get_group(mesh_dim="sequence_parallel")
     else:
         KeyError("No sequence parallel group found")

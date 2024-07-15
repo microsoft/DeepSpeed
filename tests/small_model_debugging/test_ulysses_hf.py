@@ -38,7 +38,7 @@ DS_CONFIG = {
         }
     },
     'zero_optimization': {
-        'stage': 2,
+        'stage': 1,
         'overlap_comm': True,
         'contiguous_gradients': True,
         'sub_group_size': 1e9,
@@ -47,16 +47,17 @@ DS_CONFIG = {
         'stage3_prefetch_bucket_size': 15099494.4,
         'stage3_max_live_parameters': 1000000000.0,
         'stage3_max_reuse_distance': 1000000000.0,
-        'stage3_gather_16bit_weights_on_model_save': True,
-        'zero_hpz_partition_size': 1
+        'stage3_gather_16bit_weights_on_model_save': True
     },
     'gradient_accumulation_steps': 1,
     'gradient_clipping': 1.0,
     'steps_per_print': float('inf'),
-    'train_batch_size': 8,
-    'train_micro_batch_size_per_gpu': 4,
+    'train_batch_size': 1,
+    'train_micro_batch_size_per_gpu': 1,
     'wall_clock_breakdown': False,
 }
+
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def load_and_prepare_data(model_name):
@@ -70,6 +71,8 @@ def load_and_prepare_data(model_name):
                                                  trust_remote_code=True,
                                                  torch_dtype=config.torch_dtype,
                                                  attn_implementation="flash_attention_2")
+
+    model.to(device)
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -89,28 +92,25 @@ def load_and_prepare_data(model_name):
         return tokenized_output
 
     tokenized_dataset = dataset.map(tokenize_function, batched=True).filter(lambda x: x['text'])
-    #tokenized_dataset.set_format('torch', columns=['input_ids', 'labels'])
     tokenized_dataset.set_format('torch', columns=['input_ids', 'attention_mask', 'labels'])
 
     # Create data loader
-    data_loader = DataLoader(tokenized_dataset, batch_size=2, shuffle=False)
+    data_loader = DataLoader(tokenized_dataset, batch_size=1, shuffle=False)
     #print(f"data {data_loader.dataset.__dict__}")
     return model, data_loader
 
 
-def get_loss(model, data_loader, config_dict, step=10):
+def get_loss(model, data_loader, config_dict, step=4):
     """Train the model and calculate average loss."""
     # Initialize DeepSpeed
     model, _, _, _ = deepspeed.initialize(model=model,
                                           model_parameters=model.parameters(),
                                           config=config_dict,
                                           dist_init_required=True,
-                                          mesh_param=(2, 4))
+                                          mesh_param=(1, 2))
     spg = model.get_sequence_parallel_group()
     seq_parallel_world_size = dist.get_world_size(spg)
     seq_parallel_rank = dist.get_rank(spg)
-    dist.barrier()
-    model.train()
 
     # Training loop
     losses = []
@@ -128,25 +128,18 @@ def get_loss(model, data_loader, config_dict, step=10):
         batch["labels"] = batch["labels"][:, sub_seq_start:sub_seq_end]
 
         batch = {k: v.to(model.device) for k, v in batch.items()}
-        #if dist.get_rank() == 0:
-        #print(f"Model: {model} Module: {model.module}")
         original_forward = model.forward
 
         def sp_forward(**batch):
-            loss_mask = batch['attention_mask']
-            batch['attention_mask'] = None
+            loss_mask = batch["attention_mask"]
+            batch['attention_mask'] = None 
             #[b,s] => [s,b]
             labels = batch['labels'].transpose(0, 1).contiguous()
             outputs = original_forward(**batch)
-            #loss = outputs.loss
-            #labels_1, loss_mask = labels[0], labels[1]
-            #print(f"LOGITS: {outputs.logits.shape} labels: {labels.shape}")
             #label , b,s,h
             loss = vocab_sequence_parallel_cross_entropy(outputs.logits.transpose(0, 1), labels, spg)
-            #loss = vocab_sequence_parallel_cross_entropy(outputs.logits, labels,spg)
             #[s,b] => [b,s]
-            loss = loss.transpose(0, 1).contiguous()  ##??
-            #print(f"Loss: {loss.shape} mask: {loss_mask.shape}")
+            loss = loss.transpose(0, 1).contiguous()
             loss_mask = loss_mask.view(-1)
             loss = torch.sum(loss.view(-1) * loss_mask) / loss_mask.sum()
             return loss
@@ -158,12 +151,10 @@ def get_loss(model, data_loader, config_dict, step=10):
             print(f"loss: {loss}")
         model.backward(loss)
         model.step()
-        losses.append(loss.item())
 
-    return np.nanmean(losses[-100:])
 
 
 if __name__ == "__main__":
     torch.manual_seed(0)
     model, data_loader = load_and_prepare_data(MODEL_NAME)
-    zeropp_loss = get_loss(model, data_loader, DS_CONFIG)
+    get_loss(model, data_loader, DS_CONFIG)

@@ -104,7 +104,15 @@ from deepspeed.accelerator import get_accelerator
 
 from deepspeed.runtime.config import DtypeEnum
 
-from deepspeed.sequence.layer import DistributedAttention
+from deepspeed.sequence.layer_master import DistributedAttention
+from packaging import version
+
+try:
+    import flash_attn
+    FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    FLASH_ATTN_AVAILABLE = False
+
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -239,17 +247,8 @@ class DeepSpeedEngine(Module):
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
-        #mesh_device = dist.initialize_mesh_device((dist.get_world_size(), ), ("data_parallel", ))
-        ##TODO: pass name of the device to the mesh_device
-        ##SAGE
-        '''
-        self.mesh_device = None
-        if self.mesh_param:
-            print(f"mesh_param to Initialize mesh device: {self.mesh_param}")
-            self.mesh_device = dist.initialize_mesh_device(self.mesh_param, ("data_parallel", "sequence_parallel"))
-        '''
         if self.mesh_device:
-            groups.mesh_device = self.mesh_device  ##mpu is set to mesh_device in init.py
+            groups.mesh_device = self.mesh_device  
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -1169,15 +1168,21 @@ class DeepSpeedEngine(Module):
             print(f"DS Engine SP group size : {self.sequence_parallel_size}")
         if self.sequence_parallel_size > 1:
             #replace module attention with deespeed dist attention
+            #Assert we have torch version with device_mesh for parallel group
+            #Assert flash attn#
+            assert version.parse(torch.__version__) >= version.parse("2.2.2"), \
+                f"HF model finetune with DeepSpeed SP  requires torch >= 2.2.2, you have version {torch.__version__}"
+            assert FLASH_ATTN_AVAILABLE, \
+                f"HF model finetune with DeepSpeed SP  requires Flash attention"
+
             for _, module in self.module.named_modules():
                 if all(hasattr(module, attr) for attr in ['k_proj', 'v_proj', 'q_proj', 'out_proj']):
-
                     attn = module
                     compute_attn_sp = DistributedAttention(
                         attn._flash_attention_forward,
                         self.get_sequence_parallel_group(),
                         2,
-                        1,
+                        1, #Assert flash attn api
                     )
 
                     module._flash_attention_forward = lambda q, k, v, *args, **kwargs: compute_attn_sp(
