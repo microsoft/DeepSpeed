@@ -72,6 +72,7 @@ void inference_all_reduce_(torch::Tensor& data, int op)
 
     switch (data.scalar_type()) {
         case c10::ScalarType::BFloat16: data_size = numel * 2; break;
+        case c10::ScalarType::Half: data_size = numel * 2; break;
         case c10::ScalarType::Float: data_size = numel * 4; break;
         default: data_type_fallback = true;
     }
