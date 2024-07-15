@@ -52,10 +52,12 @@ def matmul_kernel_fp8_bf16(inp_ptr, weight_ptr, out_ptr, scale_ptr, M, N, K, str
 
         inp_data += BLOCK_SIZE_K * stride_ak
         weight_data += BLOCK_SIZE_K * stride_bk
-
-        weight = tl.load(weight_data, mask=offs_k[:, None] < K - (k + 1) * BLOCK_SIZE_K, other=0.0)
+        weight_mask = offs_k[:, None] < K - (k + 1) * BLOCK_SIZE_K
+        weight = tl.load(weight_data, mask=weight_mask, other=0.0)
         scale = tl.load(scale_ptr + (weight_ptrs_offset +
-                                     (((k + 1) * BLOCK_SIZE_K * stride_bk) // quantization_group_size)))
+                                     (((k + 1) * BLOCK_SIZE_K * stride_bk) // quantization_group_size)),
+                        mask=weight_mask,
+                        other=0.0)
 
         accumulator += tl.dot(inp, w)
 
