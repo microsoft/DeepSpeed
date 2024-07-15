@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import functools
 import os
 import pkgutil
 import importlib
