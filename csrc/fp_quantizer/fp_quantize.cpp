@@ -22,25 +22,20 @@
                                                        stochastic_rounding);             \
     }
 
-at::Tensor quantize(torch::Tensor& val,
+at::Tensor quantize(torch::Tensor& out,
+                    torch::Tensor& val,
                     int group_size,
                     int stochastic_rounding,
                     int q_bits,
                     int q_mantisa_bits)
 {
-    int total_elems = at::numel(val);
-    auto options = at::TensorOptions()
-                       .dtype(torch::kInt8)
-                       .layout(val.layout())
-                       .device(val.device())
-                       .requires_grad(false);
+    size_t total_elems = at::numel(val);
     float q_range = q_bits == 8 ? (q_mantisa_bits == 3 ? 480.0 : 114688.0) :  // fp8 ranges
                         (q_bits == 12 ? 510.0 :                               // fp12 range
                              (q_bits == 6 ? 28.0 :                            // fp6 range
                                   6.0));  // fp4 range (using power 2); TODO (Reza): add the power-4
                                           // in case accuracy is not matching!
-    int num_groups = total_elems / group_size;
-    auto out = torch::empty({num_groups, group_size * q_bits / 8 + 4}, options);
+    size_t num_groups = total_elems / group_size;
 
     DISPATCH_QUANTIZE(kHalf, __half, 23, 8);
 #ifdef BF16_AVAILABLE
@@ -48,6 +43,18 @@ at::Tensor quantize(torch::Tensor& val,
 #endif
 
     return out;
+}
+
+at::Tensor get_scales(torch::Tensor& out, int num_groups)
+{
+    auto options = at::TensorOptions()
+                       .dtype(torch::kFloat)
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+    auto scales =
+        torch::from_blob(out.data_ptr(), {num_groups, 1}, {out.stride(0) / 4, 1}, options);
+    return scales;
 }
 
 #define DISPATCH_DEQUANTIZE(T_TYPE, C_TYPE, mantisa)                              \
@@ -68,9 +75,9 @@ void dequantize(torch::Tensor& val,
                 int q_mantisa_bits,
                 int q_exponent_bits)
 {
-    int total_elems = at::numel(val);
+    size_t total_elems = at::numel(val);
 
-    int num_groups = total_elems / group_size;
+    size_t num_groups = total_elems / group_size;
 
     DISPATCH_DEQUANTIZE(kHalf, __half, 10);
 #ifdef BF16_AVAILABLE
@@ -98,9 +105,9 @@ void selective_dequantize(torch::Tensor& val,
                           int q_mantisa_bits,
                           int q_exponent_bits)
 {
-    int total_elems = at::numel(val);
+    size_t total_elems = at::numel(val);
     int num_indexes = indexes.size(0);
-    int num_groups = total_elems / group_size;
+    size_t num_groups = total_elems / group_size;
 
     DISPATCH_DEQUANTIZE_INDEX(kHalf, __half, 10);
 #ifdef BF16_AVAILABLE
@@ -112,5 +119,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quantize", &quantize, "quantize function");
     m.def("dequantize", &dequantize, "dequantize function");
+    m.def("get_scales", &get_scales, "get scales function");
     m.def("selective_dequantize", &selective_dequantize, "selective dequantize function");
 }
