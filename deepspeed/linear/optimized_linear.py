@@ -85,12 +85,12 @@ class LoRAOptimizedLinear(nn.Module):
         self.bias = bias
         self.lora_config = lora_config
         self.quantization_config = quantization_config
-        device = get_accelerator().current_device_name() if device is None else device
+        self.device = get_accelerator().current_device_name() if device is None else device
         assert self.lora_config is not None, "DSOptimizedLinear requires a LoRA config"
 
         self.zero_shards = self.lora_config.base_weight_sharding
         self.sharded_weight_size = int(float(self.input_dim) // self.zero_shards)
-        w = torch.nn.Parameter(torch.empty((self.output_dim, self.sharded_weight_size), dtype=dtype))
+        w = torch.nn.Parameter(torch.empty((self.output_dim, self.sharded_weight_size), dtype=dtype), requires_grad=False)
         torch.nn.init.xavier_uniform_(w)
 
         if self.quantization_config is not None:
@@ -101,18 +101,21 @@ class LoRAOptimizedLinear(nn.Module):
 
         self.base_weight.requires_grad = False
 
+        # Mark base weight to prevent broadcast and ensure proper offload behavior
+        self.base_weight.ds_optim_param = True
+
         # Use RS lora for now.
         self.lora_scaling_factor = self.lora_config.lora_alpha / math.sqrt(self.lora_config.lora_r)
         # Keeping lora weights in bf16 precision for ease of training.
         self.lora_weight_1 = nn.Linear(self.input_dim,
                                        self.lora_config.lora_r,
                                        bias=self.bias,
-                                       device=device,
+                                       device=self.device,
                                        dtype=dtype)
         self.lora_weight_2 = nn.Linear(self.lora_config.lora_r,
                                        self.output_dim,
                                        bias=self.bias,
-                                       device=device,
+                                       device=self.device,
                                        dtype=dtype)
         self.lora_weight_1.weight.requires_grad = True
         self.lora_weight_2.weight.requires_grad = True
@@ -120,15 +123,23 @@ class LoRAOptimizedLinear(nn.Module):
     def full_weight(self):
         # This assumes weights are evenly sharded across gpus. which might not be correct.
         # in that case, we should flatten before all_gather.
-        local_weight = self.base_weight.dequantized() if isinstance(self.base_weight,
-                                                                    QuantizedParameter) else self.base_weight
-        tensor_list = [
-            torch.zeros_like(local_weight, device=local_weight.device, dtype=local_weight.dtype)
-            for _ in range(self.zero_shards)
-        ]
-        dist.all_gather(tensor_list, local_weight)
-        weight = nn.Parameter(torch.cat([tensor for tensor in tensor_list], dim=1))
-        return weight
+        base_weight = self.base_weight
+        if getattr(base_weight, 'ds_offload', False):
+            # move to gpu so we can dequant and all-gather
+            assert self.base_weight.device == torch.device('cpu'), \
+                f"expected base weight on cpu but found {self.base_weight.device}"
+            base_weight.offload(revert=True)
+            local_weight = base_weight.dequantized() if isinstance(base_weight,
+                                                                        QuantizedParameter) else base_weight
+            base_weight.offload()
+        else:
+            local_weight = base_weight.dequantized() if isinstance(base_weight,
+                                                                        QuantizedParameter) else base_weight
+
+        tensor_out = torch.empty(local_weight.shape[0], local_weight.shape[1] * self.zero_shards, 
+                                 dtype=local_weight.dtype, device=local_weight.device)
+        dist.all_gather_into_tensor(tensor_out, local_weight)
+        return tensor_out
 
     def linear_without_F_linear(self, input, weight):
         output = torch.mm(input.reshape(-1, input.shape[-1]), weight)

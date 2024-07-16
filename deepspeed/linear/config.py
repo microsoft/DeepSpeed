@@ -21,7 +21,8 @@ class LoRAConfig:
     lora_r: int = 64
     lora_alpha: float = 16.
     base_weight_sharding: int = 1
-
+    offload: bool = False
+    offload_ratio: float = 0.0
 
 @dataclass
 class QuantizationConfig:
