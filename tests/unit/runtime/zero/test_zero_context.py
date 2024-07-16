@@ -9,6 +9,7 @@ import torch
 import pytest
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
+from deepspeed.runtime.zero import unwrap_model_for_generation
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 
@@ -299,3 +300,6 @@ class TestGatherUpdate(DistributedTest):
         with deepspeed.zero.GatheredParameters(l.weight):
             # all ranks compare
             assert torch.equal(l.weight, torch.zeros_like(l.weight))
+
+#class TestUnwrapModel(DistributedTest):
+#    world_size = 2

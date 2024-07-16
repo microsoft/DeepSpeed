@@ -15,9 +15,6 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.lion import DeepSpeedCPULion, FusedLion
 from deepspeed.utils.nvtx import instrument_w_nvtx
 from deepspeed.accelerator import get_accelerator
-from deepspeed.zero import GatheredParameters
-from contextlib import contextmanager
-
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
     data_parallel_size = int(dist.get_world_size())
@@ -160,36 +157,3 @@ def apply_to_tensors_only(function, value, warning_msg_fn=None):
                 logger.warning(warning_msg_fn(value))
                 warned = True
         return value
-
-
-@contextmanager
-def unwrap_model_for_generation(model):
-    """
-    For ZeRO-3 models, we gather the weights once to speed up generation.
-    """
-    with GatheredParameters(model.parameters()):
-        # Removes the optimizer hooks from a DeepSpeed ZeRO-3 model.
-
-        # Remove hooks
-        if model.optimizer is not None and hasattr(model.optimizer, "parameter_offload"):
-            optimizer_offload = model.optimizer.parameter_offload
-        elif model.optimizer is not None:
-            optimizer_offload = model.optimizer
-
-        for hook in optimizer_offload.forward_hooks:
-            hook.remove()
-        for hook in optimizer_offload.backward_hooks:
-            hook.remove()
-
-        optimizer_offload.forward_hooks = []
-        optimizer_offload.backward_hooks = []
-
-        yield model
-
-        # Adds the optimizer hooks from a DeepSpeed ZeRO-3 model.
-        if model.optimizer is not None and hasattr(model.optimizer, "parameter_offload"):
-            optimizer_offload = model.optimizer.parameter_offload
-        elif model.optimizer is not None:
-            optimizer_offload = model.optimizer
-        optimizer_offload._register_hooks_recursively(optimizer_offload.module)
-    return
