@@ -13,7 +13,7 @@ import deepspeed.comm as dist
 from deepspeed import get_accelerator
 from deepspeed.moe.sharded_moe import top1gating
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer, is_moe_param
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 
 
 @pytest.mark.parametrize("zero_stage", [0, 1, 2])
@@ -177,7 +177,7 @@ class TestTopk(DistributedTest):
     world_size = 2
 
     def test(self):
-        device = get_accelerator().current_device()
+        device = get_accelerator().current_device_name()
         if dist.get_rank() == 0:
             logits = torch.rand(2, 2, device=device)
         elif dist.get_rank() == 1:

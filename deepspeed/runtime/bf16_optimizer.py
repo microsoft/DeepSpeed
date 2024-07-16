@@ -13,17 +13,22 @@ from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from packaging import version as pkg_version
 from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
-                                     align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
-                                     is_model_parallel_parameter, see_memory_usage, graph_process,
-                                     get_norm_with_moe_layers)
+                                     align_dense_tensors, all_gather_dp_groups, is_model_parallel_parameter,
+                                     see_memory_usage, graph_process, get_norm_with_moe_layers)
 from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups
 from deepspeed.moe.utils import is_moe_param, is_moe_param_group
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
 
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
+
+
+def print_rank_0(message, debug=False, force=False):
+    if dist.get_rank() == 0 and (debug or force):
+        print(message)
 
 
 class BF16_Optimizer(ZeROOptimizer):
@@ -92,7 +97,16 @@ class BF16_Optimizer(ZeROOptimizer):
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
 
-        see_memory_usage('end bf16_optimizer', force=True)
+        see_memory_usage('end bf16_ optimizer', force=True)
+
+    def destroy(self):
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for p in self.bf16_groups[i]:
+                if getattr(p, '_hp_mapping', None):
+                    p._hp_mapping = None
+        for hook in self._grad_acc_hooks:
+            hook.remove()
+        print_rank_0("Removed grad acc hooks")
 
     def _configure_moe_settings(self):
         assert any(
@@ -187,6 +201,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.initialize_optimizer_states()
         see_memory_usage('end initialize_optimizer', force=True)
 
+        self._grad_acc_hooks = []
         if self.immediate_grad_update:
             self.create_grad_acc_hooks()
 
@@ -341,7 +356,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
         # clear gradients
         if clear_lp_grads:
-            lp.grad._zero()
+            lp.grad.zero_()
 
     @torch.no_grad()
     def _update_hp_grads_func(self, clear_lp_grads=False):
@@ -441,11 +456,20 @@ class BF16_Optimizer(ZeROOptimizer):
             self.fp32_groups_has_gradients[i] = [False] * len(group)
 
     def clear_lp_grads(self):
+
+        # using zero_() fixed memory address for graph replay
+        set_to_none = False if self.graph_harvesting else True
+        zero_grads_list = []
         for group in self.bf16_groups:
             for param in group:
-                if param.grad is not None:
-                    # Using zero_() fixed memory address for graph replay
-                    param.grad.zero_()
+                if set_to_none:
+                    param.grad = None
+                elif param.grad is not None:
+                    if param.grad.grad_fn is not None:
+                        param.grad.detach_()
+                    zero_grads_list.append(param.grad)
+        if not set_to_none and len(zero_grads_list) > 0:
+            torch._foreach_zero_(zero_grads_list)
 
     def state_dict(self):
         state_dict = {}
@@ -474,7 +498,8 @@ class BF16_Optimizer(ZeROOptimizer):
                         checkpoint_folder,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
-                        load_serial=None):
+                        load_serial=None,
+                        param_shapes=None):
         if checkpoint_folder:
             self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:
@@ -515,6 +540,11 @@ class BF16_Optimizer(ZeROOptimizer):
         """Forward the wrapped optimizer's parameters."""
         return self.optimizer.param_groups
 
+    @property
+    def state(self):
+        """Forward the wrapped optimizer's states."""
+        return self.optimizer.state
+
     def accumulate_hp_grads_and_remove_lp(self, lp_param, group_idx, param_idx):
         assert self.immediate_grad_update
         self._update_hp_grad(lp_param, group_idx, param_idx, clear_lp_grads=True)
@@ -532,7 +562,7 @@ class BF16_Optimizer(ZeROOptimizer):
                         def accumulate_hp_grads_and_remove_lp(*notneeded):
                             self.accumulate_hp_grads_and_remove_lp(param, i, j)
 
-                        grad_acc.register_hook(accumulate_hp_grads_and_remove_lp)
+                        self._grad_acc_hooks.append(grad_acc.register_hook(accumulate_hp_grads_and_remove_lp))
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i, j)
