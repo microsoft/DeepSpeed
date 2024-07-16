@@ -104,8 +104,8 @@ from deepspeed.accelerator import get_accelerator
 
 from deepspeed.runtime.config import DtypeEnum
 
-from deepspeed.sequence.layer_master import DistributedAttention
-from packaging import version
+from deepspeed.sequence.layer import DistributedAttention
+from packaging import version as pkg_version
 
 try:
     import flash_attn
@@ -1164,13 +1164,13 @@ class DeepSpeedEngine(Module):
         if self.sequence_parallel_size > 1:
             self.communication_data_type = self._config.seq_parallel_communication_data_type
 
-        if dist.get_rank() == 0:
-            print(f"DS Engine SP group size : {self.sequence_parallel_size}")
+        
         if self.sequence_parallel_size > 1:
+            log_dist(f"Using DS sequence parallelism (SP) of size {self.sequence_parallel_size}", ranks=[0])
             #replace module attention with deespeed dist attention
             #Assert we have torch version with device_mesh for parallel group
             #Assert flash attn#
-            assert version.parse(torch.__version__) >= version.parse("2.2.2"), \
+            assert pkg_version.parse(torch.__version__) >= version.parse("2.2.2"), \
                 f"HF model finetune with DeepSpeed SP  requires torch >= 2.2.2, you have version {torch.__version__}"
             assert FLASH_ATTN_AVAILABLE, \
                 f"HF model finetune with DeepSpeed SP  requires Flash attention"

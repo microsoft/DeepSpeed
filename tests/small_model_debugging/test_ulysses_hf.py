@@ -10,10 +10,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from torch.utils.data import DataLoader
 import numpy as np
 import transformers
-#from datasets import load_dataset
 from deepspeed.sequence.cross_entropy import vocab_sequence_parallel_cross_entropy
 
-#MODEL_NAME = "meta-llama/Llama-2-7b-hf"
 MODEL_NAME = "facebook/opt-125m"
 
 DS_CONFIG = {
@@ -96,7 +94,6 @@ def load_and_prepare_data(model_name):
 
     # Create data loader
     data_loader = DataLoader(tokenized_dataset, batch_size=1, shuffle=False)
-    #print(f"data {data_loader.dataset.__dict__}")
     return model, data_loader
 
 
