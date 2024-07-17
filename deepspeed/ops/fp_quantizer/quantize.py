@@ -7,6 +7,7 @@ import torch
 import abc
 from abc import ABC
 
+import gc
 from deepspeed.ops.op_builder import FPQuantizerBuilder
 
 fp_quant_module = None
@@ -79,8 +80,13 @@ class FP_Quantize(Quantizer):
         out = fp_quant_module.quantize(self.input_q, input, self.group_size, stochastic_mode, q_bits, q_mantisa_bits)
         if return_meta_tensor:
             data, self.scale = out.split(self.group_size, dim=-1)
+            data = data.contiguous().reshape(input.shape)
             self.scale = self.scale.contiguous()
-            return data.contiguous().reshape(input.shape), self.scale
+            del self.input_q
+            del out
+            gc.collect()
+            torch.cuda.empty_cache()
+            return data, self.scale
 
         return out
 
