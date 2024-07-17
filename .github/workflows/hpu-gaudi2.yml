@@ -104,9 +104,7 @@ jobs:
       - name: Check container state
         run: |
           ldd --version
-          hl-smi
           hl-smi -L
-          dmesg -T
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
