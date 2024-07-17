@@ -36,14 +36,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     # if scattering the seq-dim, transpose the heads back to the original dimension
     #print(f"Output shape {output.shape} ")
     if scatter_idx < 2:
-        print(f"scatter_idx {scatter_idx} Input shape {input.shape} inp_shape {inp_shape}")
-        print(f"Output shape {output.shape} ")
-        #output = output.transpose(0, 1).contiguous()
-        #print(f"Output TRANSPOSE shape {output.shape} ")
-        #output = output.permute(1,2,0,3)
-        output = output.permute(1, 2, 0, 3, 4)
-        print(f"Output TRANSPOSE shape {output.shape} ")
-
+        output = output.transpose(0, 2).contiguous()
 
     return output.reshape(
         inp_shape[: gather_idx] + \
