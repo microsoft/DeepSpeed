@@ -105,7 +105,7 @@ class LoRAOptimizedLinear(nn.Module):
         self.base_weight.ds_optim_param = True
 
         # Use RS lora for now.
-        self.lora_scaling_factor = self.lora_config.lora_alpha / math.sqrt(self.lora_config.lora_r)
+        self.lora_scaling_factor = self.lora_config.lora_alpha / self.lora_config.lora_r
         # Keeping lora weights in bf16 precision for ease of training.
         self.lora_weight_1 = nn.Linear(self.input_dim,
                                        self.lora_config.lora_r,
@@ -117,6 +117,8 @@ class LoRAOptimizedLinear(nn.Module):
                                        bias=self.bias,
                                        device=self.device,
                                        dtype=dtype)
+        nn.init.kaiming_uniform_(self.lora_weight_1.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_weight_2.weight)
         self.lora_weight_1.weight.requires_grad = True
         self.lora_weight_2.weight.requires_grad = True
 

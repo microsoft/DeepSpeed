@@ -368,6 +368,7 @@ class DeepSpeedEngine(Module):
         self._is_compiled = False
 
     def _optimized_linear_offload_setup(self):
+        self.optimized_linear_base_weight_sharding = False
         offload_ratio = None
         for _, module in self.module.named_modules():
             if isinstance(module, LoRAOptimizedLinear):
@@ -376,6 +377,9 @@ class DeepSpeedEngine(Module):
                     assert offload_ratio == module.lora_config.offload_ratio, \
                         "all lora_config offload ratios should be the same across the model"
                 offload_ratio = module.lora_config.offload_ratio
+                if module.zero_shards > 1:
+                    # set attr so checkpoint saving can handle BWS properly
+                    self.optimized_linear_base_weight_sharding = True
 
         if offload_ratio is None:
             # Nothing enabled, do nothing
