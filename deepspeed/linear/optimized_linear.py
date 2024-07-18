@@ -95,14 +95,14 @@ class LoRAOptimizedLinear(nn.Module):
 
         if self.quantization_config is not None:
             assert dtype == torch.bfloat16, "only bfloat16 is supported when using quantization"
-            self.base_weight = QuantizedParameter(w, quantization_config=quantization_config)
+            self.weight = QuantizedParameter(w, quantization_config=quantization_config)
         else:
-            self.base_weight = w
+            self.weight = w
 
-        self.base_weight.requires_grad = False
+        self.weight.requires_grad = False
 
         # Mark base weight to prevent broadcast and ensure proper offload behavior
-        self.base_weight.ds_optim_param = True
+        self.weight.ds_optim_param = True
 
         # Use RS lora for now.
         self.lora_scaling_factor = self.lora_config.lora_alpha / self.lora_config.lora_r
@@ -125,11 +125,11 @@ class LoRAOptimizedLinear(nn.Module):
     def full_weight(self):
         # This assumes weights are evenly sharded across gpus. which might not be correct.
         # in that case, we should flatten before all_gather.
-        base_weight = self.base_weight
+        base_weight = self.weight
         if getattr(base_weight, 'ds_offload', False):
             # move to gpu so we can dequant and all-gather
-            assert self.base_weight.device == torch.device('cpu'), \
-                f"expected base weight on cpu but found {self.base_weight.device}"
+            assert base_weight.device == torch.device('cpu'), \
+                f"expected base weight on cpu but found {base_weight.device}"
             base_weight.offload(revert=True)
             local_weight = base_weight.dequantized() if isinstance(base_weight,
                                                                         QuantizedParameter) else base_weight
@@ -154,9 +154,9 @@ class LoRAOptimizedLinear(nn.Module):
             with torch.no_grad():
                 base_weight = self.full_weight()
         elif self.quantization_config:
-            base_weight = self.base_weight.dequantized()
+            base_weight = self.weight.dequantized()
         else:
-            base_weight = self.base_weight
+            base_weight = self.weight
 
         base_weight_output = F.linear(input_tensor, base_weight)
         lora_output = self.lora_weight_2(self.lora_weight_1(input_tensor))
