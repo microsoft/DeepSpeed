@@ -552,13 +552,6 @@ class OpBuilder(ABC):
             os.environ["PYTORCH_ROCM_ARCH"] = self.get_rocm_gpu_arch()
             cxx_args.append('-DROCM_WAVEFRONT_SIZE=%s' % self.get_rocm_wavefront_size())
 
-        print(f"{self.name=}")
-        print(f"{sources=}")
-        print(f"{extra_include_paths=}")
-        print(f"{cxx_args=}")
-        print(f"{nvcc_args=}")
-        print(f"{self.extra_ldflags()=}")
-        print(f"{verbose=}")
         op_module = load(name=self.name,
                          sources=self.strip_empty_entries(sources),
                          extra_include_paths=self.strip_empty_entries(extra_include_paths),
