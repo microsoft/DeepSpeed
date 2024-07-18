@@ -90,7 +90,10 @@ class LoRAOptimizedLinear(nn.Module):
 
         self.zero_shards = self.lora_config.base_weight_sharding
         self.sharded_weight_size = int(float(self.input_dim) // self.zero_shards)
-        w = torch.nn.Parameter(torch.empty((self.output_dim, self.sharded_weight_size), dtype=dtype), requires_grad=False)
+        if self.zero_shards > 0:
+            w = torch.nn.Parameter(torch.empty(self.output_dim * self.sharded_weight_size, dtype=dtype), requires_grad=False)
+        else:
+            w = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=dtype), requires_grad=False)
         torch.nn.init.xavier_uniform_(w)
 
         if self.quantization_config is not None:
@@ -138,10 +141,10 @@ class LoRAOptimizedLinear(nn.Module):
             local_weight = base_weight.dequantized() if isinstance(base_weight,
                                                                         QuantizedParameter) else base_weight
 
-        tensor_out = torch.empty(local_weight.shape[0], local_weight.shape[1] * self.zero_shards, 
+        tensor_out = torch.empty(self.output_dim * self.input_dim, 
                                  dtype=local_weight.dtype, device=local_weight.device)
         dist.all_gather_into_tensor(tensor_out, local_weight)
-        return tensor_out
+        return tensor_out.reshape(self.output_dim, self.input_dim)
 
     def linear_without_F_linear(self, input, weight):
         output = torch.mm(input.reshape(-1, input.shape[-1]), weight)
