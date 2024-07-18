@@ -552,6 +552,13 @@ class OpBuilder(ABC):
             os.environ["PYTORCH_ROCM_ARCH"] = self.get_rocm_gpu_arch()
             cxx_args.append('-DROCM_WAVEFRONT_SIZE=%s' % self.get_rocm_wavefront_size())
 
+        print(f"{self.name=}")
+        print(f"{sources=}")
+        print(f"{extra_include_paths=}")
+        print(f"{cxx_args=}")
+        print(f"{nvcc_args=}")
+        print(f"{self.extra_ldflags()=}")
+        print(f"{verbose=}")
         op_module = load(name=self.name,
                          sources=self.strip_empty_entries(sources),
                          extra_include_paths=self.strip_empty_entries(extra_include_paths),
@@ -772,12 +779,24 @@ class CUDAOpBuilder(OpBuilder):
 
 class TorchCPUOpBuilder(CUDAOpBuilder):
 
+    def get_cuda_lib64_path(self):
+        if not self.is_rocm_pytorch():
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+            if not os.path.exists(CUDA_LIB64):
+                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
+        else:
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+        return CUDA_LIB64
+
     def extra_ldflags(self):
         if self.build_for_cpu:
             return ['-fopenmp']
 
         if not self.is_rocm_pytorch():
-            return ['-lcurand']
+            ld_flags = ['-lcurand']
+            if not self.build_for_cpu:
+                ld_flags.append(f'-L{self.get_cuda_lib64_path()}')
+            return ld_flags
 
         return []
 
@@ -785,12 +804,7 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
         import torch
         args = []
         if not self.build_for_cpu:
-            if not self.is_rocm_pytorch():
-                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-                if not os.path.exists(CUDA_LIB64):
-                    CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
-            else:
-                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+            CUDA_LIB64 = self.get_cuda_lib64_path()
 
             args += super().cxx_args()
             args += [
