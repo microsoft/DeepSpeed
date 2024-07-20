@@ -606,8 +606,8 @@ def initialize_mesh_device(mesh_shape, mesh_dim_names):
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     mesh_device = None
     if hasattr(cdb, 'init_device_mesh'):
-        print(
-            f"Initializing mesh device with backend {cdb.name} with shape {mesh_shape} and dim names {mesh_dim_names}")
+        utils.logger.info(f"Initializing mesh device with backend {cdb.name} \
+                with shape {mesh_shape} and dim names {mesh_dim_names}")
         mesh_device = cdb.init_device_mesh(mesh_shape, mesh_dim_names)
     return mesh_device
 

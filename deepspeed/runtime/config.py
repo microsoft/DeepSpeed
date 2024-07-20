@@ -719,7 +719,6 @@ class DeepSpeedConfig(object):
                 raise ValueError(
                     f"Expected a string path to an existing deepspeed config, or a dictionary or a valid base64. Received: {config}"
                 )
-        #print(f"config MPU = {mpu.__dict__}")
         try:
             self.global_rank = dist.get_rank()
             if mpu is not None:
@@ -731,7 +730,7 @@ class DeepSpeedConfig(object):
         except:
             self.global_rank = 0
             self.world_size = 1
-        print(f"config mesh_device {mesh_device} world_size = {self.world_size}")
+        logger.info(f"Config mesh_device {mesh_device} world_size = {self.world_size}")
         # If elastic-mode enabled, update compute + update _param_dict
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
         if self.elasticity_enabled:

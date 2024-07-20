@@ -146,7 +146,7 @@ def initialize(args=None,
                           dist_init_required=dist_init_required)
     mesh_device = None
     if mesh_param:
-        print(f"mesh_param to Initialize mesh device: {mesh_param}")
+        logger.info(f"mesh_param to Initialize mesh device: {mesh_param}")
         mesh_device = dist.initialize_mesh_device(mesh_param, ("data_parallel", "sequence_parallel"))
 
     ##TODO: combine reuse mpu as mesh device and vice versa

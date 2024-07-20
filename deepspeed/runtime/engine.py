@@ -1169,7 +1169,7 @@ class DeepSpeedEngine(Module):
             #replace module attention with deespeed dist attention
             #Assert we have torch version with device_mesh for parallel group
             #Assert flash attn#
-            assert pkg_version.parse(torch.__version__) >= version.parse("2.2.2"), \
+            assert pkg_version.parse(torch.__version__) >= pkg_version.parse("2.2.2"), \
                 f"HF model finetune with DeepSpeed SP  requires torch >= 2.2.2, you have version {torch.__version__}"
             assert FLASH_ATTN_AVAILABLE, \
                 f"HF model finetune with DeepSpeed SP  requires Flash attention"
@@ -1181,7 +1181,7 @@ class DeepSpeedEngine(Module):
                         attn._flash_attention_forward,
                         self.get_sequence_parallel_group(),
                         2,
-                        1, #Assert flash attn api
+                        1, #Flash attn is [B, S, H, D]
                     )
 
                     module._flash_attention_forward = lambda q, k, v, *args, **kwargs: compute_attn_sp(

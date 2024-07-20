@@ -17,10 +17,8 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     inp_shape = list(input.shape)
     inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
     if scatter_idx < 2:
-        scatter_idx = 0  ##FIX hack for backward
         input_t = input.reshape(
-            #[-1, seq_world_size, inp_shape[scatter_idx]] + \
-            [seq_world_size, inp_shape[scatter_idx]] + \
+            [-1, seq_world_size, inp_shape[scatter_idx]] + \
             inp_shape[scatter_idx + 1:]
         ).contiguous()
     else:
@@ -34,7 +32,6 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     dist.all_to_all_single(output, input_t, group=group)
 
     # if scattering the seq-dim, transpose the heads back to the original dimension
-    #print(f"Output shape {output.shape} ")
     if scatter_idx < 2:
         output = output.transpose(0, 2).contiguous()
 
@@ -106,6 +103,5 @@ class DistributedAttention(torch.nn.Module):
         context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
 
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
-        output = output.transpose(0, 1).contiguous()  ##
         #out e.g., [s/p::h]
         return output
