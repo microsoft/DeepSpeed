@@ -77,7 +77,7 @@ _test_tasks = [
 
 @dataclass
 class ModelInfo:
-    modelId: str
+    id: str
     pipeline_tag: str
     tags: List[str]
 
@@ -108,7 +108,7 @@ def _hf_model_list() -> List[ModelInfo]:
                 for model in _test_models:
                     model_list.extend(api.list_models(model_name=model))
                 model_data["model_list"] = [
-                    ModelInfo(modelId=m.id, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in model_list
+                    ModelInfo(id=m.id, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in model_list
                 ]
                 break  # Exit the loop if the operation is successful
             except requests.exceptions.HTTPError as e:
