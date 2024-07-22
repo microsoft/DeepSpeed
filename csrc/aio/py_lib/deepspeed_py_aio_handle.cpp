@@ -8,8 +8,6 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
 #include "deepspeed_py_aio_handle.h"
-#include <fstream>
-#include <string>
 #include <cstdlib>
 
 using namespace std;
@@ -53,29 +51,10 @@ deepspeed_aio_handle_t::deepspeed_aio_handle_t(const int block_size,
 {
 
     if (!deepspeed_aio_handle_t::s_cuFile_init && use_gds) {
-        std::string depthStr = std::to_string(queue_depth);
-        std::string threadsStr = std::to_string(num_threads);
-        std::string json1 = R"({"execution": {"max_io_queue_depth": )"+depthStr+", ";
-        std::string json2 = R"("max_request_parallelism": )"+threadsStr+", ";
-        std::string json3 = R"("max_io_threads": )"+threadsStr+", ";
-        std::string json4 = R"("parallel_io": true, "min_io_threshold_size_kb": 8192}})";
-        std::ofstream outFile("local_cufile.json");
-        if (outFile.is_open()){
-            outFile << json1 + json2 + json3 + json4;
-            outFile.close();
-        } else { std::cerr<<"Can't open local cufile" << std::endl;exit(EXIT_FAILURE);}
-        putenv("CUFILE_ENV_PATH_JSON=$PWD/local_cufile.json");
-        cuFileDriverOpen();
-        cudaCheckError();
-        size_t direct_io_size = (size_t)block_size / 1024;
-        CUfileError_t status = cuFileDriverSetMaxDirectIOSize(direct_io_size);
-        if (status.err != CU_FILE_SUCCESS) {
-            std::cerr << "file register error:" << cuFileGetErrorString(status) << std::endl;
-            exit(EXIT_FAILURE);
-        }
+        init_gds_cufile(block_size, queue_depth, num_threads);
         deepspeed_aio_handle_t::s_cuFile_init = true;
-        // GDS threads handled internally
         _thread_contexts.push_back(std::make_shared<deepspeed_aio_thread_t>(0, _aio_config));
+        // GDS threads handled in cufile.json
         _num_threads = 1;
     } else { // CPU OP
         for (auto i = 0; i < num_threads; ++i) {
@@ -92,7 +71,7 @@ deepspeed_aio_handle_t::~deepspeed_aio_handle_t()
 {
     _stop_threads();
     for (auto& thr : _threads) { thr.join(); }
-    if (_use_gds) {cuFileDriverClose();}
+    if (_use_gds) {close_gds();}
 }
 
 const int deepspeed_aio_handle_t::get_block_size() const

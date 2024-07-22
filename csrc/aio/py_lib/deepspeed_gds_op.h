@@ -5,13 +5,21 @@
 
 #include <memory>
 #include <queue>
+#include <fstream>
+#include <string>
+#include <cstdlib>
+#include <set>
 
 #include "deepspeed_aio_op_desc.h"
+#ifdef __ENABLE_GDS__
 #include "deepspeed_gds_utils.h"
+#endif
 
 struct gds_op_desc_t : io_op_desc_t {
-    CUfileDescr_t _cf_descr;
-    CUfileHandle_t _cf_handle;
+    #ifdef __ENABLE_GDS__
+        CUfileDescr_t _cf_descr;
+        CUfileHandle_t _cf_handle;
+    #endif
     void* _base_ptr;
 
     gds_op_desc_t(const bool read_op,
@@ -42,3 +50,7 @@ struct gds_op_desc_t : io_op_desc_t {
 int register_buffer(const torch::Tensor& buffer);
 
 int deregister_buffer(const torch::Tensor& buffer);
+
+void init_gds_cufile(const int block_size, const int queue_depth, const int num_threads);
+
+void close_gds();
