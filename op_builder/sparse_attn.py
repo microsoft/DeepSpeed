@@ -55,10 +55,9 @@ class SparseAttnBuilder(OpBuilder):
 
         TORCH_MAJOR = int(torch.__version__.split('.')[0])
         TORCH_MINOR = int(torch.__version__.split('.')[1])
-        torch_compatible = (TORCH_MAJOR == 1 and TORCH_MINOR >= 5)
+        torch_compatible = (TORCH_MAJOR == 2 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5))
         if not torch_compatible:
-            self.warning(
-                f'{self.NAME} requires a torch version >= 1.5 and < 2.0 but detected {TORCH_MAJOR}.{TORCH_MINOR}')
+            self.warning(f'{self.NAME} requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}')
 
         try:
             import triton
