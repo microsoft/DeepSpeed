@@ -24,6 +24,7 @@ class LoRAConfig:
     offload: bool = False
     offload_ratio: float = 0.0
 
+
 @dataclass
 class QuantizationConfig:
     """

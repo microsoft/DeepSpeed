@@ -90,7 +90,7 @@ class LoRAOptimizedLinear(nn.Module):
 
         self.zero_shards = self.lora_config.base_weight_sharding
         self.sharded_weight_size = int(float(self.input_dim) // self.zero_shards)
-        if self.zero_shards > 0:
+        if self.zero_shards > 1:
             w = torch.nn.Parameter(torch.empty(self.output_dim * self.sharded_weight_size, dtype=dtype), requires_grad=False)
         else:
             w = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=dtype), requires_grad=False)
@@ -120,6 +120,9 @@ class LoRAOptimizedLinear(nn.Module):
                                        bias=self.bias,
                                        device=self.device,
                                        dtype=dtype)
+        
+        # initialize "A" with kaiming uniform and "B" with zeros following this
+        # https://github.com/huggingface/peft/blob/62122b5add8d6892f70c82eaef2147a6ba33b90b/src/peft/tuners/lora/layer.py#L155
         nn.init.kaiming_uniform_(self.lora_weight_1.weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_weight_2.weight)
         self.lora_weight_1.weight.requires_grad = True

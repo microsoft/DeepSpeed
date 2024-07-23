@@ -369,9 +369,11 @@ class DeepSpeedEngine(Module):
 
     def _optimized_linear_offload_setup(self):
         self.optimized_linear_base_weight_sharding = False
+        self.optimized_linear_lora_enabled = False
         offload_ratio = None
         for _, module in self.module.named_modules():
             if isinstance(module, LoRAOptimizedLinear):
+                self.optimized_linear_lora_enabled = True
                 offload_ratio = None
                 if offload_ratio is not None:
                     assert offload_ratio == module.lora_config.offload_ratio, \
