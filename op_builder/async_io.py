@@ -47,15 +47,20 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
     def cxx_args(self):
         # -O0 for improved debugging, since performance is bound by I/O
         args = super().cxx_args()
+        GDS_ENABLE = self.is_gds_enable()
         args += [
             '-Wall',
             '-O0',
             '-shared',
             '-fPIC',
             '-Wno-reorder',
+            GDS_ENABLE
         ]
 
         return args
+
+    def is_gds_enable():
+        return '-D__ENABLE_GDS__'
 
     def extra_ldflags(self):
         if self.build_for_cpu:
