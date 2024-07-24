@@ -64,7 +64,7 @@ mpirun -np [num processes] -ppn [num GPUs on each node] -hostfile [hostfile] [MP
 
 #### 1.2.3 Compressed implementation
 This backend provides an approach to abstract the generic part of one-bit optimizers and implements accelerator dependent part with DeepSpeed custom op builder. To use this `CompressedBackend`, you should make sure that your current accelerator supports `PackbitsBuilder`, so that it could be loaded to do high performance packing and unpacking between float and Byte datatype, which is utilized in one-bit algorithm. An example can be found in `Deepspeed/op_builder/xpu/packbits.py`.
-This approach does not require NCCL or MPI based communication library. It will automatically use your default communication library selected by your accelerator in `deepspeed/comm`. 
+This approach does not require NCCL or MPI based communication library. It will automatically use your default communication library selected by your accelerator in `deepspeed/comm`.
 
 ### 1.3 0/1 Adam Algorithm
 
