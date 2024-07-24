@@ -9,6 +9,7 @@ from abc import ABC
 
 import gc
 from deepspeed.ops.op_builder import FPQuantizerBuilder
+from deepspeed.accelerator import get_accelerator
 
 fp_quant_module = None
 
@@ -85,7 +86,7 @@ class FP_Quantize(Quantizer):
             del self.input_q
             del out
             gc.collect()
-            torch.cuda.empty_cache()
+            get_accelerator().empty_cache()
             return data, self.scale
 
         return out

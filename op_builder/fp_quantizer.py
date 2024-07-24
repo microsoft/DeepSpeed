@@ -3,7 +3,10 @@
 
 # DeepSpeed Team
 
-from packaging import version as pkg_version
+try:
+    from packaging import version as pkg_version
+except ImportError:
+    pkg_version = None
 
 from .builder import CUDAOpBuilder, installed_cuda_version
 
@@ -45,13 +48,19 @@ class FPQuantizerBuilder(CUDAOpBuilder):
             self.warning(f"please install triton==2.3.0 if you want to use the FP Quantizer Kernels")
             return False
 
-        installed_triton = pkg_version.parse(triton.__version__)
-        triton_mismatch = installed_triton != pkg_version.parse("2.3.0")
+        if pkg_version:
+            installed_triton = pkg_version.parse(triton.__version__)
+            triton_mismatch = installed_triton != pkg_version.parse("2.3.0")
+        else:
+            installed_triton = triton.__version__
+            triton_mismatch = installed_triton != "2.3.0"
 
         if triton_mismatch:
-            self.warning(f"FP Quantizer is using an untested triton version ({installed_triton}), only 2.3.0 is known to be compatible with these kernels")
+            self.warning(
+                f"FP Quantizer is using an untested triton version ({installed_triton}), only 2.3.0 is known to be compatible with these kernels"
+            )
             return False
-        
+
         return super().is_compatible(verbose) and cuda_okay
 
     def filter_ccs(self, ccs):
