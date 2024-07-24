@@ -59,7 +59,7 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
 
         return args
 
-    def is_gds_enable():
+    def is_gds_enable(self):
         return '-D__ENABLE_GDS__'
 
     def extra_ldflags(self):

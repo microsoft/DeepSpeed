@@ -39,6 +39,7 @@ class AsyncPartitionedParameterSwapper(object):
 
         aio_op = AsyncIOBuilder().load(verbose=False)
         self.aio_handle = aio_op.aio_handle
+        self.use_gds = True
         self.dtype = model_dtype
 
         #set swap buffers, create aio handles
@@ -104,19 +105,28 @@ class AsyncPartitionedParameterSwapper(object):
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
-        self.buffers = get_accelerator().pin_memory(torch.empty(int(self.aligned_elements_per_buffer *
-                                                                    self.param_buffer_count),
-                                                                dtype=self.dtype,
-                                                                requires_grad=False),
-                                                    align_bytes=0)
 
         self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE], self.aio_config[AIO_QUEUE_DEPTH],
-                                               self.aio_config[AIO_SINGLE_SUBMIT], self.aio_config[AIO_OVERLAP_EVENTS],
-                                               self.aio_config[AIO_THREAD_COUNT])
+                                               self.aio_config[AIO_SINGLE_SUBMIT], 
+                                               self.aio_config[AIO_OVERLAP_EVENTS], self.use_gds, self.aio_config[AIO_THREAD_COUNT])
 
         self.aio_write_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE], self.aio_config[AIO_QUEUE_DEPTH],
                                                 self.aio_config[AIO_SINGLE_SUBMIT],
-                                                self.aio_config[AIO_OVERLAP_EVENTS], self.aio_config[AIO_THREAD_COUNT])
+                                                self.aio_config[AIO_OVERLAP_EVENTS], self.use_gds, self.aio_config[AIO_THREAD_COUNT])
+
+        if self.use_gds:
+            self.buffers = torch.empty(int(self.aligned_elements_per_buffer *
+                                           self.param_buffer_count),
+                                       dtype=self.dtype,
+                                       device='cuda', # gotta be cuda
+                                       requires_grad=False)
+            self.aio_read_handle.new_device_locked_tensor(self.buffers)
+        else:
+            self.buffers = get_accelerator().pin_memory(torch.empty(int(self.aligned_elements_per_buffer *
+                                                                        self.param_buffer_count),
+                                                                    dtype=self.dtype,
+                                                                    requires_grad=False),
+                                                        align_bytes=0)
 
         self.swap_out_params = []
 
