@@ -215,6 +215,8 @@ class PipelineModule(nn.Module):
         self.tied_comms = self._index_tied_modules()
         self._synchronize_tied_weights()
 
+        self.dynamic_shape = dynamic_shape
+
     def _precompute_checkpointable_values(self):
         if self.activation_checkpoint_interval > 0 and self.is_checkpointable_results_interval != self.activation_checkpoint_interval:
             num_layers = len(self.forward_funcs)
@@ -224,8 +226,6 @@ class PipelineModule(nn.Module):
                 funcs = self.forward_funcs[start_idx:end_idx]
                 self.is_checkpointable_results.append(self._is_checkpointable(funcs))
             self.is_checkpointable_results_interval = self.activation_checkpoint_interval
-
-        self.dynamic_shape = dynamic_shape
 
     def _build(self):
         specs = self._layer_specs
