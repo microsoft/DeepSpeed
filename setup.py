@@ -18,7 +18,9 @@ build_win.bat
 The wheel will be located at: dist/*.whl
 """
 
+import pathlib
 import os
+import shutil
 import sys
 import subprocess
 from setuptools import setup, find_packages
@@ -207,21 +209,16 @@ else:
     git_hash = "unknown"
     git_branch = "unknown"
 
-
-def create_dir_symlink(src, dest):
-    if not os.path.islink(dest):
-        if os.path.exists(dest):
-            os.remove(dest)
-        assert not os.path.exists(dest)
-        os.symlink(src, dest)
-
-
 if sys.platform == "win32":
-    # This creates a symbolic links on Windows.
-    # It needs Administrator privilege to create symlinks on Windows.
-    create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
-    create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
-    create_dir_symlink('..\\accelerator', '.\\deepspeed\\accelerator')
+    shutil.rmtree('.\\deepspeed\\ops\\csrc', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\ops\\csrc').unlink(missing_ok=True)
+    shutil.copytree('.\\csrc', '.\\deepspeed\\ops\\csrc', dirs_exist_ok=True)
+    shutil.rmtree('.\\deepspeed\\ops\\op_builder', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\ops\\op_builder').unlink(missing_ok=True)
+    shutil.copytree('.\\op_builder', '.\\deepspeed\\ops\\op_builder', dirs_exist_ok=True)
+    shutil.rmtree('.\\deepspeed\\accelerator', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\accelerator').unlink(missing_ok=True)
+    shutil.copytree('.\\accelerator', '.\\deepspeed\\accelerator', dirs_exist_ok=True)
     egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt.
@@ -288,6 +285,14 @@ thisdir = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
     readme_text = fin.read()
 
+if sys.platform == "win32":
+    scripts = ['bin/deepspeed.bat', 'bin/ds', 'bin/ds_report.bat', 'bin/ds_report']
+else:
+    scripts = [
+        'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
+        'bin/ds_elastic'
+    ]
+
 start_time = time.time()
 
 setup(name='deepspeed',
@@ -306,10 +311,7 @@ setup(name='deepspeed',
       extras_require=extras_require,
       packages=find_packages(include=['deepspeed', 'deepspeed.*']),
       include_package_data=True,
-      scripts=[
-          'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
-          'bin/ds_elastic'
-      ],
+      scripts=scripts,
       classifiers=[
           'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
