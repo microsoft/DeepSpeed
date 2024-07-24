@@ -7,11 +7,12 @@ import pytest
 import torch
 import deepspeed
 
-from deepspeed.ops.fp_quantizer import FP_Quantize, matmul_fp8
 from deepspeed.ops.op_builder import FPQuantizerBuilder
 
 if not deepspeed.ops.__compatible_ops__[FPQuantizerBuilder.NAME]:
     pytest.skip("FPQuantizer op is not available on this system", allow_module_level=True)
+
+from deepspeed.ops.fp_quantizer import FP_Quantize, matmul_fp8
 
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16], ids=["bf16"])
