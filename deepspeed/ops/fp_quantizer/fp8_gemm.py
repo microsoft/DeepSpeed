@@ -100,7 +100,7 @@ def matmul_kernel_fp8_fp16(inp_ptr, weight_ptr, out_ptr, scale_ptr, M, N, K, str
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         inp = tl.load(inp_data, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
         # Dequantize weight (fp8 -> fp16)
-        w = (((weight & 0x80) << 8) | ((weight & 0x7f) << 10)).to(tl.uint16)
+        w = (((weight & 0x80) << 8) | ((weight & 0x7f) << 7)).to(tl.uint16)
         w = (w + 0x2000).to(tl.uint16)
         w = (w.to(tl.float16, bitcast=True) * scale).to(tl.float16)
 
