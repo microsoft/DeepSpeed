@@ -53,8 +53,10 @@ deepspeed_aio_handle_t::deepspeed_aio_handle_t(const int block_size,
     if (!deepspeed_aio_handle_t::s_cuFile_init && use_gds) {
         init_gds_cufile(block_size, queue_depth, num_threads);
         deepspeed_aio_handle_t::s_cuFile_init = true;
-        _thread_contexts.push_back(std::make_shared<deepspeed_aio_thread_t>(0, _aio_config));
+    }
+    if (use_gds) {
         // GDS threads handled in cufile.json
+        _thread_contexts.push_back(std::make_shared<deepspeed_aio_thread_t>(0, _aio_config));
         _num_threads = 1;
     } else { // CPU OP
         for (auto i = 0; i < num_threads; ++i) {

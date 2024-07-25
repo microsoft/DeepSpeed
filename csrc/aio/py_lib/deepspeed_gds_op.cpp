@@ -36,7 +36,7 @@ void init_gds_cufile(const int block_size, const int queue_depth, const int num_
     }
 };
 
-// TODO: deregister and release any held onto buffers
+// TODO: deregister and release all buffers
 void close_gds() {cuFileDriverClose();}
 
 // For when there is more than 1 device

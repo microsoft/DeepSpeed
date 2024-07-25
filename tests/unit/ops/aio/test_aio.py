@@ -13,22 +13,26 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import AsyncIOBuilder
 from unit.common import DistributedTest
 
-KILO_BYTE = 1024
+KILO_BYTE = 1024*256
 BLOCK_SIZE = KILO_BYTE
 QUEUE_DEPTH = 2
 IO_SIZE = 4 * BLOCK_SIZE
 IO_PARALLEL = 2
+GDS_ENABLE=True
 
 if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
     pytest.skip('Skip tests since async-io is not compatible', allow_module_level=True)
 
 
-def _skip_for_invalid_environment(use_cuda_device=True, use_cuda_pinned_tensor=True):
+def _skip_for_invalid_environment(use_cuda_device=True, use_cuda_pinned_tensor=True, use_gds=False):
     if not get_accelerator().is_available():
         if use_cuda_device:
             pytest.skip("GPU tensors only supported in CUDA environments.")
         if use_cuda_pinned_tensor:
             pytest.skip("CUDA-pinned tensors only supported in CUDA environments.")
+    if not GDS_ENABLE and use_gds:
+        pytest.skip("GDS not available, won't run GDS case.")
+
 
 
 def _get_local_rank():
@@ -58,7 +62,6 @@ def _get_test_write_file_and_cuda_buffer(tmpdir, ref_buffer, index=0):
     return test_file, test_buffer
 
 
-def _get_test_write_file_and_cpu_buffer(tmpdir, ref_buffer, aio_handle=None, index=0):
     test_file = _get_test_write_file(tmpdir, index)
     if aio_handle is None:
         test_buffer = get_accelerator().pin_memory(torch.ByteTensor(list(ref_buffer)))
@@ -70,17 +73,19 @@ def _get_test_write_file_and_cpu_buffer(tmpdir, ref_buffer, aio_handle=None, ind
     return test_file, test_buffer
 
 
-def _validate_handle_state(handle, single_submit, overlap_events):
+def _validate_handle_state(handle, single_submit, overlap_events, use_gds):
     assert handle.get_single_submit() == single_submit
     assert handle.get_overlap_events() == overlap_events
-    assert handle.get_thread_count() == IO_PARALLEL
+    if use_gds:
+        assert handle.get_thread_count() == 1
+    else:
+        assert handle.get_thread_count() == IO_PARALLEL
     assert handle.get_block_size() == BLOCK_SIZE
     assert handle.get_queue_depth() == QUEUE_DEPTH
 
-
-@pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False])
-@pytest.mark.parametrize("single_submit", [True, False])
-@pytest.mark.parametrize("overlap_events", [True, False])
+@pytest.mark.parametrize("single_submit", [True,False])
+@pytest.mark.parametrize("overlap_events", [True,False])
+@pytest.mark.parametrize("use_cuda_pinned_tensor, use_gds", [(False,False),(True,False),(False,True)])
 class TestRead(DistributedTest):
     world_size = 1
     reuse_dist_env = True
@@ -89,17 +94,20 @@ class TestRead(DistributedTest):
         init_distributed = False
         set_dist_env = False
 
-    def test_parallel_read(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events):
-        _skip_for_invalid_environment(use_cuda_device=False, use_cuda_pinned_tensor=use_cuda_pinned_tensor)
+    def test_parallel_read(self, tmpdir, single_submit, overlap_events, use_cuda_pinned_tensor, use_gds):
+        _skip_for_invalid_environment(use_cuda_device=False, use_cuda_pinned_tensor=use_cuda_pinned_tensor, use_gds=use_gds)
 
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, use_gds, IO_PARALLEL)
 
         if use_cuda_pinned_tensor:
             aio_buffer = get_accelerator().pin_memory(torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu'))
+        elif use_gds:
+            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cuda')
+            h.new_device_locked_tensor(aio_buffer)
         else:
             aio_buffer = h.new_cpu_locked_tensor(IO_SIZE, torch.empty(0, dtype=torch.uint8))
 
-        _validate_handle_state(h, single_submit, overlap_events)
+        _validate_handle_state(h, single_submit, overlap_events, use_gds)
 
         ref_file, _ = _do_ref_write(tmpdir)
         read_status = h.sync_pread(aio_buffer, ref_file)
@@ -109,15 +117,17 @@ class TestRead(DistributedTest):
             ref_buffer = list(f.read())
         assert ref_buffer == aio_buffer.tolist()
 
-        if not use_cuda_pinned_tensor:
+        if use_gds:
+            h.free_device_locked_tensor(aio_buffer)
+        elif not use_cuda_pinned_tensor:
             h.free_cpu_locked_tensor(aio_buffer)
 
     @pytest.mark.parametrize("cuda_device", [True, False])
-    def test_async_read(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events, cuda_device):
-        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor)
+    def test_async_read(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events, use_gds, cuda_device):
+        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor, use_gds=use_gds)
 
         use_cpu_locked_tensor = False
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, use_gds, IO_PARALLEL)
 
         if cuda_device:
             aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=get_accelerator().device_name())
@@ -147,6 +157,7 @@ class TestRead(DistributedTest):
 @pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False])
 @pytest.mark.parametrize("single_submit", [True, False])
 @pytest.mark.parametrize("overlap_events", [True, False])
+@pytest.mark.parametrize("use_gds", [False])
 class TestWrite(DistributedTest):
     world_size = 1
     reuse_dist_env = True
@@ -155,11 +166,11 @@ class TestWrite(DistributedTest):
         init_distributed = False
         set_dist_env = False
 
-    def test_parallel_write(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events):
-        _skip_for_invalid_environment(use_cuda_device=False, use_cuda_pinned_tensor=use_cuda_pinned_tensor)
+    def test_parallel_write(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events, use_gds):
+        _skip_for_invalid_environment(use_cuda_device=False, use_cuda_pinned_tensor=use_cuda_pinned_tensor, use_gds=use_gds)
 
         ref_file, ref_buffer = _do_ref_write(tmpdir)
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, use_gds, IO_PARALLEL)
 
         if use_cuda_pinned_tensor:
             aio_file, aio_buffer = _get_test_write_file_and_cpu_buffer(tmpdir, ref_buffer)
@@ -180,12 +191,12 @@ class TestWrite(DistributedTest):
         assert filecmp.cmp(ref_file, aio_file, shallow=False)
 
     @pytest.mark.parametrize("cuda_device", [True, False])
-    def test_async_write(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events, cuda_device):
-        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor)
+    def test_async_write(self, tmpdir, use_cuda_pinned_tensor, single_submit, overlap_events, use_gds, cuda_device):
+        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor, use_gds=use_gds)
 
         ref_file, ref_buffer = _do_ref_write(tmpdir)
 
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, use_gds, IO_PARALLEL)
         use_cpu_locked_tensor = False
         if cuda_device:
             aio_file, aio_buffer = _get_test_write_file_and_cuda_buffer(tmpdir, ref_buffer)
@@ -215,6 +226,7 @@ class TestWrite(DistributedTest):
 @pytest.mark.sequential
 @pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False])
 @pytest.mark.parametrize("cuda_device", [True, False])
+@pytest.mark.parametrize("use_gds", [False])
 class TestAsyncQueue(DistributedTest):
     world_size = 1
     requires_cuda_env = False
@@ -223,8 +235,8 @@ class TestAsyncQueue(DistributedTest):
         set_dist_env = False
 
     @pytest.mark.parametrize("async_queue", [2, 3])
-    def test_read(self, tmpdir, async_queue, use_cuda_pinned_tensor, cuda_device):
-        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor)
+    def test_read(self, tmpdir, async_queue, use_cuda_pinned_tensor, cuda_device, use_gds):
+        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor, use_gds=use_gds)
 
         ref_files = []
         for i in range(async_queue):
@@ -233,7 +245,7 @@ class TestAsyncQueue(DistributedTest):
 
         single_submit = True
         overlap_events = True
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, use_gds, IO_PARALLEL)
 
         use_cpu_locked_tensor = False
         if cuda_device:
@@ -270,8 +282,8 @@ class TestAsyncQueue(DistributedTest):
                 h.free_cpu_locked_tensor(t)
 
     @pytest.mark.parametrize("async_queue", [2, 3])
-    def test_write(self, tmpdir, use_cuda_pinned_tensor, async_queue, cuda_device):
-        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor)
+    def test_write(self, tmpdir, use_cuda_pinned_tensor, async_queue, cuda_device, use_gds):
+        _skip_for_invalid_environment(use_cuda_device=cuda_device, use_cuda_pinned_tensor=use_cuda_pinned_tensor, use_gds=use_gds)
 
         ref_files = []
         ref_buffers = []
@@ -282,7 +294,7 @@ class TestAsyncQueue(DistributedTest):
 
         single_submit = True
         overlap_events = True
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, useg_gds,IO_PARALLEL)
 
         aio_files = []
         aio_buffers = []
