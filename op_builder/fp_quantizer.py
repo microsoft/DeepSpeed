@@ -54,7 +54,8 @@ class FPQuantizerBuilder(CUDAOpBuilder):
             installed_triton = pkg_version.parse(triton.__version__)
             triton_mismatch = installed_triton.major != allowed.major or installed_triton.minor != allowed.minor
         else:
-            major, minor, _ = triton.__version__.split(".")
+            installed_triton = triton.__version__
+            major, minor, _ = installed_triton.split(".")
             triton_mismatch = major != "2" or minor != "3"
 
         if triton_mismatch:
