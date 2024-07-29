@@ -104,16 +104,6 @@ from deepspeed.accelerator import get_accelerator
 
 from deepspeed.runtime.config import DtypeEnum
 
-from deepspeed.sequence.layer import DistributedAttention
-from packaging import version as pkg_version
-
-try:
-    import flash_attn
-    FLASH_ATTN_AVAILABLE = True
-except ImportError:
-    FLASH_ATTN_AVAILABLE = False
-
-
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
 DeepSpeedOptimizerCallable = \
@@ -1163,30 +1153,6 @@ class DeepSpeedEngine(Module):
         if self.sequence_parallel_size > 1:
             self.communication_data_type = self._config.seq_parallel_communication_data_type
 
-        
-        if self.sequence_parallel_size > 1:
-            log_dist(f"Using DS sequence parallelism (SP) of size {self.sequence_parallel_size}", ranks=[0])
-            #replace module attention with deespeed dist attention
-            #Assert we have torch version with device_mesh for parallel group
-            #Assert flash attn#
-            assert pkg_version.parse(torch.__version__) >= pkg_version.parse("2.2.2"), \
-                f"HF model finetune with DeepSpeed SP  requires torch >= 2.2.2, you have version {torch.__version__}"
-            assert FLASH_ATTN_AVAILABLE, \
-                f"HF model finetune with DeepSpeed SP  requires Flash attention"
-
-            for _, module in self.module.named_modules():
-                if all(hasattr(module, attr) for attr in ['k_proj', 'v_proj', 'q_proj', 'out_proj']):
-                    attn = module
-                    compute_attn_sp = DistributedAttention(
-                        attn._flash_attention_forward,
-                        self.get_sequence_parallel_group(),
-                        2,
-                        1, #Flash attn is [B, S, H, D]
-                    )
-
-                    module._flash_attention_forward = lambda q, k, v, *args, **kwargs: compute_attn_sp(
-                        q, k, v, *args, **kwargs)
-
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
 
@@ -1836,15 +1802,6 @@ class DeepSpeedEngine(Module):
             ma = get_ma_status()
         else:
             see_memory_usage("Engine before forward", force=self.memory_breakdown())
-
-        #print(f"DEBUG ENGINE forward: {self.global_rank} input= {inputs} kwargs= {kwargs}")
-        #input_ids = kwargs.get("input_ids", None)
-        #atten_mask = kwargs.get("attention_mask", None)
-        #SAGE
-        #kwargs["attention_mask"] = None
-        #for e, f  in zip(input_ids, atten_mask):
-        #print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e.shape if e  else None}, attn_mask= {f.shape if f else None}")
-        #    print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e if e  else None}, attn_mask= {f if f else None}")
 
         flops_profiler_active = (self.flops_profiler_enabled()
                                  and self.global_steps == self.flops_profiler_profile_step() and self.global_rank == 0)
