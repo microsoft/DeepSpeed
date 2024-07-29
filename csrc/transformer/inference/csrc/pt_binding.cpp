@@ -453,7 +453,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            unsigned num_layers,
                                            at::Tensor& alibi,
                                            float rope_theta,
-                                           std::optional<bool> is_prompt,
+                                           bool is_prompt = false,
                                            std::optional<at::Tensor> token_idx,
                                            std::optional<at::Tensor> position_ids)
 {
