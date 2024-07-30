@@ -69,6 +69,7 @@ def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
 
+
 @contextmanager
 def unwrap_model_for_generation(model):
     """

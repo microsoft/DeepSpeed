@@ -38,11 +38,13 @@ if get_accelerator().is_fp16_supported():
 elif get_accelerator().is_bf16_supported():
     config["bf16"] = {"enabled": True}
 
+
 class TestUnwrapModel(DistributedTest):
     # gather across more than 1 gpu
     world_size = 2
 
     def test(self):
+
         def hooks_exist(engine):
             if engine.optimizer is not None and hasattr(engine.optimizer, "parameter_offload"):
                 optimizer_offload = engine.optimizer.parameter_offload
