@@ -772,8 +772,7 @@ class CUDAOpBuilder(OpBuilder):
 
 class TorchCPUOpBuilder(CUDAOpBuilder):
 
-    @staticmethod
-    def cuda_lib64():
+    def cuda_lib64(self):
         import torch
         if not self.is_rocm_pytorch():
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
