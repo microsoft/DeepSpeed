@@ -6,7 +6,7 @@ tags: getting-started
 # Contents
 - [Contents](#contents)
 - [Introduction](#introduction)
-- [Intel Architecture (IA) CPU](#ia-cpu)
+- [Intel Architecture (IA) CPU](#intel-architecture-ia-cpu)
 - [Intel XPU](#intel-xpu)
 
 # Introduction
