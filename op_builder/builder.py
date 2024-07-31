@@ -772,29 +772,36 @@ class CUDAOpBuilder(OpBuilder):
 
 class TorchCPUOpBuilder(CUDAOpBuilder):
 
+    @staticmethod
+    def cuda_lib64():
+        import torch
+        if not self.is_rocm_pytorch():
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+            if not os.path.exists(CUDA_LIB64):
+                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
+        else:
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+
+        return CUDA_LIB64
+
     def extra_ldflags(self):
         if self.build_for_cpu:
             return ['-fopenmp']
 
         if not self.is_rocm_pytorch():
-            return ['-lcurand']
+            flags = ['-lcurand']
+        else:
+            flags = []
 
-        return []
+        return flags + [f"-L{self.cuda_lib64()}"]
 
     def cxx_args(self):
-        import torch
         args = []
         if not self.build_for_cpu:
-            if not self.is_rocm_pytorch():
-                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-                if not os.path.exists(CUDA_LIB64):
-                    CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
-            else:
-                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
 
             args += super().cxx_args()
             args += [
-                f'-L{CUDA_LIB64}',
+                f'-L{self.cuda_lib64()}',
                 '-lcudart',
                 '-lcublas',
                 '-g',
