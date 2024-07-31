@@ -40,7 +40,9 @@ class OptimizedLinear(nn.Module):
                 bias: bool = False,
                 lora_config: LoRAConfig = None,
                 quantization_config: QuantizationConfig = None,
-                dtype=torch.bfloat16):
+                device=None,
+                dtype=torch.bfloat16,
+                linear_cls=nn.Linear):
 
         if quantization_config is not None and not is_dataclass(quantization_config):
             raise ValueError(f"Expecting QuantizationConfig but received {type(quantization_config)}")
@@ -48,7 +50,7 @@ class OptimizedLinear(nn.Module):
             raise ValueError(f"Expecting LoRAConfig but received {type(lora_config)}")
         if lora_config is None and quantization_config is None:
             # Everything disabled, fall back to normal nn.Linear
-            self = nn.Linear(input_dim, output_dim, bias=bias, dtype=dtype)
+            self = linear_cls(input_dim, output_dim, bias=bias, dtype=dtype, device=device)
 
         elif lora_config:
             # lora enabled, quantization may or may not be
@@ -57,7 +59,9 @@ class OptimizedLinear(nn.Module):
                                        bias=bias,
                                        lora_config=lora_config,
                                        quantization_config=quantization_config,
-                                       dtype=dtype)
+                                       dtype=dtype,
+                                       device=device,
+                                       linear_cls=linear_cls)
 
         elif quantization_config:
             # only quantization enabled, no lora
@@ -70,7 +74,6 @@ class OptimizedLinear(nn.Module):
 
 
 class LoRAOptimizedLinear(nn.Module):
-
     def __init__(self,
                  input_dim: int,
                  output_dim: int,
@@ -78,7 +81,8 @@ class LoRAOptimizedLinear(nn.Module):
                  lora_config: LoRAConfig = None,
                  quantization_config: QuantizationConfig = None,
                  device=None,
-                 dtype=torch.bfloat16):
+                 dtype=torch.bfloat16,
+                 linear_cls=nn.Linear):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -86,15 +90,19 @@ class LoRAOptimizedLinear(nn.Module):
         self.lora_config = lora_config
         self.quantization_config = quantization_config
         self.device = get_accelerator().current_device_name() if device is None else device
+        self.linear_cls = linear_cls
+        self.dtype = dtype
         assert self.lora_config is not None, "DSOptimizedLinear requires a LoRA config"
-
+        assert not self.bias, "bias=True is not supported by LoRAOptimizedLinear"
+        print(f'{lora_config=}, {quantization_config=}')
         self.zero_shards = self.lora_config.base_weight_sharding
         self.sharded_weight_size = int(float(self.input_dim) // self.zero_shards)
         if self.zero_shards > 1:
+            assert self.zero_shards == dist.get_world_size(), "base weight sharding is only supported across world size"
             w = torch.nn.Parameter(torch.empty(self.output_dim * self.sharded_weight_size, dtype=dtype), requires_grad=False)
         else:
             w = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=dtype), requires_grad=False)
-        torch.nn.init.xavier_uniform_(w)
+        #torch.nn.init.xavier_uniform_(w)
 
         if self.quantization_config is not None:
             assert dtype == torch.bfloat16, "only bfloat16 is supported when using quantization"
@@ -102,24 +110,43 @@ class LoRAOptimizedLinear(nn.Module):
         else:
             self.weight = w
 
+        self.disabled = False
+        self._initialized = False
+        if not self.lora_config.delay_lora_init:
+            self.init_lora()
+
+    def disable(self):
+        self.disabled = True
+        self.weight = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=self.dtype), requires_grad=False)
+
+    def init_lora(self):
+        if self.disabled:
+            return
+
+        if self.quantization_config is not None:
+            # ensure quant-param wasn't stripped, in some cases transformers will do this during model init
+            if not isinstance(self.weight, QuantizedParameter):
+                self.weight = QuantizedParameter(self.weight, quantization_config=self.quantization_config)
+
+        self._initialized = True
         self.weight.requires_grad = False
 
         # Mark base weight to prevent broadcast and ensure proper offload behavior
         self.weight.ds_optim_param = True
 
-        # Use RS lora for now.
         self.lora_scaling_factor = self.lora_config.lora_alpha / self.lora_config.lora_r
+
         # Keeping lora weights in bf16 precision for ease of training.
-        self.lora_weight_1 = nn.Linear(self.input_dim,
-                                       self.lora_config.lora_r,
-                                       bias=self.bias,
-                                       device=self.device,
-                                       dtype=dtype)
-        self.lora_weight_2 = nn.Linear(self.lora_config.lora_r,
-                                       self.output_dim,
-                                       bias=self.bias,
-                                       device=self.device,
-                                       dtype=dtype)
+        self.lora_weight_1 = self.linear_cls(self.input_dim,
+                                             self.lora_config.lora_r,
+                                             bias=self.bias,
+                                             device=self.device,
+                                             dtype=self.dtype)
+        self.lora_weight_2 = self.linear_cls(self.lora_config.lora_r,
+                                             self.output_dim,
+                                             bias=self.bias,
+                                             device=self.device,
+                                             dtype=self.dtype)
         
         # initialize "A" with kaiming uniform and "B" with zeros following this
         # https://github.com/huggingface/peft/blob/62122b5add8d6892f70c82eaef2147a6ba33b90b/src/peft/tuners/lora/layer.py#L155
@@ -128,9 +155,24 @@ class LoRAOptimizedLinear(nn.Module):
         self.lora_weight_1.weight.requires_grad = True
         self.lora_weight_2.weight.requires_grad = True
 
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        if not any([target in prefix for target in self.lora_config.target_mods]):
+            # module does not match any target_mods, we must revert to normal nn.Linear via disable
+            self.disable()
+            return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+
+        if self.zero_shards > 1:
+            if not torch.distributed.is_initialized():
+                raise RuntimeError("attempting to use optimized linear base weight sharding but torch.distributed is not initialized, please init first.")
+            rank = torch.distributed.get_rank()
+            shape_local = self.output_dim * self.sharded_weight_size
+            base_weight_name = f"{prefix}weight"
+            incoming_param = state_dict[base_weight_name]
+            state_dict[base_weight_name] = incoming_param.flatten().narrow(0, rank * shape_local, shape_local)
+
+        return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+
     def full_weight(self):
-        # This assumes weights are evenly sharded across gpus. which might not be correct.
-        # in that case, we should flatten before all_gather.
         base_weight = self.weight
         if getattr(base_weight, 'ds_offload', False):
             # move to gpu so we can dequant and all-gather
@@ -155,6 +197,10 @@ class LoRAOptimizedLinear(nn.Module):
         return output
 
     def forward(self, input_tensor):
+        if self.disabled:
+            return F.linear(input_tensor, self.weight)
+        assert self._initialized, "init_lora was never called, please initialize before proceeding"
+
         # Gather the sharded base weight
         if self.zero_shards > 1:
             with torch.no_grad():
