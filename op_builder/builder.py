@@ -217,7 +217,7 @@ class OpBuilder(ABC):
         ROCM_MINOR = '0'
         if OpBuilder.is_rocm_pytorch():
             from torch.utils.cpp_extension import ROCM_HOME
-            rocm_ver_file = Path(ROCM_HOME).joinpath(".info/version-dev")
+            rocm_ver_file = Path(ROCM_HOME).joinpath(".info/version")
             if rocm_ver_file.is_file():
                 with open(rocm_ver_file, 'r') as file:
                     ROCM_VERSION_DEV_RAW = file.read()
