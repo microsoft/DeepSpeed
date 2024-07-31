@@ -789,11 +789,9 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
             return ['-fopenmp']
 
         if not self.is_rocm_pytorch():
-            flags = ['-lcurand']
-        else:
-            flags = []
+            return ['-lcurand', f'-L{self.cuda_lib64()}']
 
-        return flags + [f"-L{self.cuda_lib64()}"]
+        return []
 
     def cxx_args(self):
         args = []
