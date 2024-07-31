@@ -4,15 +4,6 @@
 
 </div>
 
-```
-@article{ds2024-gds,
-title={DeepNVMe: Improving DL Applications through I/O Optimizations},
-author={Olatunji Ruwase and Joe Mayer},
-year={2024},
-
-}
-```
-
 # Introduction
 
 Deep Learning (DL) continues to drive unprecedented advancements across important
@@ -46,7 +37,9 @@ Our experiments are conducted on an Azure NC96ads\_A100\_v4 VM with setup detail
 
 <img src="./media/table1.png" style="width:6.5in;height:3.42153in" />
 
+<div align="center">
 Table 1: Experimental setup details
+</div>
 
 ## Microbenchmark Performance
 
@@ -58,7 +51,9 @@ Our first set of microbenchmark evaluations used fio and ds\_io to measure the p
 
 <img src="./media/figure1.png" style="width:6.5in;height:3.42153in" />
 
+<div align="center">
 Figure 1: Using DeepNVMe to scale data transfers between NVMe and CPU buffer
+</div>
 
 ## High-Performance I/O with GPU Buffers via NVMe Scaling
 
@@ -66,7 +61,9 @@ Our second set of microbenchmark evaluations used gdsio and ds\_io to measure th
 
 <img src="./media/figure2.png" style="width:6.5in;height:3.42153in" />
 
+<div align="center">
 Figure 2: Using DeepNVMe to scale data transfers between NVMe and GPU memory
+</div>
 
 ## ZeRO-Inference: Generative AI Performance
 
@@ -78,7 +75,9 @@ We measure the generation throughput of inferencing a LLAMA3-70B model on a sing
 
 <img src="./media/figure3.png" style="width:6.5in;height:3.42153in" />
 
+<div align="center">
 Figure 3: Using DeepNVMe to scale LLAMA3-70B token generation performance with NVMe offloading.
+</div>
 
 # Conclusion
 
