@@ -609,6 +609,9 @@ def initialize_mesh_device(mesh_shape, mesh_dim_names):
         utils.logger.info(f"Initializing mesh device with backend {cdb.name} \
                 with shape {mesh_shape} and dim names {mesh_dim_names}")
         mesh_device = cdb.init_device_mesh(mesh_shape, mesh_dim_names)
+    else:
+        if get_rank() == 0:
+            utils.logger.warning_once(f"Backend {cdb.name} does not support mesh device initialization")
     return mesh_device
 
 
