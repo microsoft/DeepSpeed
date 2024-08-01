@@ -13,9 +13,9 @@ tags: getting-started
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup the accelerator family they are using and setup environment for the hardware they are using.
 
 # Intel Architecture (IA) CPU
-DeepSpeed support CPU with Intel Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and preferrably AVX512 instruction set.
+DeepSpeed supports CPU with Intel Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and preferrably AVX512 instruction set.
 
-DeepSpeed had been verified on the following CPU processors:
+DeepSpeed has been verified on the following CPU processors:
 * Intel Gen 4th Xeon Processors
 * Intel Gen 5th Xeon Processors
 
@@ -89,3 +89,39 @@ to get model optimzied by Intel Extension for PyTorch.
 Refer to https://github.com/intel/intel-extension-for-pytorch/tree/main/examples/cpu/inference/python/llm for more extensive guide.
 
 # Intel XPU
+DeepSpeed XPU accelerator supports Intel® Data Center GPU Max Series.
+
+DeepSpeed has been verified on the following GPU products:
+* Intel® Data Center GPU Max 1100
+* Intel® Data Center GPU Max 1550
+
+## Installation steps for Intel XPU
+To install DeepSpeed on Intel XPU, use the following steps:
+1. Install oneAPI base toolkit \
+The Intel® oneAPI Base Toolkit (Base Kit) is a core set of tools and libraries, including an DPC++/C++ Compiler for building Deepspeed XPU kernels like fusedAdam and CPUAdam, high performance computation libraries demanded by IPEX, etc.
+For easy download, usage and more details, check [Intel oneAPI base-toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html).
+2. Install PyTorch \
+`pip install torch`
+3. Install Intel extension for pytorch, for torch functionality and performance on Intel platform \
+`pip install intel-extension-for-pytorch`
+4. Install oneccl_bindings_for_pytorch, which is the default communication backend cross XPU devices \
+`pip install oneccl_bind_pt`
+5. Install DeepSpeed
+`pip install deepspeed`
+
+**_NOTE:_** Should keep the software stack latest for the kernels of XPU in DeepSpeed will always be compatible with the latest released oneAPI basekit and IPEX(Intel extension for pytorch). Also you can add `-f https://developer.intel.com/ipex-whl-stable-xpu` flag for better experience of pip install intel packages.
+
+## How to use DeepSpeed on Intel XPU
+DeepSpeed can launch on Intel XPU with common deepspeed command. Before that, user needs activate the oneAPI environment by: \
+`source <oneAPI installed path>/setvars.sh`
+
+To validate the XPU availability and if the XPU accelerator is correctly chosen, here is an example:
+```
+$ python
+>>> import torch; print('torch:', torch.__version__)
+torch: 2.3.0
+>>> import intel_extension_for_pytorch; print('XPU available:', torch.xpu.is_available())
+XPU available: True
+>>> from deepspeed.accelerator import get_accelerator; print('accelerator:', get_accelerator()._name)
+accelerator: xpu
+```
