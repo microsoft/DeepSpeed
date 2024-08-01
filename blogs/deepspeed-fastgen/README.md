@@ -231,6 +231,7 @@ We currently support the following model architectures in this alpha release of 
 * [Falcon](https://huggingface.co/models?other=falcon)
 * [Mixtral](https://huggingface.co/models?other=mixtral)
 * [Phi-2](https://huggingface.co/models?other=phi-msft)
+* [Phi-3](https://huggingface.co/models?other=phi3)
 * [Qwen](https://huggingface.co/models?other=qwen)
 * [Qwen2](https://huggingface.co/models?other=qwen2)
 * [Qwen2-MoE](https://huggingface.co/models?other=qwen2_moe)
