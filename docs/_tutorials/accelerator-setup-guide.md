@@ -13,20 +13,26 @@ tags: getting-started
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup the accelerator family they are using and setup environment for the hardware they are using.
 
 # Intel Architecture (IA) CPU
-DeepSpeed supports CPU with Intel Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and preferrably AVX512 instruction set.
+DeepSpeed supports CPU with Intel Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and recommend AMX instruction set.
 
 DeepSpeed has been verified on the following CPU processors:
-* Intel Gen 4th Xeon Processors
-* Intel Gen 5th Xeon Processors
+* 4th Gen Intel Xeon Scalarable Processors
+* 5th Gen Intel Xeon Scalarable Processors
+* 6th Gen Intel Xeon Scalarable Processors
 
 ## Installation steps for Intel Architecture CPU
 To install DeepSpeed on Intel Architecture CPU, use the following steps:
 1. Install gcc compiler
 DeepSpeed requires gcc-9 or above to build kernels on Intel Architecture CPU, install gcc-9 or above.
+
 2. Install numactl
-DeepSpeed use numactl for fine grain CPU core allocation for load-balancing, install numactl on your system.
+DeepSpeed use `numactl` for fine grain CPU core allocation for load-balancing, install numactl on your system.
+For example, on Ubuntu system, use the following command:
+`sudo apt-get install numactl`
+
 3. Install PyTorch
 `pip install torch`
+
 4. Install DeepSpeed
 `pip install deepspeed`
 
@@ -64,8 +70,10 @@ Although not mandatory, Intel Extension for PyTorch and Intel oneCCL provide bet
 `pip install intel-extension-for-pytorch`
 
 The following steps are to install oneCCL binding for PyTorch.  This is suggested if you are running DeepSpeed on multiple CPU node, for better communication performance.   On single node with multiple CPU socket, these steps are not needed.
+
 2. Install oneCCL binding for PyTorch
 `python -m pip install oneccl_bind_pt -f https://developer.intel.com/ipex-whl-stable-cpu`
+
 3. Install Intel oneCCL, this will be used to build direct oneCCL kernels (CCLBackend kernels)
 ```
 pip install oneccl-devel
@@ -79,13 +87,14 @@ export I_MPI_ROOT=${CONDA_PREFIX}
 export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib/ccl/cpu:${CONDA_PREFIX}/lib/libfabric:${CONDA_PREFIX}/lib
 ```
 
-##Optimize LLM inference with Intel Extension for PyTorch
+## Optimize LLM inference with Intel Extension for PyTorch
 Intel Extension for PyTorch compatible w]th DeepSpeed AutoTP tensor parallel inference.  It allows CPU inference benefit from both DeepSpeed Automatic Tensor Parallelism and LLM optimization from Intel Extension for PyTorch.  To use Intel Extension for PyTorch, after call deepspeed.init_inference, call
 ```
 ipex_model = ipex.llm.optimize(deepspeed_model)
 ```
 to get model optimzied by Intel Extension for PyTorch.
 
+## More example for using DeepSpeed with Intel Extension for PyTorch on Intel Architecture CPU
 Refer to https://github.com/intel/intel-extension-for-pytorch/tree/main/examples/cpu/inference/python/llm for more extensive guide.
 
 # Intel XPU
