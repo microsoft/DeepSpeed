@@ -27,7 +27,7 @@ High-performance access to persistent storage is a common challenge in many comp
 
 NVMe SSDs are Flash-based storage devices that are replacing much slower hard disk drives (HDD) as primary persistent storage in modern servers. For example, an Azure NC96ads\_A100\_v4 VM is equipped with four NVMe SSDs which are individually capable of 3.25 GB/sec reads and can be combined in a RAID-0 configuration for a theoretical aggregate read bandwidth of 13 GB/sec. NVIDIA GDS enables direct transfers between NVMe and GPU memory thus avoiding the inefficiencies of the traditional approach of using intermediate CPU memory (bounce buffer). NVIDIA GDS is generally available in CUDA versions 11.4 and above. Finally, libaio is an asynchronous I/O stack introduced in Linux to better extract raw performance of fast storage devices like NVMe SSDs compared to the traditional I/O stack.
 
-# DeepNVMe: an Optimization Module for DeepLearning I/O
+# DeepNVMe: an Optimization Module for Deep Learning I/O
 
 DeepNVMe is a Python module that we developed with two key design principles. First, it leverages the above discussed storage technologies to implement powerful optimizations such as non-blocking I/O operations, bulk submission of I/O operations, parallelization of an individual I/O operation, and a lightweight runtime. Second, it exposes these I/O optimizations through a simple POSIX-like interface to foster easy integration into DL applications while avoiding the complexities of the underlying technologies.
 
