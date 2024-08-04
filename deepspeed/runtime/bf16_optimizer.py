@@ -26,6 +26,11 @@ from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OP
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
 
+def print_rank_0(message, debug=False, force=False):
+    if dist.get_rank() == 0 and (debug or force):
+        print(message)
+
+
 class BF16_Optimizer(ZeROOptimizer):
 
     def __init__(self,
@@ -92,7 +97,16 @@ class BF16_Optimizer(ZeROOptimizer):
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
 
-        see_memory_usage('end bf16_optimizer', force=True)
+        see_memory_usage('end bf16_ optimizer', force=True)
+
+    def destroy(self):
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for p in self.bf16_groups[i]:
+                if getattr(p, '_hp_mapping', None):
+                    p._hp_mapping = None
+        for hook in self._grad_acc_hooks:
+            hook.remove()
+        print_rank_0("Removed grad acc hooks")
 
     def _configure_moe_settings(self):
         assert any(
@@ -187,6 +201,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.initialize_optimizer_states()
         see_memory_usage('end initialize_optimizer', force=True)
 
+        self._grad_acc_hooks = []
         if self.immediate_grad_update:
             self.create_grad_acc_hooks()
 
@@ -483,7 +498,8 @@ class BF16_Optimizer(ZeROOptimizer):
                         checkpoint_folder,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
-                        load_serial=None):
+                        load_serial=None,
+                        param_shapes=None):
         if checkpoint_folder:
             self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:
@@ -524,6 +540,11 @@ class BF16_Optimizer(ZeROOptimizer):
         """Forward the wrapped optimizer's parameters."""
         return self.optimizer.param_groups
 
+    @property
+    def state(self):
+        """Forward the wrapped optimizer's states."""
+        return self.optimizer.state
+
     def accumulate_hp_grads_and_remove_lp(self, lp_param, group_idx, param_idx):
         assert self.immediate_grad_update
         self._update_hp_grad(lp_param, group_idx, param_idx, clear_lp_grads=True)
@@ -541,7 +562,7 @@ class BF16_Optimizer(ZeROOptimizer):
                         def accumulate_hp_grads_and_remove_lp(*notneeded):
                             self.accumulate_hp_grads_and_remove_lp(param, i, j)
 
-                        grad_acc.register_hook(accumulate_hp_grads_and_remove_lp)
+                        self._grad_acc_hooks.append(grad_acc.register_hook(accumulate_hp_grads_and_remove_lp))
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i, j)
