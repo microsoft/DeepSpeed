@@ -3,15 +3,11 @@
 
 # DeepSpeed Team
 
-from types import SimpleNamespace
-
-import torch
-import pytest
 import deepspeed
 from deepspeed.runtime.zero import unwrap_model_for_generation
 from deepspeed.accelerator import get_accelerator
 
-from unit.common import DistributedTest, preferred_dtype
+from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
 
 config = {
