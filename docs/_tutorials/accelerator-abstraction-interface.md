@@ -78,7 +78,7 @@ torch.distributed.init_process_group(get_accelerator().communication_backend_nam
 ```
 
 # Run DeepSpeed model on different accelerators
-[link](accelerator-setup-guide.md) provides a guide on how to setup different accelerators for DeepSpeed.  It also comes with simple example how to run deepspeed for different accelerators.  The following guides are provided:
+[Accelerator Setup Guide](accelerator-setup-guide.md) provides a guide on how to setup different accelerators for DeepSpeed.  It also comes with simple example how to run deepspeed for different accelerators.  The following guides are provided:
 1. Run DeepSpeed model on CPU
 2. Run DeepSpeed model on XPU
 
