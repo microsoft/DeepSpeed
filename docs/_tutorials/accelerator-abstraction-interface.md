@@ -12,7 +12,6 @@ tags: getting-started
   - [Tensor operations](#tensor-operations)
   - [Communication backend](#communication-backend)
 - [Run DeepSpeed model on different accelerators](#run-deepspeed-model-on-different-accelerators)
-- [Run DeepSpeed model on CPU](#run-deepspeed-model-on-cpu)
 - [Implement new accelerator extension](#implement-new-accelerator-extension)
 
 # Introduction
