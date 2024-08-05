@@ -20,15 +20,18 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
     def absolute_name(self):
         return f'deepspeed.ops.aio.{self.NAME}_op'
 
-    def sources(self):
-        return [
-            'csrc/aio/py_lib/deepspeed_py_copy.cpp', 'csrc/aio/py_lib/py_ds_aio.cpp',
+    def lib_sources(self):
+        src_list = [
             'csrc/aio/py_lib/deepspeed_py_aio.cpp', 'csrc/aio/py_lib/deepspeed_py_aio_handle.cpp',
             'csrc/aio/py_lib/deepspeed_aio_thread.cpp', 'csrc/aio/common/deepspeed_aio_utils.cpp',
             'csrc/aio/common/deepspeed_aio_common.cpp', 'csrc/aio/common/deepspeed_aio_types.cpp',
-            'csrc/aio/py_lib/deepspeed_cpu_op.cpp', 'csrc/aio/py_lib/deepspeed_gds_op.cpp',
-            'csrc/aio/py_lib/deepspeed_aio_op_desc.cpp', 'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
+            'csrc/aio/py_lib/deepspeed_cpu_op.cpp', 'csrc/aio/py_lib/deepspeed_aio_op_desc.cpp',
+            'csrc/aio/py_lib/deepspeed_py_copy.cpp', 'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
         ]
+        return src_list
+
+    def sources(self):
+        return self.lib_sources() + ['csrc/aio/py_lib/py_ds_aio.cpp']
 
     def include_paths(self):
         import torch
@@ -47,20 +50,8 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
     def cxx_args(self):
         # -O0 for improved debugging, since performance is bound by I/O
         args = super().cxx_args()
-        GDS_ENABLE = self.is_gds_enable()
-        args += [
-            '-Wall',
-            '-O0',
-            '-shared',
-            '-fPIC',
-            '-Wno-reorder',
-            GDS_ENABLE
-        ]
-
+        args += ['-Wall', '-O0', '-shared', '-fPIC', '-Wno-reorder']
         return args
-
-    def is_gds_enable(self):
-        return '-D__ENABLE_GDS__'
 
     def extra_ldflags(self):
         if self.build_for_cpu:
@@ -69,7 +60,8 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
         import torch.utils.cpp_extension
         CUDA_HOME = torch.utils.cpp_extension.CUDA_HOME
         CUDA_LIB64 = os.path.join(CUDA_HOME, "lib64")
-        return [f'-L{CUDA_HOME}', f'-L{CUDA_LIB64}', '-laio', '-lcuda', '-lcudart', '-lcufile']
+        ldflags = [f'-L{CUDA_HOME}', f'-L{CUDA_LIB64}', '-laio', '-lcuda', '-lcudart']
+        return ldflags
 
     def check_for_libaio_pkg(self):
         libs = dict(

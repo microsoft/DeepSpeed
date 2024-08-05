@@ -9,6 +9,7 @@
 
 struct cpu_op_desc_t : io_op_desc_t {
     torch::Tensor _cpu_buffer;
+    bool _use_bounce_buffer;
 
     cpu_op_desc_t(const bool read_op,
                   const torch::Tensor& buffer,

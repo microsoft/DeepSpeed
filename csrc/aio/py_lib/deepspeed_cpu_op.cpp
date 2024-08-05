@@ -17,7 +17,9 @@ cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
     : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, num_threads, validate),
       _cpu_buffer(buffer)
 {
-    if (_buffer.is_cuda()) {
+    // Need to use CPU bounce buffer if buffer is not a page-locked DRAM memory.
+    _use_bounce_buffer = !(_buffer.is_cpu() && _buffer.is_pinned());
+    if (_use_bounce_buffer) {
         if (_read_op) {
             auto options = torch::TensorOptions()
                                .dtype(_buffer.dtype())
@@ -28,7 +30,6 @@ cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
             _cpu_buffer = _buffer.to(torch::kCPU).pin_memory();
         }
     }
-
     _contiguous_buffer = _cpu_buffer.contiguous();
 }
 
@@ -36,7 +37,9 @@ char* cpu_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_pt
 
 void cpu_op_desc_t::fini()
 {
-    if (_read_op && _buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
+    if (_read_op) {
+        if (_buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
+    }
 }
 
 void cpu_op_desc_t::validate()

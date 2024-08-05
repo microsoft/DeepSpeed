@@ -99,7 +99,7 @@ for xtype in cpu gpu gds; do
                             OPTS="--queue_depth ${d} --block_size ${bs} --io_size ${IO_SIZE} --io_parallel ${t}"
                             LOG="${LOG_DIR}/read_${xtype}_${sub}_${ov}_t${t}_p${p}_d${d}_bs${bs}.txt"
                             cmd="/usr/bin/time python ${RUN_SCRIPT} ${READ_OPT} ${OPTS} ${SCHED_OPTS} &> ${LOG}"
-                    
+
                             echo ${DISABLE_CACHE}
                             echo ${cmd}
                             echo ${SYNC}
