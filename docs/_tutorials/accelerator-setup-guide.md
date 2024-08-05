@@ -13,7 +13,7 @@ tags: getting-started
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup the accelerator family they are using and setup environment for the hardware they are using.
 
 # Intel Architecture (IA) CPU
-DeepSpeed supports CPU with Intel&reg Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and recommend AMX instruction set.
+DeepSpeed supports CPU with Intel &reg Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and recommend AMX instruction set.
 
 DeepSpeed has been verified on the following CPU processors:
 * 4th Gen Intel Xeon Scalarable Processors
