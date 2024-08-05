@@ -74,6 +74,7 @@ class OptimizedLinear(nn.Module):
 
 
 class LoRAOptimizedLinear(nn.Module):
+
     def __init__(self,
                  input_dim: int,
                  output_dim: int,
@@ -94,15 +95,15 @@ class LoRAOptimizedLinear(nn.Module):
         self.dtype = dtype
         assert self.lora_config is not None, "DSOptimizedLinear requires a LoRA config"
         assert not self.bias, "bias=True is not supported by LoRAOptimizedLinear"
-        print(f'{lora_config=}, {quantization_config=}')
         self.zero_shards = self.lora_config.base_weight_sharding
         self.sharded_weight_size = int(float(self.input_dim) // self.zero_shards)
         if self.zero_shards > 1:
-            assert self.zero_shards == dist.get_world_size(), "base weight sharding is only supported across world size"
-            w = torch.nn.Parameter(torch.empty(self.output_dim * self.sharded_weight_size, dtype=dtype), requires_grad=False)
+            assert self.zero_shards == dist.get_world_size(
+            ), "base weight sharding is only supported across world size"
+            w = torch.nn.Parameter(torch.empty(self.output_dim * self.sharded_weight_size, dtype=dtype),
+                                   requires_grad=False)
         else:
             w = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=dtype), requires_grad=False)
-        #torch.nn.init.xavier_uniform_(w)
 
         if self.quantization_config is not None:
             assert dtype == torch.bfloat16, "only bfloat16 is supported when using quantization"
@@ -117,7 +118,8 @@ class LoRAOptimizedLinear(nn.Module):
 
     def disable(self):
         self.disabled = True
-        self.weight = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=self.dtype), requires_grad=False)
+        self.weight = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=self.dtype),
+                                         requires_grad=False)
 
     def init_lora(self):
         if self.disabled:
@@ -147,7 +149,7 @@ class LoRAOptimizedLinear(nn.Module):
                                              bias=self.bias,
                                              device=self.device,
                                              dtype=self.dtype)
-        
+
         # initialize "A" with kaiming uniform and "B" with zeros following this
         # https://github.com/huggingface/peft/blob/62122b5add8d6892f70c82eaef2147a6ba33b90b/src/peft/tuners/lora/layer.py#L155
         nn.init.kaiming_uniform_(self.lora_weight_1.weight, a=math.sqrt(5))
@@ -155,22 +157,27 @@ class LoRAOptimizedLinear(nn.Module):
         self.lora_weight_1.weight.requires_grad = True
         self.lora_weight_2.weight.requires_grad = True
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
+                              error_msgs):
         if not any([target in prefix for target in self.lora_config.target_mods]):
             # module does not match any target_mods, we must revert to normal nn.Linear via disable
             self.disable()
-            return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+            return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys,
+                                                 unexpected_keys, error_msgs)
 
         if self.zero_shards > 1:
-            if not torch.distributed.is_initialized():
-                raise RuntimeError("attempting to use optimized linear base weight sharding but torch.distributed is not initialized, please init first.")
-            rank = torch.distributed.get_rank()
+            if not dist.is_initialized():
+                raise RuntimeError(
+                    "attempting to use optimized linear base weight sharding but torch-distributed is not initialized, please init first."
+                )
+            rank = dist.get_rank()
             shape_local = self.output_dim * self.sharded_weight_size
             base_weight_name = f"{prefix}weight"
             incoming_param = state_dict[base_weight_name]
             state_dict[base_weight_name] = incoming_param.flatten().narrow(0, rank * shape_local, shape_local)
 
-        return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+        return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
+                                             error_msgs)
 
     def full_weight(self):
         base_weight = self.weight
@@ -179,15 +186,14 @@ class LoRAOptimizedLinear(nn.Module):
             assert base_weight.device == torch.device('cpu'), \
                 f"expected base weight on cpu but found {base_weight.device}"
             base_weight.offload(revert=True)
-            local_weight = base_weight.dequantized() if isinstance(base_weight,
-                                                                        QuantizedParameter) else base_weight
+            local_weight = base_weight.dequantized() if isinstance(base_weight, QuantizedParameter) else base_weight
             base_weight.offload()
         else:
-            local_weight = base_weight.dequantized() if isinstance(base_weight,
-                                                                        QuantizedParameter) else base_weight
+            local_weight = base_weight.dequantized() if isinstance(base_weight, QuantizedParameter) else base_weight
 
-        tensor_out = torch.empty(self.output_dim * self.input_dim, 
-                                 dtype=local_weight.dtype, device=local_weight.device)
+        tensor_out = torch.empty(self.output_dim * self.input_dim,
+                                 dtype=local_weight.dtype,
+                                 device=local_weight.device)
         dist.all_gather_into_tensor(tensor_out, local_weight)
         return tensor_out.reshape(self.output_dim, self.input_dim)
 

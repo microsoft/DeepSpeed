@@ -18,10 +18,10 @@ class LoRAConfig:
         base_weight_sharding (int): The degree to which the base weights are sharded,
             should typically be set to the data-parallel world size to maximize the memory
             reduction benefits. Defaults to 1, which means this feature is disabled.
-        offload (bool):
-        offload_ration (float):
-        delay_lora_init (bool): 
-        target_mods (str): target module names to apply LoRA to, defaults to llama arch
+        offload (bool): offload frozen parameters to cpu when not in use
+        offload_ratio (float): ratio of parameters to offload to cpu when not in use
+        delay_lora_init (bool): initialize lora parameters at time of model init or allow manual init later
+        target_mods (str): target module names to apply LoRA to, defaults to llama-3.1 arch
     """
     lora_r: int = 64
     lora_alpha: float = 16.
@@ -29,7 +29,8 @@ class LoRAConfig:
     offload: bool = False
     offload_ratio: float = 0.0
     delay_lora_init: bool = False
-    target_mods: List[str] = field(default_factory=lambda: ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'])
+    target_mods: List[str] = field(
+        default_factory=lambda: ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'])
 
 
 @dataclass

@@ -1095,6 +1095,9 @@ class DeepSpeedEngine(Module):
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
                 return False
+            elif hasattr(p, 'ds_optim_param'):
+                # do not broadcast OptimizedLinear parameters, they are unique per base weight shard
+                return False
             return True
 
         for n, p in self.module.named_parameters():
@@ -1104,9 +1107,6 @@ class DeepSpeedEngine(Module):
                     dist.broadcast(p.data,
                                    groups._get_expert_broadcast_src_rank(p.group_name),
                                    group=self.expert_data_parallel_group[p.group_name])
-            elif hasattr(p, 'ds_optim_param'):
-                # do not broadcast OptimizedLinear parameters, they are unique per base weight shard
-                continue
             else:
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p.data, groups._get_broadcast_src_rank(), group=self.seq_data_parallel_group)
