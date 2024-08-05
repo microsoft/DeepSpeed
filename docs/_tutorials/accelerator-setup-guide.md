@@ -109,16 +109,11 @@ To install DeepSpeed on Intel XPU, use the following steps:
 1. Install oneAPI base toolkit \
 The Intel® oneAPI Base Toolkit (Base Kit) is a core set of tools and libraries, including an DPC++/C++ Compiler for building Deepspeed XPU kernels like fusedAdam and CPUAdam, high performance computation libraries demanded by IPEX, etc.
 For easy download, usage and more details, check [Intel oneAPI base-toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html).
-2. Install PyTorch \
-`pip install torch`
-3. Install Intel extension for pytorch, for torch functionality and performance on Intel platform \
-`pip install intel-extension-for-pytorch`
-4. Install oneccl_bindings_for_pytorch, which is the default communication backend cross XPU devices \
-`pip install oneccl_bind_pt`
-5. Install DeepSpeed
-`pip install deepspeed`
+2. Install PyTorch, Intel extension for pytorch, Intel oneCCL Bindings for PyTorch. These packages are required in `xpu_accelerator` for torch functionality and performance, also communication backend on Intel platform. The recommended installation reference:
+https://intel.github.io/intel-extension-for-pytorch/index.html#installation?platform=gpu.
 
-**_NOTE:_** Should keep the software stack latest for the kernels of XPU in DeepSpeed will always be compatible with the latest released oneAPI basekit and IPEX(Intel extension for pytorch). Also you can add `-f https://developer.intel.com/ipex-whl-stable-xpu` flag for better experience of pip install intel packages.
+3. Install DeepSpeed \
+`pip install deepspeed`
 
 ## How to use DeepSpeed on Intel XPU
 DeepSpeed can launch on Intel XPU with common deepspeed command. Before that, user needs activate the oneAPI environment by: \
@@ -134,3 +129,6 @@ XPU available: True
 >>> from deepspeed.accelerator import get_accelerator; print('accelerator:', get_accelerator()._name)
 accelerator: xpu
 ```
+
+## More example for using DeepSpeed on Intel XPU
+Refer to https://github.com/intel/intel-extension-for-pytorch/tree/release/xpu/2.1.40/examples/gpu/inference/python/llm for more extensive guide.
