@@ -1,5 +1,5 @@
 ---
-title: DeepSpeed Accelerator SetupGuides
+title: DeepSpeed Accelerator Setup Guides
 tags: getting-started
 ---
 
