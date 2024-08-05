@@ -13,12 +13,12 @@ tags: getting-started
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup the accelerator family they are using and setup environment for the hardware they are using.
 
 # Intel Architecture (IA) CPU
-DeepSpeed supports CPU with Intel &reg Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and recommend AMX instruction set.
+DeepSpeed supports CPU with Intel Architecture instruction set.  It is recommended to have the CPU support at least AVX2 instruction set and recommend AMX instruction set.
 
 DeepSpeed has been verified on the following CPU processors:
-* 4th Gen Intel Xeon Scalarable Processors
-* 5th Gen Intel Xeon Scalarable Processors
-* 6th Gen Intel Xeon Scalarable Processors
+* 4th Gen Intel® Xeon® Scalarable Processors
+* 5th Gen Intel® Xeon® Scalarable Processors
+* 6th Gen Intel® Xeon® Scalarable Processors
 
 ## Installation steps for Intel Architecture CPU
 To install DeepSpeed on Intel Architecture CPU, use the following steps:
@@ -71,7 +71,7 @@ Although not mandatory, Intel Extension for PyTorch and Intel oneCCL provide bet
 
 The following steps are to install oneCCL binding for PyTorch.  This is suggested if you are running DeepSpeed on multiple CPU node, for better communication performance.   On single node with multiple CPU socket, these steps are not needed.
 
-2. Install oneCCL binding for PyTorch
+2. Install Intel oneCCL binding for PyTorch
 `python -m pip install oneccl_bind_pt -f https://developer.intel.com/ipex-whl-stable-cpu`
 
 3. Install Intel oneCCL, this will be used to build direct oneCCL kernels (CCLBackend kernels)
