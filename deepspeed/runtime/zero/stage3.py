@@ -338,7 +338,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_ipg_bucket = []
 
         self.params_already_reduced = {}
-        self.is_gradient_accumulation_boundary = True
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
 
@@ -2238,7 +2237,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return grad_dict
 
     def _fp32_state_allgather(self, param, fp32_state_partition):
-        reduce_buffer = torch.zeros(self.partition_count * fp32_state_partition.numel(),
+        reduce_buffer = torch.empty(self.partition_count * fp32_state_partition.numel(),
                                     dtype=torch.float32,
                                     device=param.device)
         my_rank = dist.get_rank(group=self.dp_process_group)
