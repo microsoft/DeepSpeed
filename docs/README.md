@@ -44,7 +44,7 @@ bundle install
 
 Depending on your environment, you may need to add `webrick` to avoid the following [error](https://talk.jekyllrb.com/t/load-error-cannot-load-such-file-webrick/5417/6):
 
-> gems/gems/jekyll-3.9.5/lib/jekyll/commands/serve/servlet.rb:3:in `require': cannot load such file -- webrick (LoadError) 
+> gems/gems/jekyll-3.9.5/lib/jekyll/commands/serve/servlet.rb:3:in `require': cannot load such file -- webrick (LoadError)
 
 
 ```
