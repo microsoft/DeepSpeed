@@ -8,6 +8,7 @@ import deepspeed
 import pytest
 from unit.common import DistributedTest
 
+import deepspeed.comm as dist
 from deepspeed.linear import LoRAConfig, init_lora
 from deepspeed.linear.optimized_linear import LoRAOptimizedLinear
 from unit.simple_model import random_dataloader, SimpleModel
@@ -23,7 +24,7 @@ if transformers is None:
 
 def injection_assert(model):
     # pick out random linear that should have been replaced and initialized
-    q_proj = model.model.layers[10].self_attn.q_proj
+    q_proj = model.model.layers[1].self_attn.q_proj
 
     assert isinstance(q_proj, LoRAOptimizedLinear), "injection did not happen"
     assert q_proj._initialized, "lora was not initialized properly"
@@ -67,7 +68,8 @@ class TestEngine(DistributedTest):
 
         engine_norms = [model.module.linears[i].weight.norm().item() for i in range(nlayers)]
 
-        assert engine_norms == model_norms, "base weight norms are not the same after engine init"
+        # Ensure that sharded weights are not broadcast during engine init
+        assert engine_norms == model_norms, f"{dist.get_rank()=} base weight norms are not the same after engine init, {engine_norms=} != {model_norms=}"
 
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
@@ -80,23 +82,25 @@ class TestEngine(DistributedTest):
             model.step()
 
 
-def test_init():
-    lora_config = LoRAConfig(lora_r=16, lora_alpha=16, base_weight_sharding=1)
-    quant_config = None
+class TestInitTransformers(DistributedTest):
+    world_size = 2
 
-    with deepspeed.linear.Init(lora_config=lora_config, quant_config=quant_config):
-        model = transformers.AutoModelForCausalLM.from_pretrained("NousResearch/Llama-2-7b-hf")
+    def test_pretrained_init(self):
+        lora_config = LoRAConfig(lora_r=16, lora_alpha=16, base_weight_sharding=2)
+        quant_config = None
 
-    injection_assert(model)
+        with deepspeed.linear.Init(lora_config=lora_config, quant_config=quant_config):
+            model = transformers.AutoModelForCausalLM.from_pretrained("llamafactory/tiny-random-Llama-3")
 
+        injection_assert(model)
 
-def test_init_from_config():
-    lora_config = LoRAConfig(lora_r=16, lora_alpha=16, base_weight_sharding=1)
-    quant_config = None
+    def test_config_init(self):
+        lora_config = LoRAConfig(lora_r=16, lora_alpha=16, base_weight_sharding=2)
+        quant_config = None
 
-    config = transformers.AutoConfig.from_pretrained("NousResearch/Llama-2-7b-hf")
+        config = transformers.AutoConfig.from_pretrained("llamafactory/tiny-random-Llama-3")
 
-    with deepspeed.linear.Init(lora_config=lora_config, quant_config=quant_config):
-        model = transformers.AutoModelForCausalLM.from_config(config)
+        with deepspeed.linear.Init(lora_config=lora_config, quant_config=quant_config):
+            model = transformers.AutoModelForCausalLM.from_config(config)
 
-    injection_assert(model)
+        injection_assert(model)

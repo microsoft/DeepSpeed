@@ -104,6 +104,7 @@ class LoRAOptimizedLinear(nn.Module):
                                    requires_grad=False)
         else:
             w = torch.nn.Parameter(torch.empty((self.output_dim, self.input_dim), dtype=dtype), requires_grad=False)
+        torch.nn.init.xavier_uniform_(w.reshape(self.sharded_weight_size, self.output_dim))
 
         if self.quantization_config is not None:
             assert dtype == torch.bfloat16, "only bfloat16 is supported when using quantization"
