@@ -305,3 +305,43 @@ class TestClientLrScheduler(DistributedTest):
                 assert ds_lr_scheduler == client_scheduler
             else:
                 assert isinstance(ds_lr_scheduler, LambdaLR)
+
+    def test_overwrite_config(self):
+        """
+        Expect behavior
+
+        if lr scheduler is defined in code and passed into initialize as arg,
+        it will be used even this is a lr scheduler has been defined in config.
+        """
+
+        def _my_lambda(epoch):
+            return epoch // 10
+
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "scheduler": {
+                "type": WARMUP_LR,
+                "params": {
+                    "warmup_max_lr": 0.1,
+                    "warmup_type": "linear",
+                }
+            },
+            "gradient_clipping": 1.0
+        }
+
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+
+        client_optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+        client_scheduler = LambdaLR(client_optimizer, _my_lambda)
+
+        _, _, _, ds_lr_scheduler = deepspeed.initialize(config=config_dict,
+                                                        model=model,
+                                                        model_parameters=list(model.parameters()),
+                                                        optimizer=client_optimizer,
+                                                        lr_scheduler=client_scheduler)
+
+        assert isinstance(ds_lr_scheduler, LambdaLR)
+        assert not isinstance(ds_lr_scheduler, WarmupLR)
