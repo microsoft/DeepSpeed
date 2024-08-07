@@ -144,15 +144,22 @@ def initialize(args=None,
     dist.init_distributed(dist_backend=dist_backend,
                           distributed_port=distributed_port,
                           dist_init_required=dist_init_required)
-    mesh_device = None
-    if mesh_param:
-        logger.info(f"mesh_param to Initialize mesh device: {mesh_param}")
-        mesh_device = dist.initialize_mesh_device(mesh_param, ("data_parallel", "sequence_parallel"))
-
+    
     ##TODO: combine reuse mpu as mesh device and vice versa
     # Set config using config_params for backwards compat
     if config is None and config_params is not None:
         config = config_params
+
+    mesh_device = None
+    if mesh_param:
+        logger.info(f"mesh_param to Initialize mesh device: {mesh_param}")
+        mesh_device = dist.initialize_mesh_device(mesh_param, ("data_parallel", "sequence_parallel"))
+    #if config file has sequence parallelize and data parallelize, then use them to initialize mesh device
+    elif config is not None:
+        if "sequence_parallel_size" in config and "data_parallel_size" in config:    
+            logger.info(f"config to Initialize mesh device: {config}")
+            mesh_device = dist.initialize_mesh_device((config["data_parallel_size"], config["sequence_parallel_size"]), \
+            ("data_parallel", "sequence_parallel"))
 
     # Check for deepscale_config for backwards compat
     if hasattr(args, "deepscale_config") and args.deepscale_config is not None:

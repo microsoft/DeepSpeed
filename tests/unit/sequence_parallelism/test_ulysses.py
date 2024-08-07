@@ -19,13 +19,14 @@ class TestUlyssesUtils(DistributedTest):
         model = AutoModel.from_pretrained('bert-base-uncased')
         sp_size = 2
         dp_size = 2
-        ds_engine, _, _, _ = initialize(model=model, config_params={"train_batch_size": 8},
-                                    mesh_param=(dp_size, sp_size))
+        ds_engine, _, _, _ = initialize(model=model, config_params={"train_batch_size": 8,
+                        "data_parallel_size": dp_size, "sequence_parallel_size": sp_size},)
         assert ds_engine.seq_parallel_group is not None
         assert ds_engine.data_parallel_group is not None
         assert dist.get_world_size(group=ds_engine.seq_parallel_group) == sp_size
         assert dist.get_world_size(group=ds_engine.data_parallel_group) == dp_size
         assert dist.get_world_size() == sp_size * dp_size
+
 
 #Sweep b,s,h,d to test all2all consistency
 @pytest.mark.parametrize("d0", [2,4]) #batch or sequence dimension
