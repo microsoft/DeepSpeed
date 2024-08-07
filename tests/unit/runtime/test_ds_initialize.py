@@ -346,9 +346,11 @@ class TestClientLrSchedulerInit(DistributedTest):
                                                         model_parameters=list(model.parameters()),
                                                         optimizer=client_optimizer,
                                                         lr_scheduler=client_scheduler)
-        if client_scheduler is None:
+        if scheduler_type is None:
+            # in this case, we initialize from config
             assert not isinstance(ds_lr_scheduler, LambdaLR)
             assert isinstance(ds_lr_scheduler, WarmupLR)
         else:
+            # in this case, we initialize from passed-in scheduler
             assert isinstance(ds_lr_scheduler, LambdaLR)
             assert not isinstance(ds_lr_scheduler, WarmupLR)
