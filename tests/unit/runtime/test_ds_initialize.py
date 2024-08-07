@@ -306,42 +306,49 @@ class TestClientLrScheduler(DistributedTest):
             else:
                 assert isinstance(ds_lr_scheduler, LambdaLR)
 
-    def test_overwrite_config(self):
+
+@pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
+class TestClientLrSchedulerInit(DistributedTest):
+    world_size = 1
+
+    def test(self, scheduler_type):
         """
         Expect behavior
 
         if lr scheduler is defined in code and passed into initialize as arg,
         it will be used even this is a lr scheduler has been defined in config.
+
+        Initialize lr scheduler from config when no lr scheduler is defined in code.
         """
 
         def _my_lambda(epoch):
             return epoch // 10
 
-        config_dict = {
-            "train_batch_size": 2,
-            "steps_per_print": 1,
-            "scheduler": {
-                "type": WARMUP_LR,
-                "params": {
-                    "warmup_max_lr": 0.1,
-                    "warmup_type": "linear",
-                }
-            },
-            "gradient_clipping": 1.0
-        }
+        def _lr_scheduler_callable(optimizer) -> _LRScheduler:
+            return LambdaLR(optimizer, _my_lambda)
+
+        config_dict = {'train_batch_size': 1}
 
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
         client_optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-        client_scheduler = LambdaLR(client_optimizer, _my_lambda)
+        if scheduler_type is None:
+            config_dict['scheduler'] = {'type': WARMUP_LR, 'params': {}}
+        elif scheduler_type == _LRScheduler:
+            client_scheduler = LambdaLR(client_optimizer, _my_lambda)
+        else:
+            client_scheduler = _lr_scheduler_callable
 
         _, _, _, ds_lr_scheduler = deepspeed.initialize(config=config_dict,
                                                         model=model,
                                                         model_parameters=list(model.parameters()),
                                                         optimizer=client_optimizer,
                                                         lr_scheduler=client_scheduler)
-
-        assert isinstance(ds_lr_scheduler, LambdaLR)
-        assert not isinstance(ds_lr_scheduler, WarmupLR)
+        if client_scheduler is None:
+            assert not isinstance(ds_lr_scheduler, LambdaLR)
+            assert isinstance(ds_lr_scheduler, WarmupLR)
+        else:
+            assert isinstance(ds_lr_scheduler, LambdaLR)
+            assert not isinstance(ds_lr_scheduler, WarmupLR)
