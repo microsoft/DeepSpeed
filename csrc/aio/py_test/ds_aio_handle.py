@@ -11,6 +11,7 @@ import os
 import time
 from multiprocessing import Pool, Barrier
 from deepspeed.ops.aio import AsyncIOBuilder
+from deepspeed.ops.op_builder import GDSBuilder
 from test_ds_aio_utils import report_results, task_log, task_barrier, create_filename, create_file
 from deepspeed.accelerator import get_accelerator
 
@@ -41,10 +42,11 @@ def pre_handle(args, tid, read_op):
              force=True)
 
     io_parallel = args.io_parallel if args.io_parallel else 1
-    handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,
-                                                not args.sequential_requests, gds, io_parallel)
     if gds:
+        handle = GDSBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,not args.sequential_requests, io_parallel)
         handle.new_device_locked_tensor(buffer)
+    else:
+        handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit, not args.sequential_requests, io_parallel)
     task_log(tid, f'created deepspeed aio handle')
 
     ctxt = {}
