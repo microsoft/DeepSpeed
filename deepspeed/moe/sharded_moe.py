@@ -386,32 +386,27 @@ def topkgating(
     # everything is in fp32 in this function
     # get topk gates
     top_gate, top_idx = torch.topk(logits, k=k, dim=1)
+    # gating decisions
     gates = F.softmax(logits, dim=1)
     num_experts = int(gates.shape[1])
 
     # get topk mask
     topk_masked_gates = torch.zeros_like(logits).scatter(1, top_idx, top_gate)
 
-    mask = torch.zeros_like(gates, dtype=torch.int64).scatter_(1, top_idx, 1)
+    mask = torch.zeros_like(gates, dtype=torch.bool).scatter_(1, top_idx, 1)
 
-    # Compute tokens per expert
-    exp_counts = torch.sum(mask, dim=0).detach()
-
-    # gating decisions
     exp_counts = torch.sum(mask, dim=0).detach().to(logits.device)
 
     # Compute l_aux
     me = torch.mean(gates, dim=0)
-    # HPU Enable Begin
-    ce = torch.mean(mask.float(), dim=0, dtype=torch.float)
-    # HPU Enable End
+    ce = torch.mean(mask.float(), dim=0)
     l_aux = torch.mean(me * ce) * num_experts * num_experts / k
 
     if drop_tokens:
         # Calculate configured capacity and remove locations outside capacity from mask
         capacity = _capacity(gates, torch.tensor(capacity_factor * k), torch.tensor(min_capacity))
         # update mask and locations by capacity
-        # mask *= torch.lt(locations, capacity)
+
         if drop_policy == 'probs':
             capacity_probs, capacity_indices = torch.topk(topk_masked_gates, k=capacity, dim=0, sorted=False)
             capacity_mask = torch.zeros_like(logits).scatter(0, capacity_indices, 1)
@@ -421,7 +416,7 @@ def topkgating(
         elif drop_policy == "position":
             locations = torch.cumsum(mask, dim=0) - 1
             mask *= torch.lt(locations, capacity)
-        else: 
+        else:
             raise ValueError(f"Invalid drop_policy: {drop_policy}")
 
     else:
@@ -435,7 +430,6 @@ def topkgating(
             tp = 1 if groups.mpu is None else bwc_tensor_model_parallel_world_size(mpu=groups.mpu)
             new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
         capacity = new_capacity
-
 
     # normalize gates
     gates_masked = gates * mask
@@ -485,11 +479,6 @@ class TopKGate(Module):
                  top2_2nd_expert_sampling: bool = True) -> None:
         super().__init__()
 
-        # Only top-1 and top-2 are supported at the moment.
-        #if k != 1 and k != 2:
-        #    raise ValueError('Only top-1 and top-2 gatings are supported.')
-        # HPU Enable Begin
-        # self.wg = torch.nn.Linear(model_dim, num_experts, bias=False).float()
         self.wg = torch.nn.Linear(model_dim, num_experts, bias=False)
         self.ep_group = ep_group
         self.k = k
