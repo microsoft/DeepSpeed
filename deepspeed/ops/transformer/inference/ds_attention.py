@@ -153,7 +153,7 @@ class DeepSpeedSelfAttention(nn.Module):
         else:
             qkv_out = self.qkv_func(input=input,
                                     weight=self._attn_qkvw,
-                                    bias=self._attn_qkvb,
+                                    bias=self._attn_qkvb if self.attn_qb is not None else None,
                                     gamma=norm_w,
                                     beta=norm_b)
 
