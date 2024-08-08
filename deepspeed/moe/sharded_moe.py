@@ -300,7 +300,6 @@ def top2gating(logits: Tensor,
     # Create a mask for 1st's expert per token
     indices1_s = torch.argmax(gates, dim=1)
     num_experts = int(gates.shape[1])
-
     mask1 = F.one_hot(indices1_s, num_classes=num_experts)
 
     if top2_2nd_expert_sampling:
