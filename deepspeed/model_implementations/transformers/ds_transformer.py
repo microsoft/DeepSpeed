@@ -13,9 +13,6 @@ from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttent
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 import deepspeed
-if deepspeed.HAS_TRITON:
-    from deepspeed.ops.transformer.inference.triton.mlp import TritonMLP
-    from deepspeed.ops.transformer.inference.triton.attention import TritonSelfAttention
 
 inference_module = None
 
@@ -36,6 +33,9 @@ class DeepSpeedTransformerInference(nn.Module):
                 of a Transformer layer. We use this feature for quantization to reduce the convergence impact
                 for specific downstream tasks.
     """
+    layer_id = 0
+
+class DeepSpeedTransformerInference(nn.Module):
     layer_id = 0
 
     def __init__(self,
@@ -67,12 +67,16 @@ class DeepSpeedTransformerInference(nn.Module):
             assert not self.config.use_triton
         else:
             if deepspeed.HAS_TRITON and self.config.use_triton:
+                # Lazy import to avoid circular dependency
+                from deepspeed.ops.transformer.inference.triton.attention import TritonSelfAttention
                 self.attention = TritonSelfAttention(self.config)
             else:
                 self.attention = DeepSpeedSelfAttention(self.config, mp_group, quantize_scales, quantize_groups,
                                                         merge_count)
 
         if deepspeed.HAS_TRITON and self.config.use_triton:
+            # Lazy import to avoid circular dependency
+            from deepspeed.ops.transformer.inference.triton.mlp import TritonMLP
             self.mlp = TritonMLP(self.config)
         else:
             self.mlp = DeepSpeedMLP(self.config, mp_group, quantize_scales, quantize_groups, merge_count,
