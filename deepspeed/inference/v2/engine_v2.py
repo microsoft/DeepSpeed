@@ -87,7 +87,8 @@ class InferenceEngineV2:
         self._batch = RaggedBatchWrapper(self._config.state_manager)
         self._state_manager = DSStateManager(self._config.state_manager,
                                              self._model.kv_cache_config(),
-                                             base_mp_group=self._base_mp_group)
+                                             base_mp_group=self._base_mp_group,
+                                             enable_prefix_cache=self._config.enable_prefix_cache)
         self._model.set_state_manager(self._state_manager)
 
     def _initialize_tp_group(self):
@@ -129,7 +130,13 @@ class InferenceEngineV2:
         for uid, tokens in zip(batch_uids, batch_tokens):
 
             host_seq_desc = self._state_manager.get_or_create_sequence(uid)
-            self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
+            new_block_ids = self._model.maybe_allocate_kv(host_seq_desc, tokens.numel())
+            if self._config.enable_prefix_cache and new_block_ids is not None:
+                for block_id in new_block_ids:
+                    assert self._state_manager._ref_counts[block_id.item()] == 0
+
+                self._state_manager.increment_ref_count(new_block_ids)
+                self._state_manager._block_map.delete(new_block_ids)
             host_seq_desc.pre_forward(tokens.numel())
 
             # We can disable checks since we already validated schedulability.
@@ -239,6 +246,31 @@ class InferenceEngineV2:
             return 0
         return self._model.get_remaining_block_capacity(seq_desc)
 
+    def lookup_cache(self, tokens: torch.Tensor) -> Tuple[int, torch.Tensor]:
+        """
+        Lookup the KV cache for a given sequence and allocate the necessary blocks.
+
+        Arguments:
+            block IDs (torch.Tensor): The tokens to allocate.
+        """
+        if self._config.enable_prefix_cache:
+            return self._state_manager.lookup_cache(tokens)
+        return 0, torch.tensor([])
+
+    def setup_cached_sequence(self, uid: int, cached_length: int, block_ids: torch.Tensor) -> None:
+        if self._config.enable_prefix_cache:
+            seq = self._state_manager.get_or_create_sequence(uid)
+            seq.pre_forward(cached_length)
+            seq.post_forward()
+            seq.extend_kv_cache(block_ids)
+            seq.num_prefix_cache_blocks = len(block_ids)
+            self._state_manager.increment_ref_count(block_ids)
+            self._state_manager._kv_cache.allocate_blocks(block_ids)
+
+    def update_prefix_cache(self, uid: int, tokens: torch.Tensor) -> None:
+        if self._config.enable_prefix_cache:
+            self._state_manager.update_cache(uid, tokens)
+
     def flush(self, uid: int) -> None:
         """
         Remove all state associated with a sequence from the inference engine.
@@ -246,6 +278,15 @@ class InferenceEngineV2:
         Arguments:
             uid (int): The UID of the sequence to flush.
         """
+        seq = self._state_manager.get_sequence(uid)
+
+        if self._config.enable_prefix_cache:
+            self._state_manager.decrement_ref_count(seq.all_block_ids())
+            blocks_to_free = [b.item() for b in seq.all_block_ids() if self._state_manager._ref_counts[b.item()] == 0]
+        else:
+            blocks_to_free = seq.all_block_ids()
+        self._state_manager._kv_cache.free(blocks_to_free)
+
         self._state_manager.flush_sequence(uid)
 
     def serialize(self, save_path: str) -> None:

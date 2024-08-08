@@ -15,7 +15,7 @@ from deepspeed.comm.reduce_op import ReduceOp
 from deepspeed.accelerator import get_accelerator
 from ..inference_utils import elem_size
 from ..logging import inference_logger
-from .blocked_allocator import BlockedAllocator
+from .blocked_allocator import BlockedAllocator, LinearScanBlockedAllocator
 from .manager_configs import AllocationMode, KVCacheConfig, MemoryConfig
 
 
@@ -61,7 +61,8 @@ class BlockedKVCache:
                  configs: Tuple[KVCacheConfig, ...],
                  memory_config: MemoryConfig,
                  mp_group: Optional[Any] = None,
-                 offload: bool = False) -> None:
+                 offload: bool = False,
+                 enable_prefix_cache: bool = False) -> None:
         """
         Create a container that will maintain the storage and allocations for a set of
         blocked KV-caches.
@@ -136,7 +137,11 @@ class BlockedKVCache:
                 f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
             caches.append(torch.empty(alloc_shape, dtype=config.cache_dtype,
                                       device=get_accelerator().current_device()))
-            allocators.append(BlockedAllocator(num_blocks))
+
+            if enable_prefix_cache:
+                allocators.append(LinearScanBlockedAllocator(num_blocks))
+            else:
+                allocators.append(BlockedAllocator(num_blocks))
 
         self._caches = tuple(caches)
         self._allocators = tuple(allocators)
@@ -151,6 +156,9 @@ class BlockedKVCache:
             cache_group (int): The cache group to reserve from. Default is 0.
         """
         return self._allocators[cache_group].allocate(num_blocks)
+
+    def allocate_blocks(self, blocks: Iterable[int], cache_group: int = 0) -> None:
+        return self._allocators[cache_group].allocate_blocks(blocks)
 
     def free(self, blocks: Iterable[int], cache_group: int = 0) -> None:
         """

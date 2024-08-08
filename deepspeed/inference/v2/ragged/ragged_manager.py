@@ -5,6 +5,7 @@
 
 import torch
 from typing import Any, Dict, Optional, Tuple
+from collections import defaultdict
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import RaggedUtilsBuilder
@@ -14,6 +15,7 @@ from .blocked_allocator import BlockedAllocator
 from .kv_cache import BlockedKVCache
 from .manager_configs import DSStateManagerConfig, KVCacheConfig
 from .sequence_descriptor import DSSequenceDescriptor
+from .prefix_block_map import PrefixBlockMap
 
 
 class DSStateManager:
@@ -55,7 +57,8 @@ class DSStateManager:
     def __init__(self,
                  config: DSStateManagerConfig,
                  kv_configs: Tuple[KVCacheConfig, ...],
-                 base_mp_group: Optional[Any] = None) -> None:
+                 base_mp_group: Optional[Any] = None,
+                 enable_prefix_cache: bool = False) -> None:
         """
         The key
 
@@ -95,7 +98,12 @@ class DSStateManager:
         self._kv_cache = BlockedKVCache(self._kv_configs,
                                         self._config.memory_config,
                                         mp_group=base_mp_group,
-                                        offload=self._config.offload)
+                                        offload=self._config.offload,
+                                        enable_prefix_cache=enable_prefix_cache)
+
+        assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
+        self._block_map = PrefixBlockMap(self._kv_configs[0].block_size)
+        self._ref_counts = defaultdict(int)
 
     def get_cache(self, cache_id: int, cache_group: int = 0) -> torch.Tensor:
         """
@@ -116,8 +124,6 @@ class DSStateManager:
             return
 
         seq = self._seqs[uid]
-        for i in range(self.n_kv_cache_groups):
-            self._kv_cache.free(seq.all_block_ids(cache_group=i), cache_group=i)
 
         self._tracking_allocator.free(seq.tracking_id)
         del self._seqs[uid]
@@ -167,6 +173,37 @@ class DSStateManager:
         logger.debug(f"Created sequence {uid} with tracking slot {tracking_slot}.")
         return self._seqs[uid]
 
+    def lookup_cache(self, tokens: torch.Tensor) -> int:
+
+        block_ids = self._block_map.lookup(tokens)
+        assert len(self._kv_configs) == 1, "Only one KV cache group is supported for now."
+
+        cache_hit_length = len(block_ids) * self._kv_configs[0].block_size
+
+        if cache_hit_length == tokens.numel():
+            # we don't keep logits in the cache, so we need to recompute
+            block_ids = block_ids[:-1]
+            return len(block_ids) * self._kv_configs[0].block_size, block_ids
+        return cache_hit_length, block_ids
+
+    def update_cache(self, uid: int, tokens: torch.Tensor) -> None:
+        """
+        Update the KV cache for the given sequence id.
+        """
+        seq = self.get_sequence(uid)
+        num_full_blocks = seq.seen_tokens // self._kv_configs[0].block_size
+        if num_full_blocks > seq.num_prefix_cache_blocks:
+            self._block_map.extend(tokens[:seq.seen_tokens], seq.all_block_ids(), seq.num_prefix_cache_blocks)
+            seq.num_prefix_cache_blocks = num_full_blocks
+
+    def increment_ref_count(self, block_ids: torch.Tensor) -> None:
+        for block_id in block_ids:
+            self._ref_counts[block_id.item()] += 1
+
+    def decrement_ref_count(self, block_ids: torch.Tensor) -> None:
+        for block_id in block_ids:
+            self._ref_counts[block_id.item()] -= 1
+
     @property
     def tracked_sequences(self) -> Dict[int, DSSequenceDescriptor]:
         """
@@ -186,7 +223,7 @@ class DSStateManager:
         """
         Return the block size of the KV cache.
         """
-        return self._kv_config.block_size
+        return self._kv_configs[0].block_size
 
     @property
     def n_kv_cache_groups(self) -> int:

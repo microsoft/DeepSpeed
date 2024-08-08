@@ -95,6 +95,8 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
     # are stored. Used on flush.
     _tracking_id: int
 
+    _num_prefix_cache_blocks: int
+
     def __init__(self,
                  tracking_id: int,
                  kv_cache_ids: Tuple[torch.Tensor, ...],
@@ -131,6 +133,8 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
         for cache_group, kv_cache_ids in enumerate(kv_cache_ids):
             assert self._num_allocation_groups[cache_group] == kv_cache_ids.shape[0]
             assert len(kv_cache_ids.shape) == 2
+
+        self._num_prefix_cache_blocks = 0
 
     @property
     def seen_tokens(self) -> int:
@@ -278,3 +282,20 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
                 to have the same shape.
         """
         raise NotImplementedError("Partial KV-cache freeing is not yet supported.")
+
+    @property
+    def num_prefix_cache_blocks(self) -> int:
+        """
+        The number of prefix cache blocks for the sequence.
+        """
+        return self._num_prefix_cache_blocks
+
+    @num_prefix_cache_blocks.setter
+    def num_prefix_cache_blocks(self, num_blocks: int) -> None:
+        """
+        Set the number of prefix cache blocks for the sequence.
+
+        Arguments:
+            num_blocks (int): The number of prefix cache blocks for the sequence.
+        """
+        self._num_prefix_cache_blocks = num_blocks
