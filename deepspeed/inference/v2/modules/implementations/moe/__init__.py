@@ -4,3 +4,4 @@
 # DeepSpeed Team
 
 from .cutlass_multi_gemm import DSMultiGemmMoE
+from .pytorch_multi_gemm import DSPytorchMultiGemmMoE
