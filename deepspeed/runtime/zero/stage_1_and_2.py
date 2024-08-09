@@ -1826,7 +1826,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         see_memory_usage(f"In step before checking overflow")
 
         # First compute norm for all group so we know if there is overflow
-        if self.dtype == torch.float16:
+        if self.dtype in [torch.float16, torch.bfloat16]:
             self.check_overflow()
 
         prev_scale = self.loss_scale
