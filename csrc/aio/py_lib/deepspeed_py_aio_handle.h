@@ -16,7 +16,7 @@ struct deepspeed_aio_handle_t {
     std::unique_ptr<struct aio_context> _aio_ctxt;
     const bool _single_submit;
     const bool _overlap_events;
-    const int _num_threads;
+    int _num_threads;
     deepspeed_aio_config_t _aio_config;
 
     std::vector<std::shared_ptr<struct deepspeed_aio_thread_t>> _thread_contexts;
@@ -74,4 +74,13 @@ struct deepspeed_aio_handle_t {
     std::shared_ptr<struct io_op_desc_t> _wait_for_aio_work();
 
     bool _is_valid_parallel_aio_op(const bool read_op, const long long int num_bytes);
+
+    virtual std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(
+        const bool read_op,
+        const torch::Tensor& buffer,
+        const int fd,
+        const char* filename,
+        const long long int file_num_bytes,
+        const int num_threads,
+        const bool validate);
 };

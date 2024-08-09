@@ -10,6 +10,7 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 #include <torch/extension.h>
 #include "deepspeed_py_aio_handle.h"
 #include "deepspeed_py_copy.h"
+using namespace pybind11::literals;
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -20,7 +21,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("deepspeed_memcpy", &deepspeed_py_memcpy, "DeepSpeed Memory Copy");
 
     py::class_<deepspeed_aio_handle_t>(m, "aio_handle")
-        .def(py::init<const int, const int, const bool, const bool, const int>())
+        .def(py::init<const int, const int, const bool, const bool, const int>(),
+             "AIO handle constructor",
+             "block_size"_a,
+             "queue_depth"_a,
+             "single_submit"_a,
+             "overlap_events"_a,
+             "num_threads"_a)
 
         .def("get_block_size", &deepspeed_aio_handle_t::get_block_size)
         .def("get_queue_depth", &deepspeed_aio_handle_t::get_queue_depth)

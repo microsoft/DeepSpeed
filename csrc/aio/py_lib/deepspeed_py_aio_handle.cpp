@@ -4,13 +4,11 @@
 // DeepSpeed Team
 
 /*
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
-
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
 #include "deepspeed_py_aio_handle.h"
+#include <cstdlib>
 
 using namespace std;
 
@@ -177,16 +175,12 @@ int deepspeed_aio_handle_t::wait()
     while (_num_pending_ops > 0) {
         auto completed_op = _wait_for_aio_work();
 
+        if (completed_op->_validate) { completed_op->validate(); }
+
         completed_op->fini();
 
         close(completed_op->_fd);
 
-        if (completed_op->_validate) {
-            validate_aio_operation(completed_op->_read_op,
-                                   completed_op->_filename.c_str(),
-                                   completed_op->data_ptr(),
-                                   _num_threads * completed_op->_num_bytes);
-        }
         --_num_pending_ops;
         ++num_completed_ops;
     }
@@ -199,12 +193,25 @@ bool deepspeed_aio_handle_t::_is_valid_parallel_aio_op(const bool read_op,
 {
     const auto op_string = read_op ? "Read" : "Write";
     if (num_bytes % get_thread_count()) {
-        std::cout << "deepspeed_aio failure: parallel " << op_string << " num_bytes = " << num_bytes
+        std::cout << "deepseed_aio failure: parallel " << op_string << " num_bytes = " << num_bytes
                   << " not divisible by thread count = " << get_thread_count() << std::endl;
         return false;
     }
 
     return true;
+}
+
+std::shared_ptr<struct io_op_desc_t> deepspeed_aio_handle_t::_create_io_op_desc(
+    const bool read_op,
+    const torch::Tensor& buffer,
+    const int fd,
+    const char* filename,
+    const long long int file_num_bytes,
+    const int num_threads,
+    const bool validate)
+{
+    return std::make_shared<cpu_op_desc_t>(
+        read_op, buffer, fd, filename, file_num_bytes, num_threads, validate);
 }
 
 int deepspeed_aio_handle_t::pread(const torch::Tensor& buffer,
@@ -231,8 +238,8 @@ int deepspeed_aio_handle_t::pread(const torch::Tensor& buffer,
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
 
-    auto scheduled_op = std::make_shared<io_op_desc_t>(
-        true, buffer, fd, filename, (num_file_bytes / _num_threads), validate);
+    auto scheduled_op =
+        _create_io_op_desc(true, buffer, fd, filename, num_file_bytes, _num_threads, validate);
 
     _schedule_aio_work(scheduled_op);
 
@@ -254,8 +261,8 @@ int deepspeed_aio_handle_t::pwrite(const torch::Tensor& buffer,
     const auto fd = open_file(filename, false);
     if (fd == -1) { return -1; }
 
-    auto scheduled_op = std::make_shared<io_op_desc_t>(
-        false, buffer, fd, filename, (num_write_bytes / _num_threads), validate);
+    auto scheduled_op =
+        _create_io_op_desc(false, buffer, fd, filename, num_write_bytes, _num_threads, validate);
 
     _schedule_aio_work(scheduled_op);
 
