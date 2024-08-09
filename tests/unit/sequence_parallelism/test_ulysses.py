@@ -43,7 +43,7 @@ class TestUlyssesAll2All(DistributedTest):
         #4D tensor : b,s,h,d or s,b,h,d
         input_tensor = torch.randn(d0,d1,num_heads,head_dim, device=ds_engine.device)
         scatter_idx = 2
-                
+        batch_dim_idx=0        
         outputs = []
         seq_dims = [0] #seq first API
         #TODO: Add support for batch first (that seq_dims=[0,1]) after PR for bs>1 issue with batch first is fixed
@@ -52,12 +52,12 @@ class TestUlyssesAll2All(DistributedTest):
             gather_idx = seq_dim
             #first all2all: sequence parallel to head parallel
             s2h_tensor = _SeqAllToAll.apply(ds_engine.seq_parallel_group,
-                                         input_tensor, scatter_idx,gather_idx)
+                                         input_tensor, scatter_idx,gather_idx, batch_dim_idx)
                 
             #No op 
             # second all2all: head parallel to sequence parallel   
             h2s_tensor = _SeqAllToAll.apply(ds_engine.seq_parallel_group,
-                                         s2h_tensor, gather_idx,scatter_idx)
+                                         s2h_tensor, gather_idx,scatter_idx, batch_dim_idx)
             print(f'[{dist.get_rank()}] s={seq_dim} input: {input_tensor.shape} s2h: {s2h_tensor.shape} h2s_tensor: {h2s_tensor.shape}')
             outputs.append(h2s_tensor)
             
