@@ -305,3 +305,53 @@ class TestClientLrScheduler(DistributedTest):
                 assert ds_lr_scheduler == client_scheduler
             else:
                 assert isinstance(ds_lr_scheduler, LambdaLR)
+
+
+@pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
+class TestClientLrSchedulerInit(DistributedTest):
+    world_size = 1
+
+    def test(self, scheduler_type):
+        """
+        Expect behavior
+
+        if lr scheduler is defined in code and passed into initialize as arg,
+        it will be used even this is a lr scheduler has been defined in config.
+
+        Initialize lr scheduler from config when no lr scheduler is defined in code.
+        """
+
+        def _my_lambda(epoch):
+            return epoch // 10
+
+        def _lr_scheduler_callable(optimizer) -> _LRScheduler:
+            return LambdaLR(optimizer, _my_lambda)
+
+        config_dict = {'train_batch_size': 1}
+
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+
+        client_optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+        if scheduler_type is None:
+            config_dict['scheduler'] = {'type': WARMUP_LR, 'params': {}}
+            client_scheduler = None
+        elif scheduler_type == _LRScheduler:
+            client_scheduler = LambdaLR(client_optimizer, _my_lambda)
+        else:
+            client_scheduler = _lr_scheduler_callable
+
+        _, _, _, ds_lr_scheduler = deepspeed.initialize(config=config_dict,
+                                                        model=model,
+                                                        model_parameters=list(model.parameters()),
+                                                        optimizer=client_optimizer,
+                                                        lr_scheduler=client_scheduler)
+        if scheduler_type is None:
+            # in this case, we initialize from config
+            assert not isinstance(ds_lr_scheduler, LambdaLR)
+            assert isinstance(ds_lr_scheduler, WarmupLR)
+        else:
+            # in this case, we initialize from passed-in scheduler
+            assert isinstance(ds_lr_scheduler, LambdaLR)
+            assert not isinstance(ds_lr_scheduler, WarmupLR)
