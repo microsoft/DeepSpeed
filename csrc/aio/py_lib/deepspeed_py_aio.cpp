@@ -69,8 +69,9 @@ int deepspeed_py_aio_write(const torch::Tensor& buffer,
 
     const std::chrono::duration<double> fn_time =
         std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "Elapsed time(usec): " << "aio = " << aio_time.count() * 1e6
-              << " call = " << fn_time.count() * 1e6 << std::endl;
+    std::cout << "Elapsed time(usec): "
+              << "aio = " << aio_time.count() * 1e6 << " call = " << fn_time.count() * 1e6
+              << std::endl;
     return 0;
 }
 
@@ -114,7 +115,8 @@ int deepspeed_py_aio_read(torch::Tensor& buffer,
 
     const std::chrono::duration<double> fn_time =
         std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "Elapsed time(usec): " << "aio = " << aio_time.count() * 1e6
-              << " call = " << fn_time.count() * 1e6 << std::endl;
+    std::cout << "Elapsed time(usec): "
+              << "aio = " << aio_time.count() * 1e6 << " call = " << fn_time.count() * 1e6
+              << std::endl;
     return 0;
 }
