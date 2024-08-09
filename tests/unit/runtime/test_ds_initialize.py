@@ -336,6 +336,7 @@ class TestClientLrSchedulerInit(DistributedTest):
 
         if scheduler_type is None:
             config_dict['scheduler'] = {'type': WARMUP_LR, 'params': {}}
+            client_scheduler = None
         elif scheduler_type == _LRScheduler:
             client_scheduler = LambdaLR(client_optimizer, _my_lambda)
         else:
