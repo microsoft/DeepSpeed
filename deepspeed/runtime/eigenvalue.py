@@ -35,19 +35,11 @@ class Eigenvalue(object):
             f'enabled eigenvalue with verbose={verbose}, max_iter={max_iter}, tol={tol}, stability={stability}, gas_boundary_resolution={gas_boundary_resolution}, layer_name={layer_name}, layer_num={layer_num}',
             ranks=[0])
 
-    # Replace all nan/pos-inf/neg-inf to zero
-    # TODO: Pytorch new version may add this function, replace this one by then.
-    def nan_to_num(self, x):
-        device = x.device
-        x = x.cpu().numpy()
-        x = np.nan_to_num(x=x, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
-        return torch.from_numpy(x).to(device)
-
     def normalize(self, v):
         norm_squared = self.inner_product(v, v)
         norm = norm_squared**0.5 + self.stability
         normalized_vectors = [vector / norm for vector in v]
-        normalized_vectors = [self.nan_to_num(vector) for vector in normalized_vectors]
+        normalized_vectors = [torch.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0) for vector in normalized_vectors]
         return normalized_vectors
 
     def inner_product(self, xs, ys):
@@ -116,7 +108,7 @@ class Eigenvalue(object):
 
                 Hv = torch.autograd.grad(grads, params, grad_outputs=v, only_inputs=True, retain_graph=True)
                 #Hv = [hv.float() for hv in Hv]
-                Hv = [self.nan_to_num(hv).float() for hv in Hv]
+                Hv = [torch.nan_to_num(hv, nan=0.0, posinf=0.0, neginf=0.0).float() for hv in Hv]
 
                 eigenvalue_current = self.inner_product(Hv, v).item()
 
