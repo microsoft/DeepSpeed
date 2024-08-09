@@ -35,7 +35,7 @@ cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
 
 char* cpu_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_ptr(); }
 
-void cpu_op_desc_t::fini()
+void cpu_op_desc_t::finish()
 {
     if (_read_op) {
         if (_buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }

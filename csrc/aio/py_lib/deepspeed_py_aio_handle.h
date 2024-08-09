@@ -16,7 +16,7 @@ struct deepspeed_aio_handle_t {
     std::unique_ptr<struct aio_context> _aio_ctxt;
     const bool _single_submit;
     const bool _overlap_events;
-    int _num_threads;
+    const int _num_threads;
     deepspeed_aio_config_t _aio_config;
 
     std::vector<std::shared_ptr<struct deepspeed_aio_thread_t>> _thread_contexts;

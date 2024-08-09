@@ -36,6 +36,6 @@ struct io_op_desc_t {
 
     virtual void validate();
 
-    virtual void fini();
+    virtual void finish();
 };
 #endif  // _IO_OP_DESC_T_

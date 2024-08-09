@@ -207,7 +207,7 @@ def _aio_handle_tasklet(pool_params):
     return ctxt["main_task_sec"], ctxt["elapsed_sec"], ctxt["num_bytes"] * args.loops
 
 
-def _init_takslet(b):
+def _init_tasklet(b):
     global aio_barrier
     aio_barrier = b
 
@@ -216,7 +216,7 @@ def aio_handle_multiprocessing(args, read_op):
     num_processes = len(args.mapping_dict)
     b = Barrier(num_processes)
     pool_params = [(args, p, read_op) for p in range(num_processes)]
-    with Pool(processes=num_processes, initializer=_init_takslet, initargs=(b, )) as p:
+    with Pool(processes=num_processes, initializer=_init_tasklet, initargs=(b, )) as p:
         pool_results = p.map(_aio_handle_tasklet, pool_params)
 
     report_results(args, read_op, pool_results)

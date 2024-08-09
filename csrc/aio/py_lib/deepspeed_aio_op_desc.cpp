@@ -27,7 +27,7 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
 
 char* io_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_ptr(); }
 
-void io_op_desc_t::fini() {}
+void io_op_desc_t::finish() {}
 
 void io_op_desc_t::validate() {}
 

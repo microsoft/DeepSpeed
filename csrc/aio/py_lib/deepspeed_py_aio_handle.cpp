@@ -179,7 +179,7 @@ int deepspeed_aio_handle_t::wait()
 
         if (completed_op->_validate) { completed_op->validate(); }
 
-        completed_op->fini();
+        completed_op->finish();
 
         close(completed_op->_fd);
 
@@ -195,7 +195,7 @@ bool deepspeed_aio_handle_t::_is_valid_parallel_aio_op(const bool read_op,
 {
     const auto op_string = read_op ? "Read" : "Write";
     if (num_bytes % get_thread_count()) {
-        std::cout << "deepseed_aio failure: parallel " << op_string << " num_bytes = " << num_bytes
+        std::cout << "deepspeed_aio failure: parallel " << op_string << " num_bytes = " << num_bytes
                   << " not divisible by thread count = " << get_thread_count() << std::endl;
         return false;
     }

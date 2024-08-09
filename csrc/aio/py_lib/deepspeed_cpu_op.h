@@ -27,5 +27,5 @@ struct cpu_op_desc_t : io_op_desc_t {
 
     void validate();
 
-    void fini();
+    void finish();
 };

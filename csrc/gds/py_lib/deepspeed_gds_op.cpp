@@ -12,7 +12,6 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 using namespace std;
 
 // For when there is more than 1 device
-// static std::set<char*> base_buffer_registry;
 static std::map<const int64_t, std::set<void*>> base_ptr_registry;
 
 static void _safe_handle_register(const int fd, CUfileDescr_t& cf_descr, CUfileHandle_t& cf_handle)
@@ -110,7 +109,7 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
 
 char* gds_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_ptr(); }
 
-void gds_op_desc_t::fini() { cuFileHandleDeregister(_cf_handle); }
+void gds_op_desc_t::finish() { cuFileHandleDeregister(_cf_handle); }
 
 void gds_op_desc_t::validate()
 {
