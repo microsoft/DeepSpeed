@@ -116,7 +116,7 @@ https://intel.github.io/intel-extension-for-pytorch/index.html#installation?plat
 `pip install deepspeed`
 
 ## How to use DeepSpeed on Intel XPU
-DeepSpeed can launch on Intel XPU with common deepspeed command. Before that, user needs activate the oneAPI environment by: \
+DeepSpeed can be launched on Intel XPU with deepspeed launch command. Before that, user needs activate the oneAPI environment by: \
 `source <oneAPI installed path>/setvars.sh`
 
 To validate the XPU availability and if the XPU accelerator is correctly chosen, here is an example:
