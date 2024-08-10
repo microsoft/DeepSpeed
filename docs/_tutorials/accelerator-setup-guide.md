@@ -41,7 +41,7 @@ DeepSpeed can launch on Intel Architecture CPU with default deepspeed command.  
 ```
 deepspeed --bind_cores_to_rank <deepspeed-model-script>
 ```
-This switch would automatically detect the number of CPU NUMA node on the host, then launch as many worker as number of NUMA nodes, and each worker to cores/memory of each NUMA node.  This ensures workers does not interfere with each other and all memory allocation is local memory which improves performance.
+This switch would automatically detect the number of CPU NUMA node on the host, launch the same number of workers, and bind each worker to cores/memory of a different NUMA node.  This improves performance by ensuring workers do not interfere with each other, and that all memory allocation is from local memory.
 
 When user wish to get more control on the number of workers and which cores can be used by the workload, user can use the following command line switches.
 ```
