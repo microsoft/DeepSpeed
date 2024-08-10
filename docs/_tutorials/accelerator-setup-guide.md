@@ -43,7 +43,7 @@ deepspeed --bind_cores_to_rank <deepspeed-model-script>
 ```
 This switch would automatically detect the number of CPU NUMA node on the host, launch the same number of workers, and bind each worker to cores/memory of a different NUMA node.  This improves performance by ensuring workers do not interfere with each other, and that all memory allocation is from local memory.
 
-When user wish to get more control on the number of workers and which cores can be used by the workload, user can use the following command line switches.
+If a user wishes to have more control on the number of workers and specific cores that can be used by the workload, user can use the following command line switches.
 ```
 deepspeed --num_accelerators <number-of-workers> --bind_cores_to_rank --bind_core_list <comma-seperated-dash-range> <deepspeed-model-script>
 ```
