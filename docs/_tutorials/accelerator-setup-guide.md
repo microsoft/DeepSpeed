@@ -88,7 +88,7 @@ export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib/ccl/cpu:${CONDA_PREFIX}/lib/libfabric
 ```
 
 ## Optimize LLM inference with Intel Extension for PyTorch
-Intel Extension for PyTorch compatible w]th DeepSpeed AutoTP tensor parallel inference.  It allows CPU inference benefit from both DeepSpeed Automatic Tensor Parallelism and LLM optimization from Intel Extension for PyTorch.  To use Intel Extension for PyTorch, after call deepspeed.init_inference, call
+Intel Extension for PyTorch compatible with DeepSpeed AutoTP tensor parallel inference.  It allows CPU inference to benefit from both DeepSpeed Automatic Tensor Parallelism, and LLM optimizations of Intel Extension for PyTorch.  To use Intel Extension for PyTorch, after calling deepspeed.init_inference, call
 ```
 ipex_model = ipex.llm.optimize(deepspeed_model)
 ```
