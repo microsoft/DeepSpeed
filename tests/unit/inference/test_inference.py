@@ -9,6 +9,7 @@ import itertools
 import pickle
 import os
 import time
+import requests
 
 from dataclasses import dataclass
 from typing import List
@@ -76,7 +77,7 @@ _test_tasks = [
 
 @dataclass
 class ModelInfo:
-    modelId: str
+    id: str
     pipeline_tag: str
     tags: List[str]
 
@@ -84,24 +85,41 @@ class ModelInfo:
 def _hf_model_list() -> List[ModelInfo]:
     """ Caches HF model list to avoid repeated API calls """
 
-    cache_dir = os.getenv("TRANSFORMERS_CACHE", "~/.cache/huggingface")
+    cache_dir = os.getenv("HF_HOME", "~/.cache/huggingface")
     cache_file_path = os.path.join(cache_dir, "DS_model_cache.pkl")
-    cache_expiration_seconds = 60 * 60 * 24  # 1 day
+    num_days = os.getenv("HF_CACHE_EXPIRY_DAYS", 1)
+    cache_expiration_seconds = num_days * 60 * 60 * 24
 
     # Load or initialize the cache
     model_data = {"cache_time": 0, "model_list": []}
     if os.path.isfile(cache_file_path):
         with open(cache_file_path, 'rb') as f:
-            model_data = pickle.load(f)
+            try:
+                model_data = pickle.load(f)
+            except Exception as e:
+                print(f"Error loading cache file {cache_file_path}: {e}")
 
     current_time = time.time()
 
     # Update the cache if it has expired
-    if (model_data["cache_time"] + cache_expiration_seconds) < current_time:
+    if ((model_data["cache_time"] + cache_expiration_seconds) < current_time) or os.getenv("FORCE_UPDATE_HF_CACHE",
+                                                                                           default=False):
         api = HfApi()
-        model_data["model_list"] = [
-            ModelInfo(modelId=m.modelId, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in api.list_models()
-        ]
+        while True:
+            try:
+                model_list = []
+                for model in _test_models:
+                    model_list.extend(api.list_models(model_name=model))
+                model_data["model_list"] = [
+                    ModelInfo(id=m.id, pipeline_tag=m.pipeline_tag, tags=m.tags) for m in model_list
+                ]
+                break  # Exit the loop if the operation is successful
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 429:
+                    print("Rate limit exceeded. Retrying in 60 seconds...")
+                    time.sleep(60)
+                else:
+                    raise  # Re-raise the exception if it's not a 429 error
         model_data["cache_time"] = current_time
 
         # Save the updated cache
@@ -114,8 +132,8 @@ def _hf_model_list() -> List[ModelInfo]:
 
 # Get a list of all models and mapping from task to supported models
 _hf_models = _hf_model_list()
-_hf_model_names = [m.modelId for m in _hf_models]
-_hf_task_to_models = {task: [m.modelId for m in _hf_models if m.pipeline_tag == task] for task in _test_tasks}
+_hf_model_names = [m.id for m in _hf_models]
+_hf_task_to_models = {task: [m.id for m in _hf_models if m.pipeline_tag == task] for task in _test_tasks}
 
 # Get all combinations of task:model to test
 _model_w_tasks = [(m, t) for m, t in itertools.product(*[_test_models, _test_tasks]) if m in _hf_task_to_models[t]]
@@ -159,6 +177,11 @@ def enable_cuda_graph(request):
 
 @pytest.fixture(params=[True, False], ids=["Triton", "noTriton"])
 def enable_triton(request):
+    return request.param
+
+
+@pytest.fixture(params=[1, 2], ids=["ws1", "ws2"])
+def world_size(request):
     return request.param
 
 
@@ -490,24 +513,14 @@ class TestLowCpuMemUsage(DistributedTest):
 )
 @pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
 class TestInjectionPolicy(DistributedTest):
-    world_size = [1, 2]
 
-    def test(
-        self,
-        model_w_task,
-        injection_policy,
-        query,
-        inf_kwargs,
-        assert_fn,
-        dtype,
-    ):
+    def test(self, model_w_task, injection_policy, query, inf_kwargs, assert_fn, dtype, world_size):
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
-        world_size = int(os.getenv("WORLD_SIZE", "2"))
 
         pipe = pipeline(task,
                         model=model,

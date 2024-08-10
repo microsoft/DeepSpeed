@@ -31,7 +31,6 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
 from ..inference.config import WeightQuantConfig
-from .compiler import get_compile_config
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -65,6 +64,8 @@ from .swap_tensor.aio_config import get_aio_config
 
 from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, get_curriculum_enabled_legacy, get_curriculum_params_legacy
 from .data_pipeline.constants import *
+
+from ..utils.config import get_timers_config
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
@@ -908,7 +909,7 @@ class DeepSpeedConfig(object):
         self.weight_quantization_config = WeightQuantConfig(
             **param_dict['weight_quantization']) if 'weight_quantization' in param_dict else None
 
-        self.compile_config = get_compile_config(param_dict)
+        self.timers_config = get_timers_config(param_dict)
 
     def _batch_assertion(self):
 

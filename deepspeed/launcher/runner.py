@@ -117,6 +117,12 @@ def parse_args(args=None):
                         help="(optional) IP address of node 0, will be "
                         "inferred via 'hostname -I' if not specified.")
 
+    parser.add_argument("--node_rank",
+                        default=-1,
+                        type=int,
+                        help="ID of each node in the range [0:N). "
+                        "Only required when --no_ssh is set.")
+
     parser.add_argument("--launcher",
                         default=PDSH_LAUNCHER,
                         type=str,
@@ -144,6 +150,10 @@ def parse_args(args=None):
                         action="store_true",
                         help="Do not pass local_rank as an argument when calling "
                         "the user's training script.")
+
+    parser.add_argument("--no_ssh",
+                        action="store_true",
+                        help="Launch training independently on each node without ssh setup.")
 
     parser.add_argument("--no_ssh_check",
                         action="store_true",
@@ -393,18 +403,19 @@ def main(args=None):
 
     resource_pool = fetch_hostfile(args.hostfile)
 
-    # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
-    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-    if not resource_pool and len(cuda_visible_devices):
-        detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
+    # respect VISIBLE_DEVICES for a single node and no explicit resource filters
+    visible_devices_env = get_accelerator().visible_devices_envs()[0]
+    visible_devices = os.environ.get(visible_devices_env, "")
+    if not resource_pool and len(visible_devices):
+        detected_str = f"Detected VISIBLE_DEVICES={visible_devices}"
         if len(args.include) or len(args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
             print(
                 f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
         else:
-            args.include = f"localhost:{cuda_visible_devices}"
+            args.include = f"localhost:{visible_devices}"
             print(f"{detected_str}: setting --include={args.include}")
-        del os.environ["CUDA_VISIBLE_DEVICES"]
+        del os.environ[visible_devices_env]
 
     if args.num_nodes >= 0 or args.num_gpus >= 0:
         if args.include != "" or args.exclude != "":
@@ -427,7 +438,7 @@ def main(args=None):
     env = os.environ.copy()
 
     # validate that passwordless-ssh is workly properly with this hostfile
-    if multi_node_exec and not args.no_ssh_check:
+    if multi_node_exec and not args.no_ssh_check and not args.no_ssh:
         first_host = list(active_resources.keys())[0]
         try:
             ssh_check_cmd = "ssh -o PasswordAuthentication=no "
@@ -483,16 +494,22 @@ def main(args=None):
     if args.elastic_training:
         assert not args.no_local_rank, "--no_local_rank argument is not supported in Elastic training"
 
+    if args.no_ssh:
+        assert (0 <= args.node_rank <
+                len(active_resources)), "Launching training without ssh, but --node_rank is not set correctly."
+
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
-    multi_node_exec = args.force_multi or len(active_resources) > 1
+    multi_node_exec = (args.force_multi or len(active_resources) > 1) and not args.no_ssh
 
     if not multi_node_exec:
         deepspeed_launch = [
             sys.executable, "-u", "-m", "deepspeed.launcher.launch", f"--world_info={world_info_base64}",
             f"--master_addr={args.master_addr}", f"--master_port={args.master_port}"
         ]
+        if args.no_ssh:
+            deepspeed_launch.append(f"--node_rank={args.node_rank}")
         if args.no_python:
             deepspeed_launch.append("--no_python")
         if args.module:
