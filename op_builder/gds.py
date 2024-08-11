@@ -35,7 +35,7 @@ class GDSBuilder(AsyncIOBuilder):
     def extra_ldflags(self):
         return super().extra_ldflags() + ['-lcufile']
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         import torch.utils.cpp_extension
         CUDA_HOME = torch.utils.cpp_extension.CUDA_HOME
         CUDA_LIB64 = os.path.join(CUDA_HOME, "lib64")

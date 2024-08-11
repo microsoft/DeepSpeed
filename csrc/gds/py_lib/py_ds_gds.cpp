@@ -41,8 +41,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 
         .def("new_cpu_locked_tensor", &deepspeed_gds_handle_t::new_cpu_locked_tensor)
         .def("free_cpu_locked_tensor", &deepspeed_gds_handle_t::free_cpu_locked_tensor)
-        .def("new_device_locked_tensor", &deepspeed_gds_handle_t::new_device_locked_tensor)
-        .def("free_device_locked_tensor", &deepspeed_gds_handle_t::free_device_locked_tensor)
+
+        .def("new_pinned_device_tensor", &deepspeed_gds_handle_t::new_pinned_device_tensor)
+        .def("free_pinned_device_tensor", &deepspeed_gds_handle_t::free_pinned_device_tensor)
+        .def("pin_device_tensor", &deepspeed_gds_handle_t::pin_device_tensor)
+        .def("unpin_device_tensor", &deepspeed_gds_handle_t::unpin_device_tensor)
 
         .def("wait", &deepspeed_gds_handle_t::wait);
 }
