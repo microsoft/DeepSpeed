@@ -7,8 +7,6 @@ import torch
 import deepspeed
 import pytest
 import gc
-
-import deepspeed.comm as dist
 from unit.common import DistributedTest
 from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
 import deepspeed.comm as dist
