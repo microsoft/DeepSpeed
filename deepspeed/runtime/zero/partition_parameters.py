@@ -530,7 +530,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         def _enable_class_backup(cls):
             cls._old_init = cls.__init__
 
-        def _enable_class_repalce(cls):
+        def _enable_class_replace(cls):
             cls.__init__ = partition_after(cls.__init__)
 
         def _init_subclass(cls, **kwargs):
