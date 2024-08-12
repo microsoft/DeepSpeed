@@ -464,16 +464,22 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
                 return wrapper
 
-            def _enable_class_apply(cls):
+            def _enable_class_apply_backup(cls):
                 cls._old_apply_of_skip_init_hook = cls._apply
+
+            def _enable_class_apply_replace(cls):
                 cls._apply = partition_after_empty_init(cls._apply)
 
             def _disable_class_apply(cls):
                 cls._apply = cls._old_apply_of_skip_init_hook
 
             # add hooks for to_empty: apply_(empty_like)
-            for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-                _enable_class_apply(subclass)
+            all_subclasses = get_all_subclasses(torch.nn.modules.module.Module)
+            # split into two steps to address the inheritance problem
+            for subclass in all_subclasses:
+                _enable_class_apply_backup(subclass)
+            for subclass in all_subclasses:
+                _enable_class_apply_replace(subclass)
 
             # add a restore hook when exiting skip_init
             module.to_empty = post_wrapper_to_empty(module.to_empty)
@@ -521,8 +527,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
             return wrapper
 
-        def _enable_class(cls):
+        def _enable_class_backup(cls):
             cls._old_init = cls.__init__
+
+        def _enable_class_repalce(cls):
             cls.__init__ = partition_after(cls.__init__)
 
         def _init_subclass(cls, **kwargs):
@@ -530,8 +538,12 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = partition_after(cls.__init__)
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
-        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-            _enable_class(subclass)
+        all_subclasses = get_all_subclasses(torch.nn.modules.module.Module)
+        # split into two steps to address the inheritance problem
+        for subclass in all_subclasses:
+            _enable_class_backup(subclass)
+        for subclass in all_subclasses:
+            _enable_class_replace(subclass)
 
         # holding onto some methods so we can put them back the way they were in __exit__
         torch.nn.modules.module.Module._old_init_subclass = torch.nn.modules.module.Module.__init_subclass__
