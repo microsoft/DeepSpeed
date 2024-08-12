@@ -43,7 +43,7 @@ def pre_handle(args, tid, read_op):
 
     io_parallel = args.io_parallel if args.io_parallel else 1
     if gds:
-        handle = GDSBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,not args.sequential_requests, io_parallel)
+        handle = GDSBuilder().load().gds_handle(args.block_size, args.queue_depth, args.single_submit,not args.sequential_requests, io_parallel)
         handle.new_device_locked_tensor(buffer)
     else:
         handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit, not args.sequential_requests, io_parallel)
