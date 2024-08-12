@@ -34,7 +34,7 @@ struct gds_op_desc_t : io_op_desc_t {
 
     void validate();
 
-    void fini();
+    void finish();
 
     void _report_error(const ssize_t return_code, const int error_num, const off_t offset);
 

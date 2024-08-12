@@ -47,7 +47,7 @@ def _get_test_write_file(tmpdir, index):
 def _get_test_write_file_and_device_buffer(tmpdir, ref_buffer, gds_handle, index=0):
     test_file = _get_test_write_file(tmpdir, index)
     test_buffer = get_accelerator().ByteTensor(list(ref_buffer))
-    gds_handle.new_device_locked_tensor(test_buffer)
+    gds_handle.pin_device_tensor(test_buffer)
     return test_file, test_buffer
 
 
@@ -64,7 +64,6 @@ def _validate_handle_state(handle, single_submit, overlap_events):
 class TestRead(DistributedTest):
     world_size = 1
     reuse_dist_env = True
-    requires_cuda_env = False
     if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
@@ -74,7 +73,7 @@ class TestRead(DistributedTest):
         h = GDSBuilder().load().gds_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
 
         gds_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=get_accelerator().device_name())
-        h.new_device_locked_tensor(gds_buffer)
+        h.pin_device_tensor(gds_buffer)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -86,14 +85,14 @@ class TestRead(DistributedTest):
             ref_buffer = list(f.read())
         assert ref_buffer == gds_buffer.tolist()
 
-        h.free_device_locked_tensor(gds_buffer)
+        h.unpin_device_tensor(gds_buffer)
 
     def test_async_read(self, tmpdir, single_submit, overlap_events):
 
         h = GDSBuilder().load().gds_handle(BLOCK_SIZE, QUEUE_DEPTH, single_submit, overlap_events, IO_PARALLEL)
 
         gds_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=get_accelerator().device_name())
-        h.new_device_locked_tensor(gds_buffer)
+        h.pin_device_tensor(gds_buffer)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -108,7 +107,7 @@ class TestRead(DistributedTest):
             ref_buffer = list(f.read())
         assert ref_buffer == gds_buffer.tolist()
 
-        h.free_device_locked_tensor(gds_buffer)
+        h.unpin_device_tensor(gds_buffer)
 
 
 @pytest.mark.parametrize("single_submit", [True, False])
@@ -116,7 +115,6 @@ class TestRead(DistributedTest):
 class TestWrite(DistributedTest):
     world_size = 1
     reuse_dist_env = True
-    requires_cuda_env = False
     if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
@@ -133,7 +131,7 @@ class TestWrite(DistributedTest):
         write_status = h.sync_pwrite(gds_buffer, gds_file)
         assert write_status == 1
 
-        h.free_device_locked_tensor(gds_buffer)
+        h.unpin_device_tensor(gds_buffer)
 
         assert os.path.isfile(gds_file)
 
@@ -154,7 +152,7 @@ class TestWrite(DistributedTest):
         wait_status = h.wait()
         assert wait_status == 1
 
-        h.free_device_locked_tensor(gds_buffer)
+        h.unpin_device_tensor(gds_buffer)
 
         assert os.path.isfile(gds_file)
 
@@ -165,7 +163,6 @@ class TestWrite(DistributedTest):
 @pytest.mark.sequential
 class TestAsyncQueue(DistributedTest):
     world_size = 1
-    requires_cuda_env = False
     if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
@@ -186,7 +183,7 @@ class TestAsyncQueue(DistributedTest):
             torch.empty(IO_SIZE, dtype=torch.uint8, device=get_accelerator().device_name()) for _ in range(async_queue)
         ]
         for buf in gds_buffers:
-            h.new_device_locked_tensor(buf)
+            h.pin_device_tensor(buf)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -203,7 +200,7 @@ class TestAsyncQueue(DistributedTest):
             assert ref_buffer == gds_buffers[i].tolist()
 
         for t in gds_buffers:
-            h.free_device_locked_tensor(t)
+            h.unpin_device_tensor(t)
 
     @pytest.mark.parametrize("async_queue", [2, 3])
     def test_write(self, tmpdir, async_queue):
@@ -235,10 +232,39 @@ class TestAsyncQueue(DistributedTest):
         assert wait_status == async_queue
 
         for t in gds_buffers:
-            h.free_device_locked_tensor(t)
+            h.unpin_device_tensor(t)
 
         for i in range(async_queue):
             assert os.path.isfile(gds_files[i])
 
             filecmp.clear_cache()
             assert filecmp.cmp(ref_files[i], gds_files[i], shallow=False)
+
+
+@pytest.mark.parametrize("use_new_api", [True, False])
+class TestLockDeviceTensor(DistributedTest):
+    world_size = 2
+    reuse_dist_env = True
+    if not get_accelerator().is_available():
+        init_distributed = False
+        set_dist_env = False
+
+    def test_pin_device_tensor(self, use_new_api):
+
+        h = GDSBuilder().load().gds_handle(BLOCK_SIZE, QUEUE_DEPTH, True, True, IO_PARALLEL)
+
+        unpinned_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=get_accelerator().device_name())
+        if use_new_api:
+            pinned_buffer = h.new_pinned_device_tensor(unpinned_buffer.numel(), unpinned_buffer)
+        else:
+            pinned_buffer = torch.empty_like(unpinned_buffer)
+            h.pin_device_tensor(pinned_buffer)
+
+        assert unpinned_buffer.device == pinned_buffer.device
+        assert unpinned_buffer.dtype == pinned_buffer.dtype
+        assert unpinned_buffer.numel() == pinned_buffer.numel()
+
+        if use_new_api:
+            h.free_pinned_device_tensor(pinned_buffer)
+        else:
+            h.unpin_device_tensor(pinned_buffer)

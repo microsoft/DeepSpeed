@@ -46,6 +46,11 @@ void deepspeed_gds_handle_t::_init_cuFile(const int block_size,
             std::cerr << "Can't open local cufile" << std::endl;
             exit(EXIT_FAILURE);
         }
+        // TODO: Address the following issues with this code
+        // (1) Fix C++14 warning
+        // (2) Create file in a different location than PWD
+        // (3) Handle multi-GPU/multi-rank scenarios: should cufile be shared, is per-rank cufile
+        // safe?
         putenv("CUFILE_ENV_PATH_JSON=$PWD/local_cufile.json");
         cuFileDriverOpen();
         cudaCheckError();
@@ -65,16 +70,31 @@ void deepspeed_gds_handle_t::_close_cuFile()
     if (deepspeed_gds_handle_t::s_cuFile_init == 0) { cuFileDriverClose(); }
 }
 
-int deepspeed_gds_handle_t::new_device_locked_tensor(const torch::Tensor& buffer)
+torch::Tensor deepspeed_gds_handle_t::new_pinned_device_tensor(const size_t num_elem,
+                                                               const torch::Tensor& example_tensor)
 {
-    gds_op_desc_t::add_buffer_to_registry(buffer);
-    return 0;
+    auto options = torch::TensorOptions().dtype(example_tensor.scalar_type()).device(torch::kCUDA);
+    auto dev_tensor = torch::empty(num_elem, options);
+    pin_device_tensor(dev_tensor);
+    return dev_tensor;
 }
 
-int deepspeed_gds_handle_t::free_device_locked_tensor(const torch::Tensor& buffer)
+bool deepspeed_gds_handle_t::free_pinned_device_tensor(torch::Tensor& buffer)
+{
+    unpin_device_tensor(buffer);
+    return true;
+}
+
+bool deepspeed_gds_handle_t::pin_device_tensor(const torch::Tensor& buffer)
+{
+    gds_op_desc_t::add_buffer_to_registry(buffer);
+    return true;
+}
+
+bool deepspeed_gds_handle_t::unpin_device_tensor(const torch::Tensor& buffer)
 {
     gds_op_desc_t::remove_buffer_from_registry(buffer);
-    return 0;
+    return true;
 }
 
 std::shared_ptr<struct io_op_desc_t> deepspeed_gds_handle_t::_create_io_op_desc(

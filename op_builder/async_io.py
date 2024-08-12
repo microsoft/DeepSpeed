@@ -84,13 +84,13 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
                 break
         return found
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         # Check for the existence of libaio by using distutils
         # to compile and link a test program that calls io_submit,
         # which is a function provided by libaio that is used in the async_io op.
         # If needed, one can define -I and -L entries in CFLAGS and LDFLAGS
         # respectively to specify the directories for libaio.h and libaio.so.
-        aio_compatible = self.has_function('io_submit', ('aio', ))
+        aio_compatible = self.has_function('io_pgetevents', ('aio', ))
         if verbose and not aio_compatible:
             self.warning(f"{self.NAME} requires the dev libaio .so object and headers but these were not found.")
 

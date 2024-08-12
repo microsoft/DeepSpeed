@@ -46,7 +46,8 @@ def pre_handle(args, tid, read_op):
         handle = GDSBuilder().load().gds_handle(args.block_size, args.queue_depth, args.single_submit,not args.sequential_requests, io_parallel)
         handle.new_device_locked_tensor(buffer)
     else:
-        handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit, not args.sequential_requests, io_parallel)
+        handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,
+                                                    not args.sequential_requests, io_parallel)
     task_log(tid, f'created deepspeed aio handle')
 
     ctxt = {}
@@ -205,7 +206,7 @@ def _aio_handle_tasklet(pool_params):
     return ctxt["main_task_sec"], ctxt["elapsed_sec"], ctxt["num_bytes"] * args.loops
 
 
-def _init_takslet(b):
+def _init_tasklet(b):
     global aio_barrier
     aio_barrier = b
 
@@ -214,7 +215,7 @@ def aio_handle_multiprocessing(args, read_op):
     num_processes = len(args.mapping_dict)
     b = Barrier(num_processes)
     pool_params = [(args, p, read_op) for p in range(num_processes)]
-    with Pool(processes=num_processes, initializer=_init_takslet, initargs=(b, )) as p:
+    with Pool(processes=num_processes, initializer=_init_tasklet, initargs=(b, )) as p:
         pool_results = p.map(_aio_handle_tasklet, pool_params)
 
     report_results(args, read_op, pool_results)

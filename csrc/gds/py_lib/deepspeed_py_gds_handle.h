@@ -20,9 +20,14 @@ struct deepspeed_gds_handle_t : deepspeed_aio_handle_t {
 
     ~deepspeed_gds_handle_t();
 
-    int new_device_locked_tensor(const torch::Tensor& buffer);
+    torch::Tensor new_pinned_device_tensor(const size_t num_elem,
+                                           const torch::Tensor& example_tensor);
 
-    int free_device_locked_tensor(const torch::Tensor& buffer);
+    bool free_pinned_device_tensor(torch::Tensor&);
+
+    bool pin_device_tensor(const torch::Tensor& buffer);
+
+    bool unpin_device_tensor(const torch::Tensor& buffer);
 
     void _init_cuFile(const int block_size, const int queue_length, const int num_threads);
 
