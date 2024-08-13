@@ -311,7 +311,7 @@ class TestClientLrScheduler(DistributedTest):
 class TestClientLrSchedulerInit(DistributedTest):
     world_size = 1
 
-    def test(self, scheduler_type):
+    def test_same_lrscheler_and_callable(self, scheduler_type):
         """
         Expect behavior
 
@@ -355,3 +355,82 @@ class TestClientLrSchedulerInit(DistributedTest):
             # in this case, we initialize from passed-in scheduler
             assert isinstance(ds_lr_scheduler, LambdaLR)
             assert not isinstance(ds_lr_scheduler, WarmupLR)
+
+    def test_diff_lrscheler_and_callable(self, scheduler_type):
+        """
+        In this test,
+        the LambdaLR will be used for lrscheduler type
+        and the StepLR will be used for callable type
+        """
+
+        from torch.optim.lr_scheduler import StepLR
+
+        def _my_lambda(epoch):
+            return epoch // 10
+
+        def _lr_scheduler_callable(optimizer) -> _LRScheduler:
+            return StepLR(optimizer, step_size=30)
+
+        config_dict = {'train_batch_size': 1}
+
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+
+        client_optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+        if scheduler_type is None:
+            config_dict['scheduler'] = {'type': WARMUP_LR, 'params': {}}
+            client_scheduler = None
+        elif scheduler_type == _LRScheduler:
+            client_scheduler = LambdaLR(client_optimizer, _my_lambda)
+        else:
+            client_scheduler = _lr_scheduler_callable
+
+        _, _, _, ds_lr_scheduler = deepspeed.initialize(config=config_dict,
+                                                        model=model,
+                                                        model_parameters=list(model.parameters()),
+                                                        optimizer=client_optimizer,
+                                                        lr_scheduler=client_scheduler)
+        if scheduler_type is None:
+            assert isinstance(ds_lr_scheduler, WarmupLR)
+        elif scheduler_type == _LRScheduler:
+            assert isinstance(ds_lr_scheduler, LambdaLR)
+        else:
+            # callable
+            assert isinstance(ds_lr_scheduler, StepLR)
+
+    def test_diff_lrscheler_and_callable_onecyclelr_steplr(self, scheduler_type):
+
+        from deepspeed.runtime.lr_schedules import OneCycle, ONE_CYCLE, CYCLE_MIN_LR, CYCLE_MAX_LR
+        from torch.optim.lr_scheduler import OneCycleLR, StepLR
+
+        def _lr_scheduler_callable(optimizer) -> _LRScheduler:
+            return OneCycleLR(optimizer, max_lr=0.01, total_steps=200)
+
+        config_dict = {'train_batch_size': 1}
+
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+
+        client_optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+        if scheduler_type is None:
+            config_dict['scheduler'] = {'type': ONE_CYCLE, 'params': {CYCLE_MIN_LR: 0, CYCLE_MAX_LR: 0.1}}
+            client_scheduler = None
+        elif scheduler_type == _LRScheduler:
+            client_scheduler = StepLR(client_optimizer, step_size=30)
+        else:
+            client_scheduler = _lr_scheduler_callable
+
+        _, _, _, ds_lr_scheduler = deepspeed.initialize(config=config_dict,
+                                                        model=model,
+                                                        model_parameters=list(model.parameters()),
+                                                        optimizer=client_optimizer,
+                                                        lr_scheduler=client_scheduler)
+        if scheduler_type is None:
+            assert isinstance(ds_lr_scheduler, OneCycle)
+        elif scheduler_type == _LRScheduler:
+            assert isinstance(ds_lr_scheduler, StepLR)
+        else:
+            # callable
+            assert isinstance(ds_lr_scheduler, OneCycleLR)
