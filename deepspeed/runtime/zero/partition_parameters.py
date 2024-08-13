@@ -447,7 +447,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     # since skip_init won't involve any computations or weight adjustments, we can directly utilize post_init
                     self._post_init_method(_module)
                     return _module
-
+                wrapped._ds_has_wrapped = True
                 return wrapper
 
             def post_wrapper_to_empty(f):
@@ -464,22 +464,18 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
                 return wrapper
 
-            def _enable_class_apply_backup(cls):
-                cls._old_apply_of_skip_init_hook = cls._apply
-
-            def _enable_class_apply_replace(cls):
-                cls._apply = partition_after_empty_init(cls._apply)
+            def _enable_class_apply(cls):
+                # avoid re-wrap
+                if not hasattr(cls._apply, '_ds_has_wrapped'):
+                    cls._old_apply_of_skip_init_hook = cls._apply
+                    cls._apply = partition_after_empty_init(cls._apply)
 
             def _disable_class_apply(cls):
                 cls._apply = cls._old_apply_of_skip_init_hook
 
             # add hooks for to_empty: apply_(empty_like)
-            all_subclasses = get_all_subclasses(torch.nn.modules.module.Module)
-            # split into two steps to address the inheritance problem
-            for subclass in all_subclasses:
-                _enable_class_apply_backup(subclass)
-            for subclass in all_subclasses:
-                _enable_class_apply_replace(subclass)
+            for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+                _enable_class_apply(subclass)
 
             # add a restore hook when exiting skip_init
             module.to_empty = post_wrapper_to_empty(module.to_empty)
@@ -524,26 +520,24 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 print_rank_0(f'After initializing followed by post init for {module.__class__.__name__}', force=False)
                 if init_on_meta:
                     self.skip_init_depth -= 1
-
+            wrapped._ds_has_wrapped = True
             return wrapper
 
-        def _enable_class_backup(cls):
-            cls._old_init = cls.__init__
-
-        def _enable_class_replace(cls):
-            cls.__init__ = partition_after(cls.__init__)
+        def _enable_class(cls):
+            # avoid re-wrap
+            if not hasattr(cls.__init__, '_ds_has_wrapped'):
+                cls._old_init = cls.__init__
+                cls.__init__ = partition_after(cls.__init__)
 
         def _init_subclass(cls, **kwargs):
-            cls._old_init = cls.__init__
-            cls.__init__ = partition_after(cls.__init__)
+            # avoid re-wrap
+            if not hasattr(cls.__init__, '_ds_has_wrapped'):
+                cls._old_init = cls.__init__
+                cls.__init__ = partition_after(cls.__init__)
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
-        all_subclasses = get_all_subclasses(torch.nn.modules.module.Module)
-        # split into two steps to address the inheritance problem
-        for subclass in all_subclasses:
-            _enable_class_backup(subclass)
-        for subclass in all_subclasses:
-            _enable_class_replace(subclass)
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+            _enable_class(subclass)
 
         # holding onto some methods so we can put them back the way they were in __exit__
         torch.nn.modules.module.Module._old_init_subclass = torch.nn.modules.module.Module.__init_subclass__
