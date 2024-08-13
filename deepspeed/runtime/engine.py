@@ -238,7 +238,7 @@ class DeepSpeedEngine(Module):
         debug_extract_module_and_param_names(model)
 
         if self.mesh_device:
-            groups.mesh_device = self.mesh_device  
+            groups.mesh_device = self.mesh_device
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)

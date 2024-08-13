@@ -144,7 +144,7 @@ def initialize(args=None,
     dist.init_distributed(dist_backend=dist_backend,
                           distributed_port=distributed_port,
                           dist_init_required=dist_init_required)
-    
+
     ##TODO: combine reuse mpu as mesh device and vice versa
     # Set config using config_params for backwards compat
     if config is None and config_params is not None:
@@ -156,7 +156,7 @@ def initialize(args=None,
         mesh_device = dist.initialize_mesh_device(mesh_param, ("data_parallel", "sequence_parallel"))
     #if config file has sequence parallelize and data parallelize, then use them to initialize mesh device
     elif config is not None:
-        if "sequence_parallel_size" in config and "data_parallel_size" in config:    
+        if "sequence_parallel_size" in config and "data_parallel_size" in config:
             logger.info(f"config to Initialize mesh device: {config}")
             mesh_device = dist.initialize_mesh_device((config["data_parallel_size"], config["sequence_parallel_size"]), \
             ("data_parallel", "sequence_parallel"))
