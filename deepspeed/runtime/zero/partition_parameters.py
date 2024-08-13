@@ -447,6 +447,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     # since skip_init won't involve any computations or weight adjustments, we can directly utilize post_init
                     self._post_init_method(_module)
                     return _module
+
                 wrapper._ds_has_wrapped = True
                 return wrapper
 
@@ -520,6 +521,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 print_rank_0(f'After initializing followed by post init for {module.__class__.__name__}', force=False)
                 if init_on_meta:
                     self.skip_init_depth -= 1
+
             wrapper._ds_has_wrapped = True
             return wrapper
 
