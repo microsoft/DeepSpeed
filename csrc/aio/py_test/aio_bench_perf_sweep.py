@@ -38,10 +38,11 @@ class SweepConfig(object):
         self.write = not args.no_write
         self.flush_cache = not args.no_sudo
         self.log_dir = args.log_dir
+        self.other_options = f'{OTHER_OPTIONS} --loops {args.loops} --io_size {args.io_size}'
         if args.gpu:
-            self.other_options = f'{OTHER_OPTIONS} --loops {args.loops} --io_size {args.io_size} --gpu'
-        else:
-            self.other_options = f'{OTHER_OPTIONS} --loops {args.loops} --io_size {args.io_size}'
+            self.other_options += ' --gpu'
+        if args.gds:
+            self.other_options += ' --use_gds'
 
 
 def parse_arguments():
@@ -64,6 +65,8 @@ def parse_arguments():
                         help='Number of I/O bytes to read/write for performance measurements.')
 
     parser.add_argument('--gpu', action='store_true', help='Test tensor transfers between GPU device and NVME device.')
+
+    parser.add_argument('--gds', action='store_true', help='Run the sweep over NVIDIA GPUDirectStorage operator')
 
     parser.add_argument(
         '--no_sudo',

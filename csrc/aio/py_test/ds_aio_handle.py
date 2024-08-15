@@ -44,7 +44,7 @@ def pre_handle(args, tid, read_op):
     io_parallel = args.io_parallel if args.io_parallel else 1
     if gds:
         handle = GDSBuilder().load().gds_handle(args.block_size, args.queue_depth, args.single_submit,not args.sequential_requests, io_parallel)
-        handle.new_device_locked_tensor(buffer)
+        handle.pin_device_tensor(buffer)
     else:
         handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,
                                                     not args.sequential_requests, io_parallel)
@@ -79,7 +79,7 @@ def post_handle(pool_params):
     for buf in [BUFFER, BOUNCE_BUFFER]:
         if ctxt[buf] is not None:
             if ctxt['gds']:
-                ctxt['handle'].free_device_locked_tensor(ctxt[buf])
+                ctxt['handle'].unpin_device_tensor(ctxt[buf])
             ctxt[buf].detach()
             ctxt[buf] = None
     return ctxt
