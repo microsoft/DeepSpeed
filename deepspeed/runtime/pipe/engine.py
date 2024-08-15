@@ -42,6 +42,7 @@ PIPE_SEND_GRAD_TIMER = 'pipe_send_grad'
 PIPE_RECV_INPUT_TIMER = 'pipe_recv_input'
 PIPE_RECV_GRAD_TIMER = 'pipe_recv_grad'
 
+# The buffer size to store the meta data for each tensor.
 TENSOR_META_SIZE = 256
 
 
@@ -937,7 +938,7 @@ class PipelineEngine(DeepSpeedEngine):
         meta_buffer = torch.empty(TENSOR_META_SIZE, dtype=torch.int32, device=self.device)
         if isinstance(buffer, torch.Tensor):
             meta_buf_list = [
-                0,  # type of data (0: tensor, 1: list, 2: tuple)
+                0,  # type of data (0: tensor, 1: list (unused), 2: tuple)
                 self.DTYPE_TO_ID[buffer.dtype],  # dtype
                 len(buffer.size())  # ndims
             ]
@@ -950,7 +951,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         elif isinstance(buffer, tuple):
             meta_buf_list = [
-                2,  # type of data (0: tensor, 1: list, 2: tuple)
+                2,  # type of data (0: tensor, 1: list (unused), 2: tuple)
                 len(buffer)  # num_tensors
             ]
 
@@ -993,7 +994,7 @@ class PipelineEngine(DeepSpeedEngine):
             recv_shape = buffer[3:3 + recv_ndims].tolist()
             return self._allocate_or_extend_buffers(0, recv_shape, recv_dtype)
 
-        # List or tuple of tensors
+        # List or tuple of tensors (recv_type == 1 (list) is currently unused)
         elif recv_type == 1 or recv_type == 2:
             num_tensors = buffer[1].item()
 
@@ -1276,17 +1277,6 @@ class PipelineEngine(DeepSpeedEngine):
             num_buffers = self.num_pipe_buffers
         for count in range(num_buffers):
             buffers.append(self._allocate_zeros(shape, **kwargs))
-        return buffers
-
-    def _allocate_buffers(self, shapes_and_dtypes, requires_grad=False, num_buffers=-1):
-        buffers = []
-        if num_buffers == -1:
-            num_buffers = self.num_pipe_buffers
-        for count in range(num_buffers):
-            buffer = []
-            for shape, dtype in shapes_and_dtypes:
-                buffer.append(self._allocate_zeros(shape, dtype=dtype, requires_grad=requires_grad))
-            buffers.append(buffer)
         return buffers
 
     def _allocate_or_extend_buffers(self, idx, shape, dtype):
