@@ -25,10 +25,10 @@ struct deepspeed_io_handle_t {
     std::unique_ptr<struct deepspeed_pin_tensor_t> _pinned_tensor_mgr;
 
     deepspeed_io_handle_t(const int block_size,
-                           const int queue_depth,
-                           const bool single_submit,
-                           const bool overlap_events,
-                           const int num_threads);
+                          const int queue_depth,
+                          const bool single_submit,
+                          const bool overlap_events,
+                          const int num_threads);
 
     virtual ~deepspeed_io_handle_t() = 0;
 
