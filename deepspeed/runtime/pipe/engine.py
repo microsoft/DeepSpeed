@@ -942,6 +942,9 @@ class PipelineEngine(DeepSpeedEngine):
                 len(buffer.size())  # ndims
             ]
             meta_buf_list.extend(buffer.size())
+            assert len(
+                meta_buf_list
+            ) <= TENSOR_META_SIZE, f"Buffer for metadata is too small. Current buffer size: {TENSOR_META_SIZE} but required {len(meta_buf_list)}"
             meta_buffer[:len(meta_buf_list)].copy_(torch.tensor(meta_buf_list, dtype=torch.int32))
             p2p.send(meta_buffer, recv_stage)
 
@@ -957,6 +960,9 @@ class PipelineEngine(DeepSpeedEngine):
                 meta_buf_list.append(len(tensor.size()))
                 meta_buf_list.extend(tensor.size())
 
+            assert len(
+                meta_buf_list
+            ) <= TENSOR_META_SIZE, f"Buffer for metadata is too small. Current buffer size: {TENSOR_META_SIZE} but required {len(meta_buf_list)}"
             meta_buffer[:len(meta_buf_list)].copy_(torch.tensor(meta_buf_list, dtype=torch.int32))
             p2p.send(meta_buffer, recv_stage)
 
