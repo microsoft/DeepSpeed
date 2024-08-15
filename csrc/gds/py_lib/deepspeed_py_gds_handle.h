@@ -9,9 +9,9 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 
 #include <condition_variable>
 #include <memory>
-#include "deepspeed_py_aio_handle.h"
+#include "deepspeed_py_io_handle.h"
 
-struct deepspeed_gds_handle_t : deepspeed_aio_handle_t {
+struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
     deepspeed_gds_handle_t(const int block_size,
                            const int queue_depth,
                            const bool single_submit,
@@ -38,7 +38,6 @@ struct deepspeed_gds_handle_t : deepspeed_aio_handle_t {
                                                             const int fd,
                                                             const char* filename,
                                                             const long long int file_num_bytes,
-                                                            const int num_threads,
                                                             const bool validate);
 
     static int s_cuFile_init;

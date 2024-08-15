@@ -22,11 +22,12 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
 
     def lib_sources(self):
         src_list = [
-            'csrc/aio/py_lib/deepspeed_py_aio.cpp', 'csrc/aio/py_lib/deepspeed_py_aio_handle.cpp',
-            'csrc/aio/py_lib/deepspeed_aio_thread.cpp', 'csrc/aio/common/deepspeed_aio_utils.cpp',
-            'csrc/aio/common/deepspeed_aio_common.cpp', 'csrc/aio/common/deepspeed_aio_types.cpp',
-            'csrc/aio/py_lib/deepspeed_cpu_op.cpp', 'csrc/aio/py_lib/deepspeed_aio_op_desc.cpp',
-            'csrc/aio/py_lib/deepspeed_py_copy.cpp', 'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
+            'csrc/aio/py_lib/deepspeed_py_io_handle.cpp', 'csrc/aio/py_lib/deepspeed_py_aio.cpp',
+            'csrc/aio/py_lib/deepspeed_py_aio_handle.cpp', 'csrc/aio/py_lib/deepspeed_aio_thread.cpp',
+            'csrc/aio/common/deepspeed_aio_utils.cpp', 'csrc/aio/common/deepspeed_aio_common.cpp',
+            'csrc/aio/common/deepspeed_aio_types.cpp', 'csrc/aio/py_lib/deepspeed_cpu_op.cpp',
+            'csrc/aio/py_lib/deepspeed_aio_op_desc.cpp', 'csrc/aio/py_lib/deepspeed_py_copy.cpp',
+            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
         ]
         return src_list
 
@@ -90,7 +91,7 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
         # which is a function provided by libaio that is used in the async_io op.
         # If needed, one can define -I and -L entries in CFLAGS and LDFLAGS
         # respectively to specify the directories for libaio.h and libaio.so.
-        aio_compatible = self.has_function('io_pgetevents', ('aio', ))
+        aio_compatible = self.has_function('io_submit', ('aio', ))
         if verbose and not aio_compatible:
             self.warning(f"{self.NAME} requires the dev libaio .so object and headers but these were not found.")
 
