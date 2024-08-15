@@ -103,13 +103,12 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_gds_handle_t::_create_io_op_desc(
     const int fd,
     const char* filename,
     const long long int file_num_bytes,
-    const int num_threads,
     const bool validate)
 {
     if (buffer.is_cuda()) {
         return std::make_shared<gds_op_desc_t>(
-            read_op, buffer, fd, filename, file_num_bytes, num_threads, validate);
+            read_op, buffer, fd, filename, file_num_bytes, _num_threads, validate);
     }
     return deepspeed_aio_handle_t::_create_io_op_desc(
-        read_op, buffer, fd, filename, file_num_bytes, num_threads, validate);
+        read_op, buffer, fd, filename, file_num_bytes, validate);
 }

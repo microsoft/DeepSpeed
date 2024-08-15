@@ -207,11 +207,10 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_aio_handle_t::_create_io_op_desc(
     const int fd,
     const char* filename,
     const long long int file_num_bytes,
-    const int num_threads,
     const bool validate)
 {
     return std::make_shared<cpu_op_desc_t>(
-        read_op, buffer, fd, filename, file_num_bytes, num_threads, validate);
+        read_op, buffer, fd, filename, file_num_bytes, _num_threads, validate);
 }
 
 int deepspeed_aio_handle_t::pread(const torch::Tensor& buffer,
@@ -238,8 +237,7 @@ int deepspeed_aio_handle_t::pread(const torch::Tensor& buffer,
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
 
-    auto scheduled_op =
-        _create_io_op_desc(true, buffer, fd, filename, num_file_bytes, _num_threads, validate);
+    auto scheduled_op = _create_io_op_desc(true, buffer, fd, filename, num_file_bytes, validate);
 
     _schedule_aio_work(scheduled_op);
 
@@ -261,8 +259,7 @@ int deepspeed_aio_handle_t::pwrite(const torch::Tensor& buffer,
     const auto fd = open_file(filename, false);
     if (fd == -1) { return -1; }
 
-    auto scheduled_op =
-        _create_io_op_desc(false, buffer, fd, filename, num_write_bytes, _num_threads, validate);
+    auto scheduled_op = _create_io_op_desc(false, buffer, fd, filename, num_write_bytes, validate);
 
     _schedule_aio_work(scheduled_op);
 

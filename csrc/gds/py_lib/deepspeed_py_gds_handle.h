@@ -38,7 +38,6 @@ struct deepspeed_gds_handle_t : deepspeed_aio_handle_t {
                                                             const int fd,
                                                             const char* filename,
                                                             const long long int file_num_bytes,
-                                                            const int num_threads,
                                                             const bool validate);
 
     static int s_cuFile_init;
