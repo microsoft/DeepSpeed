@@ -945,18 +945,6 @@ class PipelineEngine(DeepSpeedEngine):
             meta_buffer[:len(meta_buf_list)].copy_(torch.tensor(meta_buf_list, dtype=torch.int32))
             p2p.send(meta_buffer, recv_stage)
 
-        elif isinstance(buffer, list):
-            assert (False)
-            type_tensor = torch.LongTensor(data=[1]).to(self.device)
-            p2p.send(type_tensor, recv_stage)
-            count_tensor = torch.LongTensor(data=[len(buffer)]).to(self.device)
-            p2p.send(count_tensor, recv_stage)
-            for tensor in buffer:
-                assert isinstance(tensor, torch.Tensor)
-                send_shape = torch.LongTensor(data=tensor.size()).to(self.device)
-                send_ndims = torch.LongTensor(data=[len(tensor.size())]).to(self.device)
-                p2p.send(send_ndims, recv_stage)
-                p2p.send(send_shape, recv_stage)
         elif isinstance(buffer, tuple):
             meta_buf_list = [
                 2,  # type of data (0: tensor, 1: list, 2: tuple)
