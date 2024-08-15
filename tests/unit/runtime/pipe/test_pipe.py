@@ -15,7 +15,7 @@ from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule
 from unit.alexnet_model import AlexNetPipe, train_cifar
 from unit.common import DistributedTest
-from unit.util import skip_on_arch
+from unit.util import skip_on_arch, no_child_process_in_deepspeed_io
 
 PipeTopo = PipeDataParallelTopology
 
@@ -237,18 +237,11 @@ class TestPipeDynamicShape(DistributedTest):
 
         config_dict["train_batch_size"] = batch_size
 
-        old_method = deepspeed.runtime.engine.DeepSpeedEngine.deepspeed_io
-
-        def new_method(*args, **kwargs):
-            kwargs["num_local_io_workers"] = 0
-            return old_method(*args, **kwargs)
-
-        deepspeed.runtime.engine.DeepSpeedEngine.deepspeed_io = new_method
-
-        engine, _, _, _ = deepspeed.initialize(config=config_dict,
-                                               model=model,
-                                               model_parameters=[p for p in model.parameters()],
-                                               training_data=dataset)
+        with no_child_process_in_deepspeed_io():
+            engine, _, _, _ = deepspeed.initialize(config=config_dict,
+                                                   model=model,
+                                                   model_parameters=[p for p in model.parameters()],
+                                                   training_data=dataset)
 
         for _ in range(n_iter):
             _ = engine.train_batch()
