@@ -746,15 +746,10 @@ class CUDAOpBuilder(OpBuilder):
             )
 
     def cxx_args(self):
-        TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[0:2])
-        if TORCH_MAJOR >= 2 and TORCH_MINOR >= 1:
-            CPP_STD = '-std=c++17'
-        else:
-            CPP_STD = '-std=c++14'
         if sys.platform == "win32":
             return ['-O2']
         else:
-            return ['-O3', CPP_STD, '-g', '-Wno-reorder']
+            return ['-O3', '-std=c++17', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
         if self.build_for_cpu:
