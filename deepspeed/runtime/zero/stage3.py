@@ -489,9 +489,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__ipg_bucket_flat_buffer: Tensor = torch.empty(self.reduce_bucket_size,
                                                                 dtype=self.dtype,
                                                                 device=get_accelerator().current_device_name())
-            print(
-                f"init contiguous gradients{self.contiguous_gradients} __ipg_bucket_flat_buffer?={hasattr(self, '_DeepSpeedZeroOptimizer_Stage3__ipg_bucket_flat_buffer')}"
-            )
 
         self.grad_partitions_flat_buffer = None
         self.__param_id_to_grad_partition: Dict[int, Tensor] = {}
@@ -697,16 +694,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 for param in sub_group:
                     parameter_partitions.append(param.ds_tensor)
 
-            # Store contiguous buffer for low precision parameters.
-            # Needs to be an instance attribute to be evicted to host memory.
-            self.lp_param_buffer = __class__.defragment(parameter_partitions)
+            device_buffer = __class__.defragment(parameter_partitions)
 
             # setup flat buffers per subgroup, these are each just sections of the
             # contiguous flat buffer for all parameters that we created earlier
             offset = 0
             for sub_group in self.fp16_groups:
                 sub_group_numel = sum(param.partition_numel() for param in sub_group)
-                self.fp16_partitioned_groups_flat.append(self.lp_param_buffer.narrow(0, offset, sub_group_numel))
+                self.fp16_partitioned_groups_flat.append(device_buffer.narrow(0, offset, sub_group_numel))
                 offset += sub_group_numel
         else:  # partitioned params offloaded to CPU when not in use
             # create a flat CPU memory allocation for each param group
@@ -2777,13 +2772,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         # LP param
         if needs_offload(OffloadStateTypeEnum.lp_params):
-            if hasattr(self, "lp_param_buffer"):
-                self.lp_param_buffer.data = self.lp_param_buffer.data.to(device)
-                for p in self.fp16_partitioned_groups_flat:
-                    p.data = p.data.to(device)
-                for p in self.module.parameters():
-                    p.ds_tensor.data = p.ds_tensor.data.to(device)
-                self.offloaded_states.add(OffloadStateTypeEnum.lp_params)
+            for p in self.fp16_partitioned_groups_flat:
+                p.data = p.data.to(device)
+            for p in self.module.parameters():
+                p.ds_tensor.data = p.ds_tensor.data.to(device)
+            self.offloaded_states.add(OffloadStateTypeEnum.lp_params)
 
         # LP grad
         if needs_offload(OffloadStateTypeEnum.lp_grads):
@@ -2821,8 +2814,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.offloaded_states.remove(OffloadStateTypeEnum.hp_params)
 
         # LP Param
-        if OffloadStateTypeEnum.lp_params in self.offloaded_states and hasattr(self, "lp_param_buffer"):
-            self.lp_param_buffer.data = self.lp_param_buffer.data.to(device)
+        if OffloadStateTypeEnum.lp_params in self.offloaded_states:
+            # self.lp_param_buffer.data = self.lp_param_buffer.data.to(device)
             for p in self.fp16_partitioned_groups_flat:
                 p.data = p.data.to(device)
             for p in self.module.parameters():
