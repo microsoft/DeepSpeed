@@ -106,7 +106,7 @@ def parse_arguments():
                         nargs='+',
                         help='Specification of mapping of folder to (gpu) device id, (ignored for cpu accesses).'
                         'Can be specified multiple times for multi-process runs,'
-                        'e.g. --path_map /mnt/nvme0:0 --path_map /mnt/nvme1:15 --gpu'
+                        'e.g. --folder_to_device_mapping /mnt/nvme0:0 --folder_to_device_mapping /mnt/nvme1:15 --gpu'
                         'means access /mnt/nvme0 with gpu 0 and /mnt/nvme1 with gpu 15')
 
     parser.add_argument('--io_size', type=str, default=None, required=True, help='Number of bytes to read or write.')

@@ -20,11 +20,11 @@ from deepspeed.ops.op_builder import AsyncIOBuilder
 OTHER_OPTIONS = '--handle'
 PERF_SCRIPT = 'test_ds_aio.py'
 DEFAULT_SWEEP_CONFIG = {
-    "block_size": ["128K", "256K"],
-    "queue_depth": [4, 16, 32],
+    "block_size": ["128K", "1M"],
+    "queue_depth": [32, 64, 128],
     "sequential_requests": [True, False],
     "single_submit": [False],
-    "io_parallel": [2, 8]
+    "io_parallel": [1, 2, 8],
 }
 
 
@@ -95,8 +95,9 @@ def dump_cmd_lines(cmd_lines):
 
 
 def get_ftd_map(nvme_dir_list):
-    dir_list = [' '.join(nvme_dir_list[:(i + 1)]) for i in range(len(nvme_dir_list))]
-    return {'folder_to_device_mapping': dir_list}
+    ftd_list = [f'{dir}:{dev}' for dev, dir in enumerate(nvme_dir_list)]
+    ftd_arg = [' '.join(ftd for ftd in ftd_list)]
+    return {'folder_to_device_mapping': ftd_arg}
 
 
 def get_sweep_config_dict(sweep_config_json):
