@@ -23,7 +23,7 @@ jobs:
   unit-tests:
     runs-on: ubuntu-22.04
     container:
-      image: deepspeed/gh-builder:ubuntu1804-py38-torch1131-cu116
+      image: pytorch/pytorch:2.4.0-cuda11.8-cudnn9-runtime
 
     steps:
         - uses: actions/checkout@v4
