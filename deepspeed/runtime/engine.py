@@ -3679,7 +3679,8 @@ class DeepSpeedEngine(Module):
         """Move the ZeRO optimizer buffers to the specified device.
 
         Arguments:
-            device: Required. The device to move the ZeRO optimizer buffers to.
+            include: Optional. The set of states to offload. If not provided, all states are offloaded.
+            device: Optional. The device to move the ZeRO optimizer buffers to.
         """
         assert self.zero_optimization_stage(
         ) == ZeroStageEnum.weights, "Moving buffers across devices is supported only for ZeRO stage 3."
