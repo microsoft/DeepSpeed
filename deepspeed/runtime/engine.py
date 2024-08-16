@@ -18,7 +18,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from typing import Callable, Dict, Union, Iterable, Set
+from typing import Callable, Dict, Union, Iterable, Container
 
 import deepspeed
 
@@ -3674,7 +3674,7 @@ class DeepSpeedEngine(Module):
         return self._is_compiled
 
     def offload_states(self,
-                       include: Set[OffloadStateTypeEnum] = None,
+                       include: Container[OffloadStateTypeEnum] = None,
                        device: OffloadDeviceEnum = OffloadDeviceEnum.cpu) -> None:
         """Move the ZeRO optimizer buffers to the specified device.
 

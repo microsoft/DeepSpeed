@@ -69,5 +69,5 @@ class TestOffloadStates(DistributedTest):
 
         model = SimpleModel(hidden_dim)
 
-        include = None if included_state is None else set([included_state])
+        include = None if included_state is None else [included_state]
         run_model(model, config_dict, hidden_dim, torch.bfloat16, include)

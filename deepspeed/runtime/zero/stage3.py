@@ -7,7 +7,7 @@ import sys
 import gc
 import collections
 import itertools
-from typing import Deque, Dict, Set, Tuple
+from typing import Deque, Dict, Set, Tuple, Container
 from deepspeed import comm as dist
 from deepspeed.utils import groups, z3_leaf_parameter
 
@@ -2752,7 +2752,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.parameter_offload.empty_partition_cache()
 
     def offload_states(self,
-                       include: Set[OffloadStateTypeEnum] = None,
+                       include: Container[OffloadStateTypeEnum] = None,
                        device: OffloadDeviceEnum = OffloadDeviceEnum.cpu):
         device = device.value
 
