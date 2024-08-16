@@ -6,19 +6,20 @@
 import sys
 import gc
 import collections
-from typing import Deque, Dict, Tuple
+import itertools
+from typing import Deque, Dict, Set, Tuple
 from deepspeed import comm as dist
-from deepspeed.utils import groups
+from deepspeed.utils import groups, z3_leaf_parameter
 
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced, all_to_all_quant_reduce
-from deepspeed.runtime.utils import inf, is_model_parallel_parameter, get_only_unique_item
+from deepspeed.runtime.utils import inf, is_model_parallel_parameter, get_only_unique_item, adam_states_to
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.config import ZeroStageEnum
-from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.runtime.zero.utils import apply_to_tensors_only
 from deepspeed.ops.adam import DeepSpeedCPUAdam
@@ -28,7 +29,6 @@ from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import Partitio
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE, LOSS_SCALER
 from deepspeed.accelerator import get_accelerator
-from deepspeed.utils import z3_leaf_parameter
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -393,6 +393,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self._link_all_hp_params()
 
+        self.offloaded_states: Set(OffloadDeviceEnum) = set()
+
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
@@ -489,6 +491,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__ipg_bucket_flat_buffer: Tensor = torch.empty(self.reduce_bucket_size,
                                                                 dtype=self.dtype,
                                                                 device=get_accelerator().current_device_name())
+            print(
+                f"init contiguous gradients{self.contiguous_gradients} __ipg_bucket_flat_buffer?={hasattr(self, '_DeepSpeedZeroOptimizer_Stage3__ipg_bucket_flat_buffer')}"
+            )
 
         self.grad_partitions_flat_buffer = None
         self.__param_id_to_grad_partition: Dict[int, Tensor] = {}
@@ -693,14 +698,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             for sub_group in self.fp16_groups:
                 for param in sub_group:
                     parameter_partitions.append(param.ds_tensor)
-            device_buffer = __class__.defragment(parameter_partitions)
+
+            # Store contiguous buffer for low precision parameters.
+            # Needs to be an instance attribute to be evicted to host memory.
+            self.lp_param_buffer = __class__.defragment(parameter_partitions)
 
             # setup flat buffers per subgroup, these are each just sections of the
             # contiguous flat buffer for all parameters that we created earlier
             offset = 0
             for sub_group in self.fp16_groups:
                 sub_group_numel = sum(param.partition_numel() for param in sub_group)
-                self.fp16_partitioned_groups_flat.append(device_buffer.narrow(0, offset, sub_group_numel))
+                self.fp16_partitioned_groups_flat.append(self.lp_param_buffer.narrow(0, offset, sub_group_numel))
                 offset += sub_group_numel
         else:  # partitioned params offloaded to CPU when not in use
             # create a flat CPU memory allocation for each param group
@@ -2748,6 +2756,103 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def empty_partition_cache(self):
         self.parameter_offload.empty_partition_cache()
+
+    def offload_states(self,
+                       include: Set[OffloadStateTypeEnum] = None,
+                       device: OffloadDeviceEnum = OffloadDeviceEnum.cpu):
+        device = device.value
+
+        self.empty_partition_cache()
+
+        assert self.optimizer.__class__ == deepspeed.ops.adam.fused_adam.FusedAdam, f"Offloading is supported only for DeepSpeed FusedAdam."
+
+        def needs_offload(target):
+            # return True
+            return target not in self.offloaded_states and (include == None or target in include)
+
+        # HP param
+        if needs_offload(OffloadStateTypeEnum.hp_params):
+            for buf in self.fp32_partitioned_groups_flat:
+                buf.data = buf.data.to(device)
+            self.offloaded_states.add(OffloadStateTypeEnum.hp_params)
+
+        # LP param
+        if needs_offload(OffloadStateTypeEnum.lp_params):
+            if hasattr(self, "lp_param_buffer"):
+                self.lp_param_buffer.data = self.lp_param_buffer.data.to(device)
+                for p in self.fp16_partitioned_groups_flat:
+                    p.data = p.data.to(device)
+                for p in self.module.parameters():
+                    p.ds_tensor.data = p.ds_tensor.data.to(device)
+                self.offloaded_states.add(OffloadStateTypeEnum.lp_params)
+
+        # LP grad
+        if needs_offload(OffloadStateTypeEnum.lp_grads):
+            self.grad_partitions_flat_buffer.data = self.grad_partitions_flat_buffer.data.to(device)
+            self.averaged_gradients = {}
+
+            for _, g in self.__param_id_to_grad_partition.items():
+                g.data = g.data.to(device)
+            self.__param_id_to_grad_partition = {}
+
+            self.offloaded_states.add(OffloadStateTypeEnum.lp_grads)
+
+        # contiguous bucket
+        if needs_offload(OffloadStateTypeEnum.contiguous_grad_buffer):
+            if hasattr(self, "_DeepSpeedZeroOptimizer_Stage3__ipg_bucket_flat_buffer"):
+                self.__ipg_bucket_flat_buffer.data = self.__ipg_bucket_flat_buffer.data.to(device)
+                self.offloaded_states.add(OffloadStateTypeEnum.contiguous_grad_buffer)
+
+        # Adam
+        if needs_offload(OffloadStateTypeEnum.opt_states):
+            adam_states_to(self.optimizer, device)
+            self.offloaded_states.add(OffloadStateTypeEnum.opt_states)
+
+        gc.collect()
+        get_accelerator().empty_cache()
+
+    def offload_states_back(self):
+
+        device = get_accelerator().current_device_name()
+
+        # HP param
+        if OffloadStateTypeEnum.hp_params in self.offloaded_states:
+            for buf in self.fp32_partitioned_groups_flat:
+                buf.data = buf.data.to(device)
+            self.offloaded_states.remove(OffloadStateTypeEnum.hp_params)
+
+        # LP Param
+        if OffloadStateTypeEnum.lp_params in self.offloaded_states and hasattr(self, "lp_param_buffer"):
+            self.lp_param_buffer.data = self.lp_param_buffer.data.to(device)
+            for p in self.fp16_partitioned_groups_flat:
+                p.data = p.data.to(device)
+            for p in self.module.parameters():
+                p.ds_tensor.data = p.ds_tensor.data.to(device)
+            self.offloaded_states.remove(OffloadStateTypeEnum.lp_params)
+
+        # LP grad
+        if OffloadStateTypeEnum.lp_grads in self.offloaded_states:
+            self.grad_partitions_flat_buffer.data = self.grad_partitions_flat_buffer.data.to(device)
+            self.averaged_gradients = {}
+
+            offset = 0
+            all_params = list(itertools.chain.from_iterable(self.fp16_groups))
+            for param in all_params:
+                self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
+                    0, offset, param.partition_numel())
+                offset += param.partition_numel()
+
+            self.offloaded_states.remove(OffloadStateTypeEnum.lp_grads)
+
+        # contiguous bucket
+        if OffloadStateTypeEnum.contiguous_grad_buffer in self.offloaded_states:
+            self.__ipg_bucket_flat_buffer.data = self.__ipg_bucket_flat_buffer.data.to(device)
+            self.offloaded_states.remove(OffloadStateTypeEnum.contiguous_grad_buffer)
+
+        # Adam
+        if OffloadStateTypeEnum.opt_states in self.offloaded_states:
+            adam_states_to(self.optimizer, device)
+            self.offloaded_states.remove(OffloadStateTypeEnum.opt_states)
 
 
 def _handle_overflow(cpu_sum, x, i):

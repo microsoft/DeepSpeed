@@ -18,13 +18,13 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from typing import Callable, Dict, Union, Iterable
+from typing import Callable, Dict, Union, Iterable, Set
 
 import deepspeed
 
 from deepspeed import comm as dist
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
-from .zero.offload_config import OffloadDeviceEnum
+from .zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
@@ -3672,3 +3672,30 @@ class DeepSpeedEngine(Module):
     @property
     def is_compiled(self) -> bool:
         return self._is_compiled
+
+    def offload_states(self,
+                       include: Set[OffloadStateTypeEnum] = None,
+                       device: OffloadDeviceEnum = OffloadDeviceEnum.cpu) -> None:
+        """Move the ZeRO optimizer buffers to the specified device.
+
+        Arguments:
+            device: Required. The device to move the ZeRO optimizer buffers to.
+        """
+        assert self.zero_optimization_stage(
+        ) == ZeroStageEnum.weights, "Moving buffers across devices is supported only for ZeRO stage 3."
+
+        if device == OffloadDeviceEnum.none:
+            logger.warning("No device specified for offloading states.")
+            return
+
+        if device == OffloadDeviceEnum.nvme:
+            raise ValueError("NVMe offload is not supported for offloading states.")
+
+        self.optimizer.offload_states(include=include, device=device)
+
+    def offload_states_back(self) -> None:
+        """Move the ZeRO optimizer buffers back to the original device.
+        """
+        assert self.zero_optimization_stage(
+        ) == ZeroStageEnum.weights, "Moving buffers back is supported only for ZeRO stage 3."
+        self.optimizer.offload_states_back()

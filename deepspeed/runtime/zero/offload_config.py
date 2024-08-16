@@ -95,3 +95,12 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
 
     ratio: float = Field(1.0, ge=0.0, le=1.0)
     """ Percentage of offloaded optimizer states to CPU Adam. Only valid with ZeRO Stage 3."""
+
+
+class OffloadStateTypeEnum(str, Enum):
+    """ Enum for internal buffer types """
+    opt_states = "opt_states"
+    hp_params = "hp_params"
+    lp_params = "lp_params"
+    lp_grads = "lp_grads"
+    contiguous_grad_buffer = "contiguous_grad_buffer"

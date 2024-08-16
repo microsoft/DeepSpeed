@@ -1065,3 +1065,12 @@ def get_norm_with_moe_layers(non_expert_norm, mpu, expert_tensors, norm_type=2):
             total_norm = -1
 
     return total_norm
+
+
+def adam_states_to(optimizer, device):
+    """Move optimizer states to device. Note that this assumes the state structure of DeepSpeed Adam."""
+    for _, state in optimizer.state.items():
+        if "exp_avg" in state:
+            state["exp_avg"] = state["exp_avg"].to(device)
+        if "exp_avg_sq" in state:
+            state["exp_avg_sq"] = state["exp_avg_sq"].to(device)
