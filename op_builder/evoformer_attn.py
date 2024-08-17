@@ -41,7 +41,7 @@ class EvoformerAttnBuilder(CUDAOpBuilder):
         args.append(f"-DGPU_ARCH={major}{minor}")
         return args
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         try:
             import torch
         except ImportError:

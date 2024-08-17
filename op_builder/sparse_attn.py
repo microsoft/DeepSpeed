@@ -27,7 +27,7 @@ class SparseAttnBuilder(OpBuilder):
     def cxx_args(self):
         return ['-O2', '-fopenmp']
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         # Check to see if llvm and cmake are installed since they are dependencies
         #required_commands = ['llvm-config|llvm-config-9', 'cmake']
         #command_status = list(map(self.command_exists, required_commands))

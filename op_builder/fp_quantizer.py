@@ -22,7 +22,7 @@ class FPQuantizerBuilder(CUDAOpBuilder):
     def absolute_name(self):
         return f'deepspeed.ops.fp_quantizer.{self.NAME}_op'
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         try:
             import torch
         except ImportError:
