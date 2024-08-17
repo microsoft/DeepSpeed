@@ -42,9 +42,8 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return True
 
     def device_name(self, device_index=None):
-        if device_index is None:
-            return 'hpu'
-        return 'hpu:{}'.format(device_index)
+        # ignoring device_index.
+        return 'hpu'
 
     def device(self, device_index=None):
         return torch.device(self.device_name(device_index))
@@ -298,7 +297,11 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return []
 
     def visible_devices_envs(self):
-        return ['HABANA_VISIBLE_MODULES']
+        # Current way deepspeed set this env var is not applicable with all HPU instances
+        # User has to follow instructions in:
+        # https://docs.habana.ai/en/latest/PyTorch/Reference/PT_Multiple_Tenants_on_HPU/Multiple_Workloads_Single_Docker.html
+        # keeping CUDA_VISIBLE_DEVICES
+        return ['CUDA_VISIBLE_DEVICES']  #['HABANA_VISIBLE_MODULES']
 
     def set_visible_devices_envs(self, current_env, local_accelerator_ids):
         for env in self.visible_devices_envs():
