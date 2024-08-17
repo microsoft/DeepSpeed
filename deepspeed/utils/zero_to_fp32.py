@@ -95,7 +95,7 @@ def get_model_state_files(checkpoint_dir):
 def parse_model_states(files):
     zero_model_states = []
     for file in files:
-        state_dict = torch.load(file, map_location=device)
+        state_dict = torch.load(file, weights_only=True, map_location=device)
 
         if BUFFER_NAMES not in state_dict:
             raise ValueError(f"{file} is not a model state checkpoint")
@@ -143,7 +143,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
     total_files = len(files)
     state_dicts = []
     for f in files:
-        state_dict = torch.load(f, map_location=device)
+        state_dict = torch.load(f, weights_only=True, map_location=device)
         # immediately discard the potentially huge 2 optimizer states as we only care for fp32 master weights
         # and also handle the case where it was already removed by another helper script
         state_dict["optimizer_state_dict"].pop("optimizer_state_dict", None)
@@ -524,7 +524,7 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_f
 def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_file, tag=None, exclude_frozen_parameters=False):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
-    loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
+    loaded with ``torch.load(file, weights_only=True)`` + ``load_state_dict()`` and used for training without DeepSpeed.
 
     Args:
         - ``checkpoint_dir``: path to the desired checkpoint folder. (one that contains the tag-folder, like ``global_step14``)

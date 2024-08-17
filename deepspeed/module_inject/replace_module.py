@@ -405,7 +405,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
 
             for i in range(len(checkpoint)):
-                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu')]
+                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), weights_only=True, map_location='cpu')]
                 load_model_with_checkpoint(replaced_module,
                                            sd,
                                            mp_replace,
@@ -427,7 +427,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     os.path.join(base_dir1, ckpt_list[ckpt_index + j]) if base_dir1 else ckpt_list[ckpt_index + j]
                     for j in range(sd_count)
                 ]
-                sds = [torch.load(ckpt_file, map_location='cpu') for ckpt_file in ckpt_files]
+                sds = [torch.load(ckpt_file, weights_only=True, map_location='cpu') for ckpt_file in ckpt_files]
                 load_model_with_checkpoint(replaced_module,
                                            sds,
                                            mp_replace,
@@ -447,7 +447,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     pbar.update(1)
                     ckpt_file = os.path.join(base_dir1,
                                              checkpoint["non_tp"][i]) if base_dir1 else checkpoint["non_tp"][i]
-                    sds = [torch.load(ckpt_file, map_location='cpu')]
+                    sds = [torch.load(ckpt_file, weights_only=True, map_location='cpu')]
                     load_model_with_checkpoint(replaced_module,
                                                sds,
                                                mp_replace,
@@ -613,7 +613,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
             from safetensors.torch import load_file
             sd = load_file(checkpoint)
         else:
-            sd = torch.load(checkpoint, map_location='cpu')
+            sd = torch.load(checkpoint, weights_only=True, map_location='cpu')
 
     policy = {}
     if orig_class is not None:

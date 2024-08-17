@@ -2165,7 +2165,7 @@ class GatheredParameters:
                 with deepspeed.zero.Init():
                     model = MyModel()
 
-                state_dict = torch.load(model_path, map_location="cpu")
+                state_dict = torch.load(model_path, weights_only=True, map_location="cpu")
 
                 def load(module: nn.Module, prefix=""):
                     # because zero3 puts placeholders in model params, this context
