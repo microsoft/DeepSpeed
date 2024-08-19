@@ -73,7 +73,8 @@ def move_to_cpu(tensor_list):
 @contextmanager
 def unwrap_model_for_generation(model):
     """
-    For ZeRO-3 models, we gather the weights once to speed up generation.
+    Conexted manager for ZeRO-3 models, we gather the weights once and remove the forward hooks
+    to speed up generation. The hooks are placed back after exit.
     """
     with GatheredParameters(model.parameters()):
         # Removes the optimizer hooks from a DeepSpeed ZeRO-3 model.
