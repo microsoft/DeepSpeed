@@ -45,7 +45,7 @@ Regardless of the installation choice, you can check that the installation was s
 </div>
 
 # Pretraining Examples
-We use an image classification model, CIFAR10, and a langugage model, BERT, to demonstrate pretraining on Windows with DeepSpeed.
+We use an image classification model, CIFAR10, and a language model, BERT, to demonstrate pretraining on Windows with DeepSpeed.
 
 ## Pretraining CIFAR10
 The scripts and codes required for CIFAR10 pretraining example are available in the following path: DeepSpeedExamples\training\cifar. You can launch the CIFAR10 pretraining experiment using the following command: `deepspeed cifar10_deepspeed.py –deepspeed`. The final output should look something like this:
