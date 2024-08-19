@@ -29,6 +29,7 @@ from deepspeed.runtime.utils import copy_to_device, move_to_device, see_memory_u
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers, FORWARD_GLOBAL_TIMER
 from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime import compiler
 
 # DeepSpeed Checkpointing Enabled or Disabled
 deepspeed_checkpointing_enabled = False
@@ -964,8 +965,9 @@ def non_reentrant_checkpoint(function, *args):
 
     with torch.autograd.graph.saved_tensors_hooks(checkpoint_pack, checkpoint_unpack):
         outputs = function(*inputs_cuda)
-    for leaf_tensor in leaf_tensors:
-        leaf_tensor.register_hook(after_backward_hook)
+    if PROFILE_TIME or SYNCHRONIZE:
+        for leaf_tensor in leaf_tensors:
+            leaf_tensor.register_hook(after_backward_hook)
 
     see_memory_usage("After running forward on the layer", force=False)
 
@@ -987,6 +989,7 @@ def non_reentrant_checkpoint(function, *args):
         return tuple(all_outputs)
 
 
+@compiler.disable  # WA from Pytorch repo for compile + zero 3 accuracy issue
 def checkpoint(function, *args):
     """Checkpoint a model or part of the model.
     This has been directly copied from torch.utils.checkpoint. """
