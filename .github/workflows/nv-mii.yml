@@ -61,7 +61,7 @@ jobs:
 
       - name: MII unit tests
         run: |
-          BRANCH="main"
+          BRANCH="mrwyattii/pydantic-2-support"
           if [[ ! -z "${{ github.event.inputs.mii_branch }}" ]]; then
               BRANCH="${{ github.event.inputs.mii_branch }}"
           fi
