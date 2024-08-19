@@ -22,7 +22,7 @@ title: "Latest News"
 
   <li>[2023/11] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/intel-inference/README.md">Llama 2 Inference on 4th Gen Intel® Xeon® Scalable Processor with DeepSpeed</a> [<a href="https://www.intel.com/content/www/us/en/developer/articles/technical/xllama-2-on-xeon-scalable-processor-with-deepspeed.html">Intel version</a>]</li>
 
-   <li>[2023/11] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-offloadpp/README.md">DeepSpeed ZeRO-Offload++: 6x Higher Training Throughput via Collaborative CPU/GPU Twin-Flow</a></li>
+  <li>[2023/11] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-offloadpp/README.md">DeepSpeed ZeRO-Offload++: 6x Higher Training Throughput via Collaborative CPU/GPU Twin-Flow</a></li>
 
   <li>[2023/11] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen">DeepSpeed-FastGen: High-throughput Text Generation for LLMs via MII and DeepSpeed-Inference</a> [<a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen/chinese/README.md">中文</a>] [<a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen/japanese/README.md">日本語</a>]</li>
 
