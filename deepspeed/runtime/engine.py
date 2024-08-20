@@ -3675,12 +3675,16 @@ class DeepSpeedEngine(Module):
 
     def offload_states(self,
                        include: Container[OffloadStateTypeEnum] = None,
-                       device: OffloadDeviceEnum = OffloadDeviceEnum.cpu) -> None:
+                       device: OffloadDeviceEnum = OffloadDeviceEnum.cpu,
+                       pin_memory: bool = True,
+                       non_blocking: bool = False) -> None:
         """Move the ZeRO optimizer buffers to the specified device.
 
         Arguments:
             include: Optional. The set of states to offload. If not provided, all states are offloaded.
             device: Optional. The device to move the ZeRO optimizer buffers to.
+            pin_memory: Optional. Whether to pin the memory of the offloaded states.
+            non_blocking: Optional. Whether to offload the states asynchronously.
         """
         assert self.zero_optimization_stage(
         ) == ZeroStageEnum.weights, "Moving buffers across devices is supported only for ZeRO stage 3."
@@ -3692,11 +3696,14 @@ class DeepSpeedEngine(Module):
         if device == OffloadDeviceEnum.nvme:
             raise ValueError("NVMe offload is not supported for offloading states.")
 
-        self.optimizer.offload_states(include=include, device=device)
+        self.optimizer.offload_states(include=include, device=device, pin_memory=pin_memory, non_blocking=non_blocking)
 
-    def offload_states_back(self) -> None:
+    def offload_states_back(self, non_blocking: bool = False) -> None:
         """Move the ZeRO optimizer buffers back to the original device.
+
+        Arguments:
+            non_blocking: Optional. Whether to offload the states asynchronously.
         """
         assert self.zero_optimization_stage(
         ) == ZeroStageEnum.weights, "Moving buffers back is supported only for ZeRO stage 3."
-        self.optimizer.offload_states_back()
+        self.optimizer.offload_states_back(non_blocking=non_blocking)

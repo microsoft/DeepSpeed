@@ -16,7 +16,7 @@ import deepspeed
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 
 
-def run_model(model, config_dict, hidden_dim, dtype, include):
+def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_blocking):
     model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
     data_loader = random_dataloader(model=model,
                                     total_samples=10,
@@ -30,7 +30,10 @@ def run_model(model, config_dict, hidden_dim, dtype, include):
         model.step()
 
         alloc_before_offload = get_accelerator().memory_allocated()
-        model.offload_states(include=include, device=OffloadDeviceEnum.cpu)
+        model.offload_states(include=include,
+                             device=OffloadDeviceEnum.cpu,
+                             pin_memory=pin_memory,
+                             non_blocking=non_blocking)
         alloc_after_offload = get_accelerator().memory_allocated()
         assert alloc_after_offload < alloc_before_offload, f"Allocated memory should decrease after offload"
         model.offload_states_back()
@@ -45,12 +48,13 @@ def run_model(model, config_dict, hidden_dim, dtype, include):
     OffloadStateTypeEnum.hp_params, OffloadStateTypeEnum.lp_params, OffloadStateTypeEnum.opt_states,
     OffloadStateTypeEnum.lp_grads, OffloadStateTypeEnum.contiguous_grad_buffer, None
 ])
+@pytest.mark.parametrize("pin_memory", [False, True])
+@pytest.mark.parametrize("non_blocking", [False, True])
 class TestOffloadStates(DistributedTest):
     # Need multiple gpus to test possible hanging
     world_size = 2
-    reuse_dist_env = True
 
-    def test_move_buffer(self, included_state):
+    def test_offload_states(self, included_state, pin_memory, non_blocking):
         hidden_dim = 1024
 
         config_dict = {
@@ -67,7 +71,8 @@ class TestOffloadStates(DistributedTest):
         }
         config_dict["bf16"] = {"enabled": True}
 
-        model = SimpleModel(hidden_dim)
+        with deepspeed.zero.Init(config_dict_or_path=config_dict):
+            model = SimpleModel(hidden_dim, nlayers=4)
 
         include = None if included_state is None else [included_state]
-        run_model(model, config_dict, hidden_dim, torch.bfloat16, include)
+        run_model(model, config_dict, hidden_dim, torch.bfloat16, include, pin_memory, non_blocking)
