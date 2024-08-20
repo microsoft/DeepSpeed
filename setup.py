@@ -18,6 +18,7 @@ build_win.bat
 The wheel will be located at: dist/*.whl
 """
 
+import pathlib
 import os
 import shutil
 import sys
@@ -38,6 +39,8 @@ except ImportError:
 from op_builder import get_default_compute_capabilities, OpBuilder
 from op_builder.all_ops import ALL_OPS, accelerator_name
 from op_builder.builder import installed_cuda_version
+
+from accelerator import get_accelerator
 
 # Fetch rocm state.
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -89,8 +92,12 @@ extras_require = {
     'triton': fetch_requirements('requirements/requirements-triton.txt'),
 }
 
+# Only install pynvml on nvidia gpus.
+if torch_available and get_accelerator().device_name() == 'cuda' and not is_rocm_pytorch:
+    install_requires.append('nvidia-ml-py')
+
 # Add specific cupy version to both onebit extension variants.
-if torch_available and torch.cuda.is_available():
+if torch_available and get_accelerator().device_name() == 'cuda':
     cupy = None
     if is_rocm_pytorch:
         rocm_major, rocm_minor = rocm_version
@@ -119,7 +126,6 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja.
 if torch_available:
-    from accelerator import get_accelerator
     use_ninja = is_env_set("DS_ENABLE_NINJA")
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=use_ninja)
 
@@ -130,7 +136,7 @@ else:
     TORCH_MAJOR = "0"
     TORCH_MINOR = "0"
 
-if torch_available and not torch.cuda.is_available():
+if torch_available and not get_accelerator().device_name() == 'cuda':
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486.
     print("[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
           "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
@@ -209,9 +215,15 @@ else:
     git_branch = "unknown"
 
 if sys.platform == "win32":
-    shutil.copytree('.\\csrc', '.\\deepspeed\\ops')
-    shutil.copytree('.\\op_builder', '.\\deepspeed\\ops')
-    shutil.copytree('.\\accelerator', '.\\deepspeed\\accelerator')
+    shutil.rmtree('.\\deepspeed\\ops\\csrc', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\ops\\csrc').unlink(missing_ok=True)
+    shutil.copytree('.\\csrc', '.\\deepspeed\\ops\\csrc', dirs_exist_ok=True)
+    shutil.rmtree('.\\deepspeed\\ops\\op_builder', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\ops\\op_builder').unlink(missing_ok=True)
+    shutil.copytree('.\\op_builder', '.\\deepspeed\\ops\\op_builder', dirs_exist_ok=True)
+    shutil.rmtree('.\\deepspeed\\accelerator', ignore_errors=True)
+    pathlib.Path('.\\deepspeed\\accelerator').unlink(missing_ok=True)
+    shutil.copytree('.\\accelerator', '.\\deepspeed\\accelerator', dirs_exist_ok=True)
     egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt.
@@ -278,6 +290,14 @@ thisdir = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
     readme_text = fin.read()
 
+if sys.platform == "win32":
+    scripts = ['bin/deepspeed.bat', 'bin/ds', 'bin/ds_report.bat', 'bin/ds_report']
+else:
+    scripts = [
+        'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
+        'bin/ds_elastic'
+    ]
+
 start_time = time.time()
 
 setup(name='deepspeed',
@@ -296,10 +316,7 @@ setup(name='deepspeed',
       extras_require=extras_require,
       packages=find_packages(include=['deepspeed', 'deepspeed.*']),
       include_package_data=True,
-      scripts=[
-          'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
-          'bin/ds_elastic'
-      ],
+      scripts=scripts,
       classifiers=[
           'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',

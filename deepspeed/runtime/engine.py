@@ -35,6 +35,8 @@ from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
+from deepspeed.linear.optimized_linear import LoRAOptimizedLinear
+
 from deepspeed.runtime.config import DEEPSPEED_OPTIMIZERS, \
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, \
@@ -304,7 +306,7 @@ class DeepSpeedEngine(Module):
 
         if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
-            self._configure_lr_scheduler(lr_scheduler)
+            self._configure_lr_scheduler()
             self._report_progress(0)
         elif self.zero_optimization():
             # no optim selected but zero is enabled
@@ -325,6 +327,8 @@ class DeepSpeedEngine(Module):
             if isinstance(module, (torch.nn.Embedding, torch.nn.EmbeddingBag)) and self.sparse_gradients_enabled():
                 self.sparse_tensor_module_names.add(name + ".weight")
                 logger.info("Will convert {} to sparse tensor during training".format(name))
+
+        self._optimized_linear_offload_setup()
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
@@ -362,6 +366,43 @@ class DeepSpeedEngine(Module):
         self.unflatten = _unflatten_dense_tensors
 
         self._is_compiled = False
+
+    def _optimized_linear_offload_setup(self):
+        self.optimized_linear_base_weight_sharding = False
+        self.optimized_linear_lora_enabled = False
+        offload_ratio = None
+        for _, module in self.module.named_modules():
+            if isinstance(module, LoRAOptimizedLinear):
+                self.optimized_linear_lora_enabled = True
+                offload_ratio = None
+                if offload_ratio is not None:
+                    assert offload_ratio == module.lora_config.offload_ratio, \
+                        "all lora_config offload ratios should be the same across the model"
+                offload_ratio = module.lora_config.offload_ratio
+                if module.zero_shards > 1:
+                    # set attr so checkpoint saving can handle BWS properly
+                    self.optimized_linear_base_weight_sharding = True
+
+        if offload_ratio is None:
+            # Nothing enabled, do nothing
+            return
+
+        total_params = 0
+        for _, p in self.module.named_parameters():
+            if hasattr(p, 'ds_optim_param'):
+                total_params += p.numel()
+
+        offload_limit = total_params * offload_ratio
+        logger.info(f'offloading {offload_ratio*100}% of eligible params, specifically {offload_limit} params')
+        total_offloaded = 0
+        for _, p in self.module.named_parameters():
+            if hasattr(p, 'ds_optim_param'):
+                if total_offloaded < offload_limit:
+                    total_offloaded += p.numel()
+                    p.ds_offload = True
+                    p.offload()
+                else:
+                    p.ds_offload = False
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -902,19 +943,19 @@ class DeepSpeedEngine(Module):
     def _optimizer_has_ckpt_event_epilogue(self):
         return self.optimizer is not None and hasattr(self.optimizer, 'checkpoint_event_epilogue')
 
-    def _configure_lr_scheduler(self, client_lr_scheduler):
-        # First check for scheduler in json configuration
-        lr_scheduler = self._scheduler_from_config(self.optimizer)
-        if lr_scheduler:
-            log_dist(f"DeepSpeed using configured LR scheduler = {self.scheduler_name()}", ranks=[0])
-            self.lr_scheduler = lr_scheduler
-        else:
-            if isinstance(client_lr_scheduler, Callable):
+    def _configure_lr_scheduler(self):
+        if self.client_lr_scheduler:
+            if isinstance(self.client_lr_scheduler, Callable):
                 log_dist('DeepSpeed using client callable to create LR scheduler', ranks=[0])
-                self.lr_scheduler = client_lr_scheduler(self.basic_optimizer)
+                self.lr_scheduler = self.client_lr_scheduler(self.basic_optimizer)
             else:
                 log_dist('DeepSpeed using client LR scheduler', ranks=[0])
-                self.lr_scheduler = client_lr_scheduler
+                self.lr_scheduler = self.client_lr_scheduler
+        else:
+            # load lr scheduler from json configuration if lr scheduler is not defined and passed in
+            lr_scheduler = self._scheduler_from_config(self.optimizer)
+            log_dist(f"DeepSpeed using configured LR scheduler = {self.scheduler_name()}", ranks=[0])
+            self.lr_scheduler = lr_scheduler
 
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
@@ -968,13 +1009,13 @@ class DeepSpeedEngine(Module):
         device_rank = args.device_rank if args is not None and hasattr(args, 'device_rank') else self.local_rank
         if device_rank >= 0:
             get_accelerator().set_device(device_rank)
-            self.device = torch.device(get_accelerator().device_name(), device_rank)
+            self.device = torch.device(get_accelerator().device_name(device_rank))
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device(get_accelerator().device_name())
+            self.device = get_accelerator().device()
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
@@ -1054,9 +1095,12 @@ class DeepSpeedEngine(Module):
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
                 return False
+            elif hasattr(p, 'ds_optim_param'):
+                # do not broadcast OptimizedLinear parameters, they are unique per base weight shard
+                return False
             return True
 
-        for p in self.module.parameters():
+        for n, p in self.module.named_parameters():
             # Broadcast the model for different parameters
             if is_moe_param(p):
                 if torch.is_tensor(p) and is_replicated(p):
@@ -2662,7 +2706,10 @@ class DeepSpeedEngine(Module):
             mp_rank_str = f"{mp_rank:02d}"
 
         if self.zero_optimization_partition_weights():
-            filename = "zero_pp_rank_{}".format(dist.get_rank(group=self.optimizer.dp_process_group))
+            if self.load_universal_checkpoint():
+                filename = "zero_pp_rank_0"
+            else:
+                filename = "zero_pp_rank_{}".format(dist.get_rank(group=self.optimizer.dp_process_group))
             ckpt_name = os.path.join(
                 checkpoints_path,
                 str(tag),
@@ -2789,7 +2836,7 @@ class DeepSpeedEngine(Module):
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
 
-        if self.load_universal_checkpoint():
+        if self.load_universal_checkpoint() and not self.zero_optimization_partition_weights():
             self.optimizer.update_lp_params()
 
         return load_path, client_states
@@ -2956,11 +3003,13 @@ class DeepSpeedEngine(Module):
             if zero_sd_list is None:
                 return False
 
+        param_shapes = self._get_zero_param_shapes()
         self.optimizer.load_state_dict(state_dict_list=zero_sd_list,
                                        load_optimizer_states=load_optimizer_states,
                                        load_from_fp32_weights=self.zero_load_from_fp32_weights(),
                                        checkpoint_folder=checkpoint_folder,
-                                       load_serial=load_serial)
+                                       load_serial=load_serial,
+                                       param_shapes=param_shapes)
 
         if self.load_universal_checkpoint():
             logger.info(f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}')
@@ -3608,6 +3657,9 @@ class DeepSpeedEngine(Module):
         """Compile the module using the specified backend and kwargs.
         If a compiler_fn is set, it will be used instead of torch.compile().
         """
+        # Avoid graph breaks
+        deepspeed.utils.nvtx.enable_nvtx = False
+
         if not is_compile_supported():
             raise RuntimeError("compile is not supported in your version of PyTorch.")
 
