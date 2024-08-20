@@ -7,6 +7,10 @@ import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
 import intel_extension_for_pytorch as ipex  # noqa: F401 # type: ignore
 import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
+import functools
+
+import importlib
+import inspect
 
 
 class XPU_Accelerator(DeepSpeedAccelerator):
@@ -14,13 +18,19 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
+        self._compile_backend = "inductor"
         self.aligned_tensors = []
+        self.class_dict = None
 
     def is_synchronized_device(self):
         return False
 
     def use_host_timers(self):
-        return self.is_synchronized_device()
+        # WA XPU event will be consolidated in 2.5
+        if ipex.__version__ < '2.5':
+            return True
+        else:
+            return self.is_synchronized_device()
 
     def resolves_data_dependency(self):
         return self.is_synchronized_device()
@@ -72,8 +82,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def manual_seed_all(self, seed):
         return torch.xpu.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        return torch.xpu.initial_seed(seed)
+    def initial_seed(self):
+        return torch.xpu.initial_seed()
 
     def default_generator(self, device_index):
         return torch.xpu.default_generators[device_index]
@@ -157,7 +167,10 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def lazy_call(self, callback):
-        return torch.xpu.lazy_init._lazy_call(callback)
+        if hasattr(torch.xpu, "_lazy_call"):
+            return torch.xpu._lazy_call(callback)
+        else:
+            return torch.xpu.lazy_init._lazy_call(callback)
 
     def communication_backend_name(self):
         return self._communication_backend_name
@@ -190,37 +203,37 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return torch.xpu.BFloat16Tensor
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device=self._name)
 
     @property
     def ByteTensor(self):
-        return torch.xpu.ByteTensor
+        return functools.partial(torch.tensor, dtype=torch.uint8, device=self._name)
 
     @property
     def DoubleTensor(self):
-        return torch.xpu.DoubleTensor
+        return functools.partial(torch.tensor, dtype=torch.double, device=self._name)
 
     @property
     def FloatTensor(self):
-        return torch.xpu.FloatTensor
+        return functools.partial(torch.tensor, dtype=torch.float, device=self._name)
 
     @property
     def HalfTensor(self):
-        return torch.xpu.HalfTensor
+        return functools.partial(torch.tensor, dtype=torch.half, device=self._name)
 
     @property
     def IntTensor(self):
-        return torch.xpu.IntTensor
+        return functools.partial(torch.tensor, dtype=torch.int, device=self._name)
 
     @property
     def LongTensor(self):
-        return torch.xpu.LongTensor
+        return functools.partial(torch.tensor, dtype=torch.long, device=self._name)
 
     def pin_memory(self, tensor, align_bytes=1):
         if align_bytes == 1:
             return tensor.pin_memory(device=self.current_device_name())
         elif align_bytes == 0:
-            from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+            from deepspeed.ops.op_builder.xpu import AsyncIOBuilder
             self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
             aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
             aligned_t = aligned_t[:tensor.numel()].copy_(tensor)
@@ -252,33 +265,29 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
+    def _lazy_init_class_dict(self):
+        if self.class_dict:
+            return
+
+        op_builder_module = importlib.import_module(self.op_builder_dir())
+
+        # get op builder class from op_builder/xpu/__init__.py
+        self.class_dict = {}
+        for class_name, class_obj in inspect.getmembers(op_builder_module, inspect.isclass):
+            self.class_dict[class_name] = class_obj
+
     # create an instance of op builder and return, name specified by class_name
-    def create_op_builder(self, op_name):
-        builder_class = self.get_op_builder(op_name)
-        if builder_class != None:
-            return builder_class()
-        return None
+    def create_op_builder(self, class_name):
+        builder_class = self.get_op_builder(class_name)
+        return builder_class()
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        try:
-            # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
-            # if successful this also means we're doing a local install and not JIT compile path
-            from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder
-        except ImportError:
-            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder
-
-        if class_name == "AsyncIOBuilder":
-            return AsyncIOBuilder
-        elif class_name == "CPUAdagradBuilder":
-            return CPUAdagradBuilder
-        elif class_name == "CPUAdamBuilder":
-            return CPUAdamBuilder
-        elif class_name == "FusedAdamBuilder":
-            return FusedAdamBuilder
+        self._lazy_init_class_dict()
+        if class_name in self.class_dict:
+            return self.class_dict[class_name]
         else:
-            return None
+            return self.class_dict['NotImplementedBuilder']
 
     def build_extension(self):
         try:
@@ -289,3 +298,21 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def visible_devices_envs(self):
+        return ['ZE_AFFINITY_MASK']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")

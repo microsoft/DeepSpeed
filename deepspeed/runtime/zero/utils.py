@@ -16,6 +16,9 @@ from deepspeed.ops.lion import DeepSpeedCPULion, FusedLion
 from deepspeed.utils.nvtx import instrument_w_nvtx
 from deepspeed.accelerator import get_accelerator
 
+# ensure we only warn once, otherwise every iteration will trigger a warning
+warned = False
+
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
     data_parallel_size = int(dist.get_world_size())
@@ -65,7 +68,6 @@ def get_lst_from_rank0(lst: List[int]) -> None:
     lst_tensor = torch.tensor(
         lst if dist.get_rank() == 0 else [-1] * len(lst),
         dtype=int,
-        # device=get_accelerator().current_device_name(),
         device=torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"])),
         requires_grad=False,
     )
