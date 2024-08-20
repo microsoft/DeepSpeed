@@ -10,6 +10,7 @@ from deepspeed import initialize
 from transformers import AutoModel
 from unit.common import DistributedTest
 from deepspeed.sequence.layer import _SeqAllToAll
+from unit.util import skip_on_arch
 
 
 #Use mesh device to create data and sequence parallel group
@@ -17,6 +18,7 @@ class TestUlyssesUtils(DistributedTest):
     world_size = 4
 
     def test_mesh_device_creation(self) -> None:
+        skip_on_arch(min_arch=8)
         model = AutoModel.from_pretrained('bert-base-uncased')
         sp_size = 2
         dp_size = 2
@@ -44,6 +46,7 @@ class TestUlyssesAll2All(DistributedTest):
     world_size = 4
 
     def test_alltoall_output_consistency(self, d0: int, d1: int, head_dim: int, num_heads: int) -> None:
+        skip_on_arch(min_arch=8)
         model = AutoModel.from_pretrained('bert-base-uncased')
         ds_engine, _, _, _ = initialize(model=model, config_params={"train_batch_size": 8}, mesh_param=(2, 2))
         #4D tensor : b,s,h,d or s,b,h,d
