@@ -14,6 +14,7 @@ from unit.simple_model import random_dataloader, SimpleModel
 
 import deepspeed
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
+from deepspeed.utils import safe_get_local_fp32_param, safe_get_local_optimizer_state
 
 
 def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_blocking):
@@ -29,6 +30,13 @@ def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_bl
         model.backward(loss)
         model.step()
 
+        hp_params_expected = [safe_get_local_fp32_param(p).clone() for p in model.parameters()]
+        lp_params_expected = [p.ds_tensor.clone() for p in model.parameters()]
+        lp_grads_expected = model.optimizer.grad_partitions_flat_buffer.clone()
+        adam_exp_avg_expected = [safe_get_local_optimizer_state(p, "exp_avg").clone() for p in model.parameters()]
+        adam_exp_avg_sq = [safe_get_local_optimizer_state(p, "exp_avg_sq").clone() for p in model.parameters()]
+
+        # Start offloading
         alloc_before_offload = get_accelerator().memory_allocated()
         model.offload_states(include=include,
                              device=OffloadDeviceEnum.cpu,
@@ -36,9 +44,31 @@ def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_bl
                              non_blocking=non_blocking)
         alloc_after_offload = get_accelerator().memory_allocated()
         assert alloc_after_offload < alloc_before_offload, f"Allocated memory should decrease after offload"
+
+        # Load offloaded states back
         model.offload_states_back()
         assert alloc_after_offload < get_accelerator().memory_allocated(
         ), f"Allocated memory should increase after offload back"
+
+        # Verify restored states
+        hp_param_restored = [safe_get_local_fp32_param(p) for p in model.parameters()]
+        for hp_param_expected, hp_param_restored in zip(hp_params_expected, hp_param_restored):
+            assert torch.equal(hp_param_expected, hp_param_restored)
+
+        lp_param_restored = [p.ds_tensor for p in model.parameters()]
+
+        for lp_param_expected, lp_param_restored in zip(lp_params_expected, lp_param_restored):
+            assert torch.equal(lp_param_expected, lp_param_restored)
+
+        assert torch.equal(lp_grads_expected, model.optimizer.grad_partitions_flat_buffer)
+
+        adam_exp_avg_restored = [safe_get_local_optimizer_state(p, "exp_avg") for p in model.parameters()]
+        for adam_exp_avg_expected, adam_exp_avg_restored in zip(adam_exp_avg_expected, adam_exp_avg_restored):
+            assert torch.equal(adam_exp_avg_expected, adam_exp_avg_restored)
+
+        adam_exp_avg_sq_restored = [safe_get_local_optimizer_state(p, "exp_avg_sq") for p in model.parameters()]
+        for adam_exp_avg_sq_expected, adam_exp_avg_sq_restored in zip(adam_exp_avg_sq, adam_exp_avg_sq_restored):
+            assert torch.equal(adam_exp_avg_sq_expected, adam_exp_avg_sq_restored)
 
     # Needed in ZeRO 3. Not doing so can give memory leak
     model.destroy()

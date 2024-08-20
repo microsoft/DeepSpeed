@@ -2920,7 +2920,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         # contiguous bucket
         if OffloadStateTypeEnum.contiguous_grad_buffer in self.offloaded_states:
-            print(f"loading contiguous_grad_buffer")
             self.__ipg_bucket_flat_buffer = torch.empty_like(self.grad_buffer_meta, device=device)
             # self.__ipg_bucket_flat_buffer.data = self.__ipg_bucket_flat_buffer.data.to(device)
             self.offloaded_states.remove(OffloadStateTypeEnum.contiguous_grad_buffer)
