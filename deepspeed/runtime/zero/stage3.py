@@ -7,6 +7,7 @@ import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
+from contextlib import contextmanager
 from deepspeed import comm as dist
 from deepspeed.utils import groups
 
@@ -67,6 +68,39 @@ def lcm(x, y):
 def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
+
+
+@contextmanager
+def unwrap_model_for_generation(model):
+    """
+    For ZeRO-3 models, we gather the weights once to speed up generation.
+    """
+    with GatheredParameters(model.parameters()):
+        # Removes the optimizer hooks from a DeepSpeed ZeRO-3 model.
+
+        # Remove hooks
+        if model.optimizer is not None and hasattr(model.optimizer, "parameter_offload"):
+            optimizer_offload = model.optimizer.parameter_offload
+        elif model.optimizer is not None:
+            optimizer_offload = model.optimizer
+
+        for hook in optimizer_offload.forward_hooks:
+            hook.remove()
+        for hook in optimizer_offload.backward_hooks:
+            hook.remove()
+
+        optimizer_offload.forward_hooks = []
+        optimizer_offload.backward_hooks = []
+
+        yield model
+
+        # Adds the optimizer hooks from a DeepSpeed ZeRO-3 model.
+        if model.optimizer is not None and hasattr(model.optimizer, "parameter_offload"):
+            optimizer_offload = model.optimizer.parameter_offload
+        elif model.optimizer is not None:
+            optimizer_offload = model.optimizer
+        optimizer_offload._register_hooks_recursively(optimizer_offload.module)
+    return
 
 
 INITIAL_MICRO_STEP_ID = -1
@@ -215,14 +249,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.module = module
         self.elastic_checkpoint = elastic_checkpoint
 
-        self.inf_or_nan_tracker: Tensor = torch.zeros(1,
-                                                      dtype=torch.bool,
-                                                      device=get_accelerator().current_device_name(),
-                                                      requires_grad=False)
+        self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
+
+        self.inf_or_nan_tracker: Tensor = torch.zeros(1, dtype=torch.bool, device=self.device, requires_grad=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer and type(init_optimizer) == DeepSpeedCPUAdam)
 
-        self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
         self.reduce_and_partition_stream = None if get_accelerator().is_synchronized_device() else get_accelerator(
         ).Stream() if overlap_comm else get_accelerator().default_stream()
@@ -2148,7 +2180,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     self.inf_or_nan_tracker += torch.isnan(self.grad_partitions_flat_buffer).any()
                     self.inf_or_nan_tracker = self.inf_or_nan_tracker > 0
 
-                overflow_gpu = self.inf_or_nan_tracker.clone().to(torch.uint8)
+                overflow_gpu = self.inf_or_nan_tracker.clone().to(get_accelerator().current_device_name()).to(
+                    torch.uint8)
                 self.inf_or_nan_tracker.zero_()
 
             if not get_accelerator().resolves_data_dependency():
