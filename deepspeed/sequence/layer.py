@@ -10,6 +10,8 @@ from torch.nn import Module
 
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
+from deepspeed.module_inject.tp_shard import get_shard_size_list, set_num_kv_heads, get_num_kv_heads
+from deepspeed.utils import groups
 
 
 def post_all2all(scatter_idx, batch_dim_idx, seq_world_size, bs, seq_len, num_head, head_dim):
@@ -38,8 +40,68 @@ def post_all2all(scatter_idx, batch_dim_idx, seq_world_size, bs, seq_len, num_he
     return post_func
 
 
+def uneven_heads_all2all(input, scatter_idx, gather_idx, group):
+    seq_world_size = dist.get_world_size(group)
+    inp_shape = list(input.shape)
+    if not (scatter_idx < 2):
+        input_splits = get_shard_size_list(input.shape[scatter_idx], seq_world_size)
+        input = input.transpose(0, scatter_idx).contiguous()
+        local_heads = input_splits[groups._get_sequence_parallel_rank()]
+        output_splits = [local_heads] * seq_world_size
+
+        output_shape = [seq_world_size * local_heads] + list(input.shape[1:])
+        output = torch.empty(output_shape, device=input.device, dtype=input.dtype)
+
+        dist.all_to_all_single(output,input,output_split_sizes=output_splits,\
+            input_split_sizes=input_splits,group=group)
+
+        ###[seq_ws*local_heads, ..] to [seq_ws, local_heads, ..]
+        output = output.view(seq_world_size, local_heads, *output.shape[1:])
+        ###[seq_ws,local_heads,b,seq_len,..] to [seq_ws,seq_len,b,local_heads,..]
+        output = output.transpose(1, 3).contiguous()
+        ###[seq_ws*local_seq_len, b, local_heads,...]
+        output = output.view(inp_shape[gather_idx] * seq_world_size, *output.shape[2:]).contiguous()
+    if scatter_idx < 2:
+        input = input.view(input.shape[0], input.shape[1], -1)
+        input = input.reshape(input.shape[0] * input.shape[2], input.shape[1])
+        local_seq_len_with_heads = int(input.shape[0] / seq_world_size)
+        input_splits = [local_seq_len_with_heads] * seq_world_size
+        output_splits = get_shard_size_list(get_num_kv_heads(), seq_world_size)
+
+        coeff = int(local_seq_len_with_heads / output_splits[groups._get_sequence_parallel_rank()])
+        #uneven seq_world_size coeff ,    local_heads/total_heads.
+        heads_scale_coeff = get_num_kv_heads() / get_shard_size_list(
+            get_num_kv_heads(), seq_world_size)[groups._get_sequence_parallel_rank()]
+        output_splits = [i * coeff for i in output_splits]
+        output_d1_size = int(heads_scale_coeff * local_seq_len_with_heads)
+        total_seq_len = int(inp_shape[gather_idx] * heads_scale_coeff)
+        output = torch.empty(output_d1_size, input.shape[1], device=input.device, dtype=input.dtype)
+
+        dist.all_to_all_single(output,input,output_split_sizes=output_splits, \
+            input_split_sizes=input_splits,group=group)
+
+        inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
+        output2_shape=  inp_shape[: gather_idx] + \
+            [total_seq_len,] + \
+            inp_shape[gather_idx + 1:]
+        output = output.reshape(output2_shape)
+    return output
+
+
 def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, async_op=False, handle=None, type=None):
     seq_world_size = dist.get_world_size(group)
+    # we only need need_heads once,
+    num_heads = input.shape[2]
+
+    if get_num_kv_heads() is not None or num_heads % seq_world_size != 0:
+        # assume here that the number of heads for q is consistent with kv
+        # or require additional logic
+        if get_num_kv_heads() is None:
+            # set heads at first call by num_total_heads. then use ``get_num_kv_heads() is not None`` to re-entry uneven path.
+            set_num_kv_heads(num_heads)
+        assert async_op == False, "uneven head sp does not support async op"
+        return uneven_heads_all2all(input, scatter_idx, gather_idx, group)
+
     if batch_dim_idx == 0:
         # b, s, n, h
         if scatter_idx < 2:
