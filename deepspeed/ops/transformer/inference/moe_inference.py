@@ -226,7 +226,7 @@ class DeepSpeedMoEInference(nn.Module):
         self.moe_gate = TopKGate(self.config.hidden_size, self.config.global_experts, self.config.k,
                                  self.config.capacity_factor, self.config.eval_capacity_factor,
                                  self.config.min_capacity, self.config.noisy_gate_policy, self.config.drop_tokens,
-                                 self.config.use_rts)
+                                 self.config.use_rts, self.ep_group)
 
         self.ep_group = ep_group
         self.mp_group = mp_group
@@ -327,7 +327,7 @@ class DeepSpeedMoEInference(nn.Module):
 
             if self.expert_mp_group is not None:
                 world_size = dist.get_world_size(group=self.expert_mp_group)
-                gather_buffer = torch.zeros(world_size * attention_output.numel(),
+                gather_buffer = torch.empty(world_size * attention_output.numel(),
                                             dtype=attention_output.dtype,
                                             device=attention_output.device)
                 dist.all_gather_into_tensor(gather_buffer, attention_output, group=self.expert_mp_group)

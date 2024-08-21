@@ -15,13 +15,13 @@ from ..logging import inference_logger
 
 class HuggingFaceCheckpointEngine(CheckpointEngineBase):
 
-    def __init__(self, model_name_or_path: str, auth_token: str = None) -> None:
+    def __init__(self, model_name_or_path: str, auth_token: str = None, **hf_kwargs) -> None:
         super().__init__()
         from transformers import AutoConfig, GenerationConfig
 
         self.model_name_or_path = model_name_or_path
         self.auth_token = auth_token
-        self.model_config = AutoConfig.from_pretrained(self.model_name_or_path)
+        self.model_config = AutoConfig.from_pretrained(self.model_name_or_path, **hf_kwargs)
         # Define this property here so we can use it in the model implementation
         if not hasattr(self.model_config, "max_seq_length"):
             if hasattr(self.model_config, "max_position_embeddings"):
@@ -40,16 +40,13 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         # currently coming from the ckpt engine init but maybe a catch all kwargs for other
         # snapshot download parameters would be more flexible.
 
-        # NOTE(jeff): allow_patterns here are explicitly not using safetensors or other
-        # checkpoint files that may be present. Example of all files in the llama-2-7b
-        # repo here: https://huggingface.co/meta-llama/Llama-2-7b-hf/tree/main
-        from huggingface_hub import snapshot_download, list_files_info
+        from huggingface_hub import snapshot_download, list_repo_tree
 
         def model_has_safetensors(model_name_or_path: str) -> bool:
             if os.path.isdir(model_name_or_path):
                 file_list = os.listdir(model_name_or_path)
             else:
-                file_list = [rf.rfilename for rf in list_files_info(model_name_or_path)]
+                file_list = [rf.path for rf in list_repo_tree(model_name_or_path)]
             for f in file_list:
                 if f.endswith(".safetensors"):
                     return True

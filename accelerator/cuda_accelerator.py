@@ -3,9 +3,11 @@
 
 # DeepSpeed Team
 
+import functools
 import os
 import pkgutil
 import importlib
+import sys
 
 from .abstract_accelerator import DeepSpeedAccelerator
 # During setup stage torch may not be installed, pass on no torch will
@@ -23,7 +25,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
         self._name = 'cuda'
-        self._communication_backend_name = 'nccl'
+        self._communication_backend_name = 'nccl' if sys.platform != 'win32' else 'gloo'
+        self._compile_backend = "inductor"
         if pynvml is None:
             self._init_pynvml()
 
@@ -97,8 +100,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def manual_seed_all(self, seed):
         return torch.cuda.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        return torch.cuda.initial_seed(seed)
+    def initial_seed(self):
+        return torch.cuda.initial_seed()
 
     def default_generator(self, device_index):
         return torch.cuda.default_generators[device_index]
@@ -260,31 +263,31 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return torch.cuda.BFloat16Tensor
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device='cuda')
 
     @property
     def ByteTensor(self):
-        return torch.cuda.ByteTensor
+        return functools.partial(torch.tensor, dtype=torch.uint8, device='cuda')
 
     @property
     def DoubleTensor(self):
-        return torch.cuda.DoubleTensor
+        return functools.partial(torch.tensor, dtype=torch.double, device='cuda')
 
     @property
     def FloatTensor(self):
-        return torch.cuda.FloatTensor
+        return functools.partial(torch.tensor, dtype=torch.float, device='cuda')
 
     @property
     def HalfTensor(self):
-        return torch.cuda.HalfTensor
+        return functools.partial(torch.tensor, dtype=torch.half, device='cuda')
 
     @property
     def IntTensor(self):
-        return torch.cuda.IntTensor
+        return functools.partial(torch.tensor, dtype=torch.int, device='cuda')
 
     @property
     def LongTensor(self):
-        return torch.cuda.LongTensor
+        return functools.partial(torch.tensor, dtype=torch.long, device='cuda')
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
@@ -359,3 +362,21 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return ['NCCL']
+
+    def visible_devices_envs(self):
+        return ['CUDA_VISIBLE_DEVICES']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")
