@@ -262,7 +262,7 @@ def get_new_tensor_fn_for_dtype(dtype: torch.dtype) -> Callable:
 
 
 # https://stackoverflow.com/a/63851681/9201239
-def get_all_subclasses(cls):
+def get_all_subclasses(cls, include_root=True):
     subclass_list = []
 
     def recurse(cl):
@@ -272,7 +272,10 @@ def get_all_subclasses(cls):
 
     recurse(cls)
 
-    return set(subclass_list)
+    ret = set(subclass_list)
+    if include_root:
+        ret.add(cls)
+    return ret
 
 
 @instrument_w_nvtx
