@@ -298,6 +298,14 @@ def check_injection(model):
     verify_injection(model)
 
 
+# Used to Get Device name
+def getDeviceId(local_rank):
+    device = local_rank
+    if get_accelerator().device_name() != 'cuda':
+        device = torch.device(f"{get_accelerator().device_name()}")
+    return device
+
+
 # Verify that test is valid
 def validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
     model, task = model_w_task
@@ -484,8 +492,8 @@ class TestLowCpuMemUsage(DistributedTest):
             pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
-
-        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
+        device = getDeviceId(local_rank)
+        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=device, framework="pt")
         bs_output = pipe(query, **inf_kwargs)
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=self.world_size,

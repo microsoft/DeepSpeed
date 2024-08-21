@@ -102,11 +102,24 @@ def cifar_trainset(fp16=False):
     if local_rank != 0:
         dist.barrier()
 
-    data_root = os.getenv("TEST_DATA_DIR", "/tmp/")
-    trainset = torchvision.datasets.CIFAR10(root=os.path.join(data_root, "cifar10-data"),
-                                            train=True,
-                                            download=True,
-                                            transform=transform)
+    if os.getenv("CIFAR10_OFFLINE", default=None):
+        if os.getenv("CIFAR10_DATASET_PATH", default=None):
+            trainset = torchvision.datasets.CIFAR10(root=os.getenv("CIFAR10_DATASET_PATH", default=None),
+                                                    train=True,
+                                                    download=False,
+                                                    transform=transform)
+    elif os.getenv("STORE_CIFAR10", default=None):
+        if os.getenv("CIFAR10_DATASET_PATH", default=None):
+            trainset = torchvision.datasets.CIFAR10(root=os.getenv("CIFAR10_DATASET_PATH", default=None),
+                                                    train=True,
+                                                    download=True,
+                                                    transform=transform)
+    else:
+        data_root = os.getenv("TEST_DATA_DIR", "/tmp/")
+        trainset = torchvision.datasets.CIFAR10(root=os.path.join(data_root, "cifar10-data"),
+                                                train=True,
+                                                download=True,
+                                                transform=transform)
     if local_rank == 0:
         dist.barrier()
     return trainset
