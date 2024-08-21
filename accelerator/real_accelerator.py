@@ -73,11 +73,7 @@ def get_accelerator():
                     f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system."
                 )
         elif accelerator_name == "cpu":
-            try:
-                import intel_extension_for_pytorch  # noqa: F401 # type: ignore
-            except ImportError as e:
-                raise ValueError(
-                    f"CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
+            pass
         elif accelerator_name == "npu":
             try:
                 import torch_npu  # noqa: F401 # type: ignore
@@ -98,7 +94,7 @@ def get_accelerator():
             except ImportError as e:
                 raise ValueError(
                     f"HPU_Accelerator requires habana_frameworks.torch.hpu, which is not installed on this system.")
-        elif is_current_accelerator_supported():
+        elif accelerator_name not in SUPPORTED_ACCELERATOR_LIST:
             raise ValueError(f'DS_ACCELERATOR must be one of {SUPPORTED_ACCELERATOR_LIST}. '
                              f'Value "{accelerator_name}" is not supported')
         ds_set_method = "override"
@@ -154,7 +150,23 @@ def get_accelerator():
             except ImportError as e:
                 pass
         if accelerator_name is None:
-            accelerator_name = "cuda"
+            # borrow this log from PR#5084
+            try:
+                import torch
+
+                # Determine if we are on a GPU or x86 CPU with torch.
+                if torch.cuda.is_available():  #ignore-cuda
+                    accelerator_name = "cuda"
+                else:
+                    if accel_logger is not None:
+                        accel_logger.warn(
+                            "Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it."
+                        )
+                    accelerator_name = "cpu"
+            except (RuntimeError, ImportError) as e:
+                # TODO need a more decent way to detect which accelerator to use, consider using nvidia-smi command for detection
+                accelerator_name = "cuda"
+                pass
 
         ds_set_method = "auto detect"
 

@@ -1,6 +1,7 @@
 name: nv-lightning-v100
 
 on:
+  workflow_dispatch:
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -19,6 +20,8 @@ concurrency:
 jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, cu111, v100]
+
+    env: {ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true} # Allow using Node16 actions
 
     steps:
       - uses: actions/checkout@v3

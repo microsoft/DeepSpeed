@@ -74,7 +74,8 @@ class PDSHRunner(MultiNodeRunner):
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
         if self.args.ssh_port is not None:  # only specify ssh port if it is specified
-            environment["PDSH_SSH_ARGS_APPEND"] += f" -p {self.args.ssh_port}"
+            environment["PDSH_SSH_ARGS_APPEND"] = f"{environment.get('PDSH_SSH_ARGS_APPEND', '')} \
+            -p {self.args.ssh_port}"
 
         active_workers = ",".join(active_resources.keys())
         logger.info("Running on the following workers: %s" % active_workers)
@@ -199,6 +200,10 @@ class MPICHRunner(MultiNodeRunner):
 
         mpirun_cmd = [
             'mpirun',
+            '-n',
+            f'{total_process_count}',
+            '-ppn',
+            f'{process_per_node}',
         ] + split(self.args.launcher_args)
         export_cmd = []
 
@@ -210,32 +215,29 @@ class MPICHRunner(MultiNodeRunner):
         export_cmd += ['-genv', 'WORLD_SIZE', str(total_process_count)]
         export_cmd += ['-genv', 'LOCAL_SIZE', str(process_per_node)]
 
-        hosts = list(self.resource_pool.keys())
-
-        per_host_cmd = []
-        host_id = 0
-        host_count = 0
-        for i in range(total_process_count):
-            local_rank = i % process_per_node
-            python_exec = []
-            if not self.args.no_python:
-                python_exec += [sys.executable, "-u"]
-                if self.args.module:
-                    python_exec.append("-m")
-            env_mapping = ['-env', 'RANK', str(i)]
-            env_mapping += ['-env', 'LOCAL_RANK', str(local_rank)]
+        export_cmd += ['-hosts']
+        hosts = ""
+        for i, host in enumerate(self.resource_pool.keys()):
             if i == 0:
-                per_host_cmd = ['-n', '1', '-host', hosts[host_id]
-                                ] + env_mapping + python_exec + [self.user_script] + self.user_arguments
+                hosts = f"{host}"
             else:
-                per_host_cmd = per_host_cmd + [':', '-n', '1', '-host', hosts[host_id]
-                                               ] + env_mapping + python_exec + [self.user_script] + self.user_arguments
-            host_count = host_count + 1
-            if host_count == process_per_node:
-                host_id = host_id + 1
-                host_count = 0
+                hosts += f",{host}"
+        export_cmd += [hosts]
 
-        return mpirun_cmd + export_cmd + per_host_cmd
+        helper_args = ["--launcher"] + [self.args.launcher]
+        python_exec = []
+        if not self.args.no_python:
+            python_exec += [sys.executable, "-u"]
+            if self.args.module:
+                python_exec.append("-m")
+                helper_args.append("--module")
+        else:
+            helper_args.append("--no_python")
+
+        helper_cmd = str(os.path.dirname(os.path.realpath(__file__))) + '/launcher_helper.py'
+        helper_cmd = [helper_cmd] + helper_args + [self.user_script] + self.user_arguments
+
+        return mpirun_cmd + export_cmd + python_exec + helper_cmd
 
 
 class IMPIRunner(MultiNodeRunner):

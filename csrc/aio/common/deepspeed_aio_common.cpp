@@ -268,6 +268,10 @@ void report_file_error(const char* filename, const std::string file_op, const in
 int open_file(const char* filename, const bool read_op)
 {
     const int flags = read_op ? (O_RDONLY | O_DIRECT) : (O_WRONLY | O_CREAT | O_DIRECT);
+#if defined(__ENABLE_CANN__)
+    int* flags_ptr = (int*)&flags;
+    *flags_ptr = read_op ? (O_RDONLY) : (O_WRONLY | O_CREAT);
+#endif
     const int mode = 0600;
     const auto fd = open(filename, flags, mode);
     if (fd == -1) {
@@ -297,9 +301,8 @@ int regular_read(const char* filename, std::vector<char>& buffer)
     } while (r > 0);
 
     if (read_bytes != num_bytes) {
-        std::cerr << "read error "
-                  << " read_bytes (read) = " << read_bytes << " num_bytes (fstat) = " << num_bytes
-                  << std::endl;
+        std::cerr << "read error " << " read_bytes (read) = " << read_bytes
+                  << " num_bytes (fstat) = " << num_bytes << std::endl;
     }
     assert(read_bytes == num_bytes);
     close(fd);

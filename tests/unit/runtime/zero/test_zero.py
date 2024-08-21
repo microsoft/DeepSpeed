@@ -14,8 +14,9 @@ from torch.nn import Linear, Module
 from torch.nn.modules.container import ModuleList
 from torch.nn.modules.loss import L1Loss
 from torch.nn.parameter import Parameter
+from torch.nn.utils import skip_init
 
-from unit.common import DistributedTest
+from unit.common import DistributedTest, preferred_dtype
 from unit.simple_model import SimpleModel, random_dataloader
 
 import deepspeed
@@ -70,11 +71,11 @@ class TestZeroUnbalancedGradients(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 4
 
         model = SimpleModel(hidden_dim=hidden_dim)
@@ -90,6 +91,8 @@ class TestZero3RepeatForwardLoop(DistributedTest):
     world_size = 1
 
     def test(self, mics_enabled, zero_stage=3):
+        if mics_enabled and get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet")
         # force all params to be partitioned by forcing threshold=0
         mics_shard_size = -1
         if mics_enabled:
@@ -110,11 +113,11 @@ class TestZero3RepeatForwardLoop(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 4
 
         class AlbertLikeModel(torch.nn.Module):
@@ -165,11 +168,11 @@ class TestZeroToFP32(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
 
         class MyModel(torch.nn.Module):
 
@@ -259,11 +262,11 @@ class TestZeroToFP32(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
 
         class MyModel(torch.nn.Module):
 
@@ -365,11 +368,11 @@ class TestIncorectAllgatherBucketSize(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 4
 
         model = SimpleModel(hidden_dim=hidden_dim)
@@ -400,11 +403,11 @@ class TestPartitionNcclAlignment(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 4
 
         model = SimpleModel(hidden_dim=hidden_dim)
@@ -624,6 +627,8 @@ class TestZero3ParamPartitioningBase(DistributedTest):
 
     @pytest.mark.parametrize("fp16_enabled", [True, False])
     def test_fp16_enabled(self, fp16_enabled):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         self._test(fp16_enabled=fp16_enabled)
 
     @pytest.mark.parametrize("contiguous_gradients", [True, False])
@@ -689,11 +694,11 @@ class TestZero3ParamPartitioningBase(DistributedTest):
                     "lr": 1.0
                 }
             },
-            "fp16": {
-                "enabled": fp16_enabled,
-                "loss_scale": 1.0,
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            cfg["fp16"] = {"enabled": True, "loss_scale": 1.0}
+        elif get_accelerator().is_bf16_supported():
+            cfg["bf16"] = {"enabled": True}
 
         if offload_optimizer:
             cfg["zero_optimization"]["offload_optimizer"] = {
@@ -858,11 +863,11 @@ class TestZero3ParamPartitioningLargeParam(DistributedTest):
                     "lr": 1.0
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "loss_scale": 1.0,
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            ds_config["fp16"] = {"enabled": True, "loss_scale": 1.0}
+        elif get_accelerator().is_bf16_supported():
+            ds_config["bf16"] = {"enabled": True}
         with deepspeed.zero.Init(mem_efficient_linear=False, enabled=init_context_manager):
             model = LargeParamModel()
         ds_engine = _ds_initialize_for_param_partitioning_testing(model, ds_config)
@@ -937,24 +942,24 @@ class TestZero3ParamPartitioningManyParams(DistributedTest):
                     "lr": 1.0
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "loss_scale": 1.0,
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            ds_cfg["fp16"] = {"enabled": True, "loss_scale": 1.0}
+        elif get_accelerator().is_bf16_supported():
+            ds_cfg["bf16"] = {"enabled": True}
 
         with deepspeed.zero.Init(config=ds_cfg, mem_efficient_linear=False, enabled=init_context_manager):
             model = ManyParamModel()
 
         ds_engine = _ds_initialize_for_param_partitioning_testing(model, ds_cfg)
 
+        dtype = preferred_dtype()
         for _ in range(3):  # test multiple iterations to cover prefetching
-            activations: List[Tensor] = ds_engine(
-                torch.ones((param_sz, ), dtype=torch.float16, device=ds_engine.device))
+            activations: List[Tensor] = ds_engine(torch.ones((param_sz, ), dtype=dtype, device=ds_engine.device))
             assert len(activations) == n_layers
 
             partition_sz = math.ceil(param_sz / self.world_size)
-            expected_activations = torch.empty(param_sz, dtype=torch.float16, device=ds_engine.device)
+            expected_activations = torch.empty(param_sz, dtype=dtype, device=ds_engine.device)
             for start_idx in range(0, param_sz, partition_sz):
                 expected_activations[start_idx:start_idx + partition_sz] = dist.get_rank()
 
@@ -1006,11 +1011,11 @@ class TestZero3InitForParentWeightInitialization(DistributedTest):
                     "lr": 1.0
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "loss_scale": 1.0,
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            ds_cfg["fp16"] = {"enabled": True, "loss_scale": 1.0}
+        elif get_accelerator().is_bf16_supported():
+            ds_cfg["bf16"] = {"enabled": True}
 
         with deepspeed.zero.Init(config=ds_cfg, mem_efficient_linear=False, enabled=True):
             model = ModelWhereParentInitializesChildWeights()
@@ -1193,6 +1198,83 @@ class TestZero3ParamPartitioningBaseBF16(DistributedTest):
         _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
 
 
+class TestParamPartitioningSkipInit(DistributedTest):
+    world_size = 2
+
+    def test(self):
+        config_dict = {
+            "train_batch_size": 4,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-4
+                }
+            },
+            "zero_optimization": {
+                "stage": 3
+            },
+        }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
+        hidden_dim = 10
+
+        class SubModel(torch.nn.Module):
+
+            def __init__(self, input_size, output_size, dropout_prob=0.5, device=None):
+                super(SubModel, self).__init__()
+                self.linear = torch.nn.Linear(input_size, output_size, device=device)
+                self.dropout = torch.nn.Dropout(dropout_prob)
+                self.module_list = torch.nn.ModuleList([torch.nn.Linear(input_size, output_size, device=device)])
+
+            def forward(self, x):
+                x = self.linear(x)
+                x = self.dropout(x)
+                x = self.module_list[0](x)
+                return x
+
+        class MyModel(torch.nn.Module):
+
+            def __init__(self, hidden_dim):
+                super(MyModel, self).__init__()
+                self.l1 = skip_init(Linear, hidden_dim, hidden_dim)
+                self.l2 = skip_init(SubModel, hidden_dim, hidden_dim)
+                self.l3 = torch.nn.Linear(hidden_dim, hidden_dim)
+                self.cel = torch.nn.CrossEntropyLoss()
+                self.l4 = skip_init(SubModel, hidden_dim, hidden_dim)
+
+            def forward(self, x, y):
+                x = self.l1(x)
+                x = self.l2(x)
+                x = self.l3(x)
+                x = self.l4(x)
+                loss = self.cel(x, y)
+                val = [x, loss]
+                return val
+
+        with deepspeed.zero.Init(config=config_dict):
+            model = MyModel(hidden_dim)
+        world_size = dist.get_world_size()
+        ds_tensor_numel = math.ceil(hidden_dim * hidden_dim / world_size)
+        assert model.l1.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l2.linear.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l2.module_list[0].weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l3.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l4.linear.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l4.module_list[0].weight.ds_tensor.numel() == ds_tensor_numel
+
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
+        dist.barrier()
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            loss = loss[1]
+            model.backward(loss)
+            model.step()
+
+
 class TestZeroOffloadStage1(DistributedTest):
     world_size = 2
 
@@ -1207,9 +1289,6 @@ class TestZeroOffloadStage1(DistributedTest):
                     "lr": 1e-4
                 }
             },
-            "fp16": {
-                "enabled": True
-            },
             "zero_optimization": {
                 "stage": 1,
                 "offload_optimizer": {
@@ -1217,6 +1296,10 @@ class TestZeroOffloadStage1(DistributedTest):
                 }
             },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
@@ -1234,6 +1317,8 @@ class TestZero3DictFwd(DistributedTest):
     world_size = 1
 
     def test(self, return_type):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet")
         config_dict = {
             "train_batch_size": 4,
             "steps_per_print": 1,
@@ -1243,13 +1328,14 @@ class TestZero3DictFwd(DistributedTest):
                     "lr": 1e-4
                 }
             },
-            "fp16": {
-                "enabled": True
-            },
             "zero_optimization": {
                 "stage": 3
             },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         class MyModel(torch.nn.Module):
@@ -1293,6 +1379,11 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage):
+        # We verify trhee conditions:
+        # 1. global_steps starts at 0
+        # 2. All subgroups have the same step count
+        # 3. The global step count is the same as the step count of the first subgroup
+
         # force all params to be partitioned by forcing threshold=0
         config_dict = {
             "train_micro_batch_size_per_gpu": 2,
@@ -1309,11 +1400,11 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
                     "lr": 1e-3
                 }
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 4
 
         model = SimpleModel(hidden_dim=hidden_dim, nlayers=12)
@@ -1322,24 +1413,31 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
                                                       model_parameters=model.parameters())
         data_loader = random_dataloader(model=model, total_samples=16, hidden_dim=hidden_dim, device=model.device)
 
-        for i, batch in enumerate(data_loader):
+        assert model.global_steps == 0
+
+        for batch in data_loader:
             loss = model(batch[0], batch[1])
             model.backward(loss)
+
+            is_gradient_accumulation_boundary = model.is_gradient_accumulation_boundary()
             model.step()
 
-            step_counts = []
-            if zero_stage == 3:
-                for sub_group_id, _ in enumerate(optimizer.fp16_groups):
-                    fp32_param = optimizer.fp32_partitioned_groups_flat[sub_group_id]
-                    state = optimizer.optimizer.state[fp32_param]
-                    step_counts.append(state["step"])
-                assert all(step == step_counts[0] for step in step_counts)
-            elif zero_stage == 1 or zero_stage == 2:
-                for param_group in optimizer.optimizer.param_groups:
-                    for param in param_group["params"]:
-                        state = optimizer.optimizer.state[param]
+            if is_gradient_accumulation_boundary:
+                step_counts = []
+
+                if zero_stage == 3:
+                    for sub_group_id, _ in enumerate(optimizer.fp16_groups):
+                        fp32_param = optimizer.fp32_partitioned_groups_flat[sub_group_id]
+                        state = optimizer.optimizer.state[fp32_param]
                         step_counts.append(state["step"])
+                elif zero_stage == 1 or zero_stage == 2:
+                    for param_group in optimizer.optimizer.param_groups:
+                        for param in param_group["params"]:
+                            state = optimizer.optimizer.state[param]
+                            step_counts.append(state["step"])
+
                 assert all(step == step_counts[0] for step in step_counts)
+                assert model.global_steps == step_counts[0]
 
 
 @pytest.mark.parametrize("zero_stage", [1, 2, 3])
@@ -1356,13 +1454,14 @@ class TestZeroFrozenWeights(DistributedTest):
                     "lr": 1e-4
                 }
             },
-            "fp16": {
-                "enabled": True
-            },
             "zero_optimization": {
                 "stage": zero_stage
             },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         class MyModel(torch.nn.Module):
@@ -1408,9 +1507,6 @@ class TestZeroOffloadOptim(DistributedTest):
             "train_batch_size": 4,
             "gradient_accumulation_steps": 2,
             "steps_per_print": 1,
-            "fp16": {
-                "enabled": True
-            },
             "zero_optimization": {
                 "stage": 1,
                 "offload_optimizer": {
@@ -1419,6 +1515,10 @@ class TestZeroOffloadOptim(DistributedTest):
             },
             "zero_force_ds_cpu_optimizer": force_ds_optim,
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
@@ -1440,15 +1540,15 @@ class TestZeroPartitionCache(DistributedTest):
         hidden_dim = 10
         config_dict = {
             "train_batch_size": 2,
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
             "zero_optimization": {
                 "stage": 3,
                 "stage3_param_persistence_threshold": hidden_dim,
             },
         }
+        if get_accelerator().is_fp16_supported():
+            config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
+        elif get_accelerator().is_bf16_supported():
+            config_dict["bf16"] = {"enabled": True}
         if training:
             config_dict["optimizer"] = {"type": "Adam"}
 
@@ -1457,13 +1557,11 @@ class TestZeroPartitionCache(DistributedTest):
 
         model, _, _, _ = deepspeed.initialize(model=model, config=config_dict)
 
-        dtype = torch.half
         data_loader = random_dataloader(
             model=model,
             total_samples=6,
             hidden_dim=hidden_dim,
             device=model.device,
-            dtype=dtype,
         )
 
         for _, batch in enumerate(data_loader):
@@ -1487,6 +1585,8 @@ class TestEmptyParameterGroup(DistributedTest):
     world_size = 1
 
     def test_empty_param_groups(self, dtype, use_client_optimizer, empty_weight_group):
+        if dtype == torch.float16 and not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         model = SimpleModel(hidden_dim=4, nlayers=4)
         param_groups = [
             {
@@ -1515,7 +1615,7 @@ class TestEmptyParameterGroup(DistributedTest):
         }
 
         if use_client_optimizer:
-            optimizer = deepspeed.ops.adam.FusedAdam(param_groups, lr=0.1)
+            optimizer = torch.optim.AdamW(param_groups, lr=0.1)
             model_parameters = model.parameters()
         else:
             config_dict["optimizer"] = {"type": "adamw"}
