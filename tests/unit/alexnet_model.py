@@ -103,7 +103,8 @@ def cifar_trainset(fp16=False):
         dist.barrier()
     data_root = os.getenv("TEST_DATA_DIR", "/tmp/")
     download = False if os.getenv("CIFAR10_DATASET_PATH") else True
-    trainset = torchvision.datasets.CIFAR10(root=os.getenv("CIFAR10_DATASET_PATH", default=os.path.join(data_root, "cifar10-data")),
+    trainset = torchvision.datasets.CIFAR10(root=os.getenv("CIFAR10_DATASET_PATH",
+                                                           default=os.path.join(data_root, "cifar10-data")),
                                             train=True,
                                             download=download,
                                             transform=transform)
