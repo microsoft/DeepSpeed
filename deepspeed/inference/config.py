@@ -10,7 +10,7 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from typing import Dict, Union
 from enum import Enum
-
+from abc import ABCMeta
 
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
@@ -252,8 +252,15 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     policy. e.g., `{BertLayer : deepspeed.inference.HFBertLayerPolicy}`
     """
 
-    injection_policy_tuple: tuple = None
-    """ TODO: Add docs """
+    injection_policy_tuple: Union[tuple, ABCMeta] = None
+    """ 
+    This argument shows how the injection needs to happen at inference engine!
+    There are two ways that one can pass this config:
+        1. (tuple): used for the auto-tp, in which the layers that requires all-reduce are passed as a list
+        2. (policy): used when injectiong the kernels, however, the model is neither Megatron nor HuggingFace model,
+            but it still has the same architecture (as in similar parameter names). Thus, the user can pass the 
+            policy maually rather than relying on deepspeed-inference automatic injection.
+    """
 
     config: Dict = Field(None, alias="args")  # todo: really no need for this field if we can refactor
 
