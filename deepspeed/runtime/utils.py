@@ -1074,7 +1074,7 @@ def offload_adam_states(optimizer, device, pin_memory: bool = False, non_blockin
         if pin_memory:
             pin_mem_key = f"{key}_pin_memory"
             if pin_mem_key not in state:
-                state[pin_mem_key] = torch.empty_like(state[key], device=device).pin_memory()
+                state[pin_mem_key] = get_accelerator().pin_memory(torch.empty_like(state[key], device=device))
             state[pin_mem_key].copy_(state[key], non_blocking=non_blocking)
             state[key].data = state[pin_mem_key]
         else:

@@ -2826,7 +2826,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if needs_offload(OffloadStateTypeEnum.lp_params):
             if pin_memory:
                 if not hasattr(self, "lp_param_contiguous_pin_buffer"):
-                    self.lp_param_contiguous_pin_buffer = torch.empty_like(self.lp_param_buffer, device=device)
+                    self.lp_param_contiguous_pin_buffer = get_accelerator().pin_memory(
+                        torch.empty_like(self.lp_param_buffer, device=device))
                     self.lp_params_pin_buffers = [
                         get_accelerator().pin_memory(torch.empty_like(p.ds_tensor, device=device))
                         for p in self.module.parameters()
