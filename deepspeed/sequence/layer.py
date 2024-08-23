@@ -64,6 +64,7 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, group):
     if scatter_idx < 2:
         # The compatibility handling of 4D and 3D tensors, standardizing to 3D.
         input = input.view(input.shape[0], input.shape[1], -1)
+        
         seq_len, batch_size, h=input.shape
         
         input = input.reshape(seq_len*h, batch_size)
