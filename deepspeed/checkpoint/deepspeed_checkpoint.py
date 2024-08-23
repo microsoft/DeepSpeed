@@ -144,7 +144,10 @@ class DeepSpeedCheckpoint(object):
 
     def get_embedding_state(self, tp_index: int) -> Dict:
         assert tp_index in self.tp_to_embedding_map.keys()
-        sd_list = [torch.load(fname, weights_only=True, map_location=torch.device('cpu')) for fname in self.tp_to_embedding_map[tp_index]]
+        sd_list = [
+            torch.load(fname, weights_only=True, map_location=torch.device('cpu'))
+            for fname in self.tp_to_embedding_map[tp_index]
+        ]
         sd = self._merge_state_dicts(sd_list)
         return sd
 
