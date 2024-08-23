@@ -44,13 +44,13 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, group):
     seq_world_size = dist.get_world_size(group)
     inp_shape = list(input.shape)
     if not (scatter_idx < 2):
-        input_splits = get_shard_size_list(input.shape[scatter_idx], seq_world_size)
+        input_splits = get_shard_size_list(inp_shape[scatter_idx], seq_world_size)
         input = input.transpose(0, scatter_idx).contiguous()
         local_heads = input_splits[groups._get_sequence_parallel_rank()]
         output_splits = [local_heads] * seq_world_size
 
-        output_shape = [seq_world_size * local_heads] + list(input.shape[1:])
-        output = torch.empty(output_shape, device=input.device, dtype=input.dtype)
+        output_buffer_shape = [seq_world_size * local_heads] + list(input.shape[1:])
+        output = torch.empty(output_buffer_shape, device=input.device, dtype=input.dtype)
 
         dist.all_to_all_single(output,input,output_split_sizes=output_splits,\
             input_split_sizes=input_splits,group=group)
@@ -62,29 +62,33 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, group):
         ###[seq_ws*local_seq_len, b, local_heads,...]
         output = output.view(inp_shape[gather_idx] * seq_world_size, *output.shape[2:]).contiguous()
     if scatter_idx < 2:
+        # The compatibility handling of 4D and 3D tensors, standardizing to 3D.
         input = input.view(input.shape[0], input.shape[1], -1)
-        input = input.reshape(input.shape[0] * input.shape[2], input.shape[1])
+        seq_len, batch_size, h=input.shape
+        
+        input = input.reshape(seq_len*h, batch_size)
         local_seq_len_with_heads = int(input.shape[0] / seq_world_size)
         input_splits = [local_seq_len_with_heads] * seq_world_size
-        output_splits = get_shard_size_list(get_num_kv_heads(), seq_world_size)
+        num_local_heads_list = get_shard_size_list(get_num_kv_heads(), seq_world_size)
 
-        coeff = int(local_seq_len_with_heads / output_splits[groups._get_sequence_parallel_rank()])
-        #uneven seq_world_size coeff ,    local_heads/total_heads.
-        heads_scale_coeff = get_num_kv_heads() / get_shard_size_list(
-            get_num_kv_heads(), seq_world_size)[groups._get_sequence_parallel_rank()]
-        output_splits = [i * coeff for i in output_splits]
-        output_d1_size = int(heads_scale_coeff * local_seq_len_with_heads)
-        total_seq_len = int(inp_shape[gather_idx] * heads_scale_coeff)
-        output = torch.empty(output_d1_size, input.shape[1], device=input.device, dtype=input.dtype)
+        coeff = int(local_seq_len_with_heads / num_local_heads_list[groups._get_sequence_parallel_rank()])
+        
+        #uneven seq_world_size coeff ,    total_heads/local_heads.
+        heads_scale_coeff = get_num_kv_heads() / num_local_heads_list[groups._get_sequence_parallel_rank()]
+        
+        output_splits = [num_local_heads * coeff for num_local_heads in num_local_heads_list]
+        output_buff_d1_size = int(heads_scale_coeff * local_seq_len_with_heads)
+        total_h = int(inp_shape[gather_idx] * heads_scale_coeff)
+        output = torch.empty(output_buff_d1_size, input.shape[1], device=input.device, dtype=input.dtype)
 
         dist.all_to_all_single(output,input,output_split_sizes=output_splits, \
             input_split_sizes=input_splits,group=group)
 
         inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
-        output2_shape=  inp_shape[: gather_idx] + \
-            [total_seq_len,] + \
+        output_shape=  inp_shape[: gather_idx] + \
+            [total_h,] + \
             inp_shape[gather_idx + 1:]
-        output = output.reshape(output2_shape)
+        output = output.reshape(output_shape)
     return output
 
 
