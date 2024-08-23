@@ -129,11 +129,6 @@ void gds_op_desc_t::run(const int tid,
     int64_t buf_offset = data_ptr() + (_num_bytes_per_thread * tid) - (char*)_base_ptr;
     const auto tid_file_offset = _file_offset + (_num_bytes_per_thread * tid);
 
-    // std::cout << "FILE OFFSET: " << _file_offset << std::endl;
-    // std::cout << "TID FILE OFFSET: " << tid_file_offset << std::endl;
-    // std::cout << "NUM FILE BYTES: " << _file_num_bytes << std::endl;
-    // std::cout << "TID  BYTES: " << _num_bytes_per_thread << std::endl;
-
     if (_read_op) {
         auto ret =
             cuFileRead(_cf_handle, _base_ptr, _num_bytes_per_thread, tid_file_offset, buf_offset);

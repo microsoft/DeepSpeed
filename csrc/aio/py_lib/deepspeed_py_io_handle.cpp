@@ -234,7 +234,7 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
     }
     assert((buffer_bytes % _num_threads) == 0);
 
-    if (!_is_valid_parallel_aio_op(true, num_file_bytes)) { return -1; }
+    if (!_is_valid_parallel_aio_op(true, buffer_bytes)) { return -1; }
 
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
