@@ -12,6 +12,7 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
                            const int fd,
                            const char* filename,
                            const long long int file_num_bytes,
+                           const long long int file_offset,
                            const int num_threads,
                            const bool validate)
     : _read_op(read_op),
@@ -19,8 +20,9 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
       _fd(fd),
       _filename(filename),
       _file_num_bytes(file_num_bytes),
+      _file_offset(file_offset),
       _num_threads(num_threads),
-      _num_bytes_per_thread(file_num_bytes / num_threads),
+      _num_bytes_per_thread( static_cast<long long int>(buffer.nbytes())/ num_threads),
       _validate(validate)
 {
 }

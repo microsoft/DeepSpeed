@@ -95,9 +95,10 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const int fd,
                              const char* filename,
                              const long long int file_num_bytes,
+                             const long long int file_offset,
                              const int num_threads,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, num_threads, validate)
+    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, num_threads, validate)
 {
     _contiguous_buffer = _buffer.contiguous();
     const int64_t device = _buffer.get_device();
@@ -126,15 +127,20 @@ void gds_op_desc_t::run(const int tid,
     assert(tid < _num_threads);
     check_cudaruntimecall(cudaSetDevice(_buffer.get_device()));
     int64_t buf_offset = data_ptr() + (_num_bytes_per_thread * tid) - (char*)_base_ptr;
-    const auto file_offset = _num_bytes_per_thread * tid;
+    const auto tid_file_offset = _file_offset + (_num_bytes_per_thread * tid);
+
+    // std::cout << "FILE OFFSET: " << _file_offset << std::endl;
+    // std::cout << "TID FILE OFFSET: " << tid_file_offset << std::endl;
+    // std::cout << "NUM FILE BYTES: " << _file_num_bytes << std::endl;
+    // std::cout << "TID  BYTES: " << _num_bytes_per_thread << std::endl;
 
     if (_read_op) {
         auto ret =
-            cuFileRead(_cf_handle, _base_ptr, _num_bytes_per_thread, file_offset, buf_offset);
+            cuFileRead(_cf_handle, _base_ptr, _num_bytes_per_thread, tid_file_offset, buf_offset);
         if (ret < 0) { _report_error(ret, errno, buf_offset); }
     } else {
         auto ret =
-            cuFileWrite(_cf_handle, _base_ptr, _num_bytes_per_thread, file_offset, buf_offset);
+            cuFileWrite(_cf_handle, _base_ptr, _num_bytes_per_thread, tid_file_offset, buf_offset);
         if (ret < 0) { _report_error(ret, errno, buf_offset); }
     }
 }

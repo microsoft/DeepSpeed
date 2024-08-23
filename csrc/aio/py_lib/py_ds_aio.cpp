@@ -55,6 +55,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "buffer"_a,
              "filename"_a,
              "validate"_a,
+             "file_offset"_a,
              "async"_a)
 
         .def("pwrite",
@@ -69,7 +70,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              &deepspeed_aio_handle_t::sync_pread,
              "Synchrononous parallel file read. Returns count of completed read ops",
              "buffer"_a,
-             "filename"_a)
+             "filename"_a,
+             "file_offset"_a)
 
         .def("sync_pwrite",
              &deepspeed_aio_handle_t::sync_pwrite,
@@ -82,7 +84,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "Asynchronous parallel file read. Returns 0 on success. Returns 0 on success, and "
              "following wait() returns count of completed ops.",
              "buffer"_a,
-             "filename"_a)
+             "filename"_a,
+             "file_offset"_a)
 
         .def("async_pwrite",
              &deepspeed_aio_handle_t::async_pwrite,

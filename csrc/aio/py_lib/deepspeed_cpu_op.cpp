@@ -12,9 +12,10 @@ cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
                              const int fd,
                              const char* filename,
                              const long long int file_num_bytes,
+                             const long long int file_offset,
                              const int num_threads,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, num_threads, validate),
+    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, num_threads, validate),
       _cpu_buffer(buffer)
 {
     // Need to use CPU bounce buffer if buffer is not a page-locked DRAM memory.
@@ -58,6 +59,7 @@ void cpu_op_desc_t::run(const int tid,
                         std::unique_ptr<aio_context>& aio_ctxt,
                         deepspeed_aio_config_t* aio_config)
 {
+    // TODO: add file_offset
     assert(tid < _num_threads);
     const auto base_offset = _num_bytes_per_thread * tid;
 

@@ -16,6 +16,7 @@ struct cpu_op_desc_t : io_op_desc_t {
                   const int fd,
                   const char* filename,
                   const long long int file_num_bytes,
+                  const long long int file_offset,
                   const int num_threads,
                   const bool validate);
 
