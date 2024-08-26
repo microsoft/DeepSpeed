@@ -8,6 +8,7 @@ tags: getting-started
 - [Introduction](#introduction)
 - [Intel Architecture (IA) CPU](#intel-architecture-ia-cpu)
 - [Intel XPU](#intel-xpu)
+- [NPU](#npu)
 
 # Introduction
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup setup instructions for the accelerator family and hardware they are using.
@@ -132,3 +133,83 @@ accelerator: xpu
 
 ## More example for using DeepSpeed on Intel XPU
 Refer to https://github.com/intel/intel-extension-for-pytorch/tree/release/xpu/2.1.40/examples/gpu/inference/python/llm for more extensive guide.
+
+
+# NPU
+
+DeepSpeed has been verified on the following NPU products:
+* Atlas 300T A2
+  
+## Installation steps for NPU
+
+The following steps outline the process for installing DeepSpeed on an NPU: 
+1. Install the NPU Driver and Firmware
+    <details>
+    <summary>Click to expand</summary>
+    
+    Before proceeding with the installation, please download the necessary files from [NPU Driver and Firmware](https://www.hiascend.com/en/hardware/firmware-drivers/commercial?product=4&model=11).
+
+    The following instructions below are sourced from the [Ascend Community](https://www.hiascend.com/document/detail/en/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html) (for the [Chinese document](https://www.hiascend.com/document/detail/zh/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html)):
+
+    - Execute the following command to install the driver:
+    ```
+    ./Ascend-hdk-<soc_version>-npu-driver_x.x.x_linux-{arch}.run --full --install-for-all
+    ``` 
+
+    - Execute the following command to install the firmware:
+    ```
+    ./Ascend-hdk-<soc_version>-npu-firmware_x.x.x.x.X.run --full
+    ```
+    </details>
+
+2. Install CANN
+    <details>
+    <summary>Click to expand</summary>
+
+    Prior to installation, download the [CANN Toolkit](https://www.hiascend.com/en/software/cann/commercial).
+
+    - Install third-party dependencies.
+        - Ubuntu (The operations are the same for Debian, UOS20, and Linux.)
+        ```
+        apt-get install -y gcc g++ make cmake zlib1g zlib1g-dev openssl libsqlite3-dev libssl-dev libffi-dev unzip pciutils net-tools libblas-dev gfortran libblas3
+        ```
+        - openEuler (The operations are the same for EulerOS, CentOS, and BC-Linux.)
+        ```
+        yum install -y gcc gcc-c++ make cmake unzip zlib-devel libffi-devel openssl-devel pciutils net-tools sqlite-devel lapack-devel gcc-gfortran
+        ```  
+    - Install the required Python dependencies:
+    ```
+    pip3 install attrs numpy decorator sympy cffi pyyaml pathlib2 psutil protobuf scipy requests absl-py wheel typing_extensions
+    ``` 
+    - Install the CANN Toolkit.
+    ```
+    ./Ascend-cann-toolkit_x.x.x_linux-{arch}.run --install
+    ``` 
+    </details>
+
+3. Install PyTorch \
+    `pip install torch torch_npu`
+   
+4. Install DeepSpeed \
+    `pip install deepspeed`
+
+You can view the installation results using the `ds_report` command.
+
+## How to launch DeepSpeed on NPU
+
+To validate the NPU availability and if the accelerator is correctly chosen, here is an example(NPU detection is automatic starting with DeepSpeed v0.12.6):
+```
+>>> import torch
+>>> print('torch:',torch.__version__)
+torch: 2.2.0
+>>> import torch_npu
+>>> print('torch_npu:',torch.npu.is_available(),",version:",torch_npu.__version__)
+torch_npu: True ,version: 2.2.0
+>>> from deepspeed.accelerator import get_accelerator
+>>> print('accelerator:', get_accelerator()._name)
+accelerator: npu
+```
+
+## Multi-card parallel training using NPU
+
+To perform model training across multiple NPU cards using DeepSpeed, the following code from [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples/blob/master/training/cifar/cifar10_deepspeed.py) can be utilized directly without modification.
