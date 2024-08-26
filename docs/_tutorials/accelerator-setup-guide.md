@@ -149,7 +149,7 @@ The following steps outline the process for installing DeepSpeed on an NPU:
     
     Before proceeding with the installation, please download the necessary files from [NPU Driver and Firmware](https://www.hiascend.com/en/hardware/firmware-drivers/commercial?product=4&model=11).
 
-    The following instructions below are sourced from the [Ascend Community](https://www.hiascend.com/document/detail/en/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html) (for the [Chinese document](https://www.hiascend.com/document/detail/zh/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html)):
+    The following instructions below are sourced from the [Ascend Community](https://www.hiascend.com/document/detail/en/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html) (refer to the [Chinese version](https://www.hiascend.com/document/detail/zh/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html)):
 
     - Execute the following command to install the driver:
     ```
@@ -193,7 +193,39 @@ The following steps outline the process for installing DeepSpeed on an NPU:
 4. Install DeepSpeed \
     `pip install deepspeed`
 
-You can view the installation results using the `ds_report` command.
+You can view the installation results using the `ds_report` command, Here is an example:
+```
+--------------------------------------------------
+DeepSpeed C++/CUDA extension op report
+--------------------------------------------------
+NOTE: Ops not installed will be just-in-time (JIT) compiled at
+    runtime if needed. Op compatibility means that your system
+    meet the required dependencies to JIT install the op.
+--------------------------------------------------
+JIT compiled ops requires ninja
+ninja .................. [OKAY]
+--------------------------------------------------
+op name ................ installed .. compatible
+--------------------------------------------------
+deepspeed_not_implemented  [NO] ....... [OKAY]
+async_io ............... [NO] ....... [OKAY]
+cpu_adagrad ............ [NO] ....... [OKAY]
+cpu_adam ............... [NO] ....... [OKAY]
+cpu_lion ............... [NO] ....... [OKAY]
+fused_adam ............. [NO] ....... [OKAY]
+transformer_inference .. [NO] ....... [OKAY]
+--------------------------------------------------
+DeepSpeed general environment info:
+torch install path ............... ['/root/miniconda3/envs/ds/lib/python3.10/site-packages/torch']
+torch version .................... 2.2.0
+deepspeed install path ........... ['/root/miniconda3/envs/ds/lib/python3.10/site-packages/deepspeed']
+deepspeed info ................... 0.14.4, unknown, unknown
+deepspeed wheel compiled w. ...... torch 2.2
+torch_npu install path ........... ['/root/miniconda3/envs/ds/lib/python3.10/site-packages/torch_npu']
+torch_npu version ................ 2.2.0
+ascend_cann version .............. 8.0.RC2.alpha002
+shared memory (/dev/shm) size .... 20.00 GB
+```
 
 ## How to launch DeepSpeed on NPU
 
@@ -212,4 +244,4 @@ accelerator: npu
 
 ## Multi-card parallel training using NPU
 
-To perform model training across multiple NPU cards using DeepSpeed, the following code from [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples/blob/master/training/cifar/cifar10_deepspeed.py) can be utilized directly without modification.
+To perform model training across multiple NPU cards using DeepSpeed, see the examples provided in [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples/blob/master/training/cifar/cifar10_deepspeed.py).
