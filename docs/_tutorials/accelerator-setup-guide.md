@@ -8,7 +8,7 @@ tags: getting-started
 - [Introduction](#introduction)
 - [Intel Architecture (IA) CPU](#intel-architecture-ia-cpu)
 - [Intel XPU](#intel-xpu)
-- [Huawei Ascend NPU](#npu)
+- [Huawei Ascend NPU](#huawei-ascend-npu)
 
 # Introduction
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup setup instructions for the accelerator family and hardware they are using.
@@ -139,14 +139,14 @@ Refer to https://github.com/intel/intel-extension-for-pytorch/tree/release/xpu/2
 
 DeepSpeed has been verified on the following Huawei Ascend NPU products:
 * Atlas 300T A2
-  
+
 ## Installation steps for Huawei Ascend NPU
 
-The following steps outline the process for installing DeepSpeed on an Huawei Ascend NPU: 
+The following steps outline the process for installing DeepSpeed on an Huawei Ascend NPU:
 1. Install the Huawei Ascend NPU Driver and Firmware
     <details>
     <summary>Click to expand</summary>
-    
+
     Before proceeding with the installation, please download the necessary files from [Huawei Ascend NPU Driver and Firmware](https://www.hiascend.com/en/hardware/firmware-drivers/commercial?product=4&model=11).
 
     The following instructions below are sourced from the [Ascend Community](https://www.hiascend.com/document/detail/en/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html) (refer to the [Chinese version](https://www.hiascend.com/document/detail/zh/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html)):
@@ -154,7 +154,7 @@ The following steps outline the process for installing DeepSpeed on an Huawei As
     - Execute the following command to install the driver:
     ```
     ./Ascend-hdk-<soc_version>-npu-driver_x.x.x_linux-{arch}.run --full --install-for-all
-    ``` 
+    ```
 
     - Execute the following command to install the firmware:
     ```
@@ -176,20 +176,20 @@ The following steps outline the process for installing DeepSpeed on an Huawei As
         - openEuler (The operations are the same for EulerOS, CentOS, and BC-Linux.)
         ```
         yum install -y gcc gcc-c++ make cmake unzip zlib-devel libffi-devel openssl-devel pciutils net-tools sqlite-devel lapack-devel gcc-gfortran
-        ```  
+        ```
     - Install the required Python dependencies:
     ```
     pip3 install attrs numpy decorator sympy cffi pyyaml pathlib2 psutil protobuf scipy requests absl-py wheel typing_extensions
-    ``` 
+    ```
     - Install the CANN Toolkit.
     ```
     ./Ascend-cann-toolkit_x.x.x_linux-{arch}.run --install
-    ``` 
+    ```
     </details>
 
 3. Install PyTorch \
     `pip install torch torch_npu`
-   
+
 4. Install DeepSpeed \
     `pip install deepspeed`
 
