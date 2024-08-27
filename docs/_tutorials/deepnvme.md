@@ -9,7 +9,7 @@ Ensure your environment is properly configured to use DeepNVMe. First, you need 
 
 ![deepnvme_ops_report](/assets/images/deepnvme_ops_report.png)
 
-If `async_io` opertator is unavailable, you will need to install the appropriate `libaio` library binaries for your Linux flavor. For example, Ubuntu users will need to run `apt install libaio-dev`. In general, you should carefully inspect `ds_report` output for helpful tips such as the following:
+If `async_io` operator is unavailable, you will need to install the appropriate `libaio` library binaries for your Linux flavor. For example, Ubuntu users will need to run `apt install libaio-dev`. In general, you should carefully inspect `ds_report` output for helpful tips such as the following:
 
 ```bash
 [WARNING]  async_io requires the dev libaio .so object and headers but these were not found.
