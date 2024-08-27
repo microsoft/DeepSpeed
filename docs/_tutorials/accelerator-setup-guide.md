@@ -8,7 +8,7 @@ tags: getting-started
 - [Introduction](#introduction)
 - [Intel Architecture (IA) CPU](#intel-architecture-ia-cpu)
 - [Intel XPU](#intel-xpu)
-- [NPU](#npu)
+- [Huawei Ascend NPU](#npu)
 
 # Introduction
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup setup instructions for the accelerator family and hardware they are using.
@@ -135,19 +135,19 @@ accelerator: xpu
 Refer to https://github.com/intel/intel-extension-for-pytorch/tree/release/xpu/2.1.40/examples/gpu/inference/python/llm for more extensive guide.
 
 
-# NPU
+# Huawei Ascend NPU
 
-DeepSpeed has been verified on the following NPU products:
+DeepSpeed has been verified on the following Huawei Ascend NPU products:
 * Atlas 300T A2
   
-## Installation steps for NPU
+## Installation steps for Huawei Ascend NPU
 
-The following steps outline the process for installing DeepSpeed on an NPU: 
-1. Install the NPU Driver and Firmware
+The following steps outline the process for installing DeepSpeed on an Huawei Ascend NPU: 
+1. Install the Huawei Ascend NPU Driver and Firmware
     <details>
     <summary>Click to expand</summary>
     
-    Before proceeding with the installation, please download the necessary files from [NPU Driver and Firmware](https://www.hiascend.com/en/hardware/firmware-drivers/commercial?product=4&model=11).
+    Before proceeding with the installation, please download the necessary files from [Huawei Ascend NPU Driver and Firmware](https://www.hiascend.com/en/hardware/firmware-drivers/commercial?product=4&model=11).
 
     The following instructions below are sourced from the [Ascend Community](https://www.hiascend.com/document/detail/en/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html) (refer to the [Chinese version](https://www.hiascend.com/document/detail/zh/canncommercial/700/quickstart/quickstart/quickstart_18_0002.html)):
 
@@ -227,9 +227,9 @@ ascend_cann version .............. 8.0.RC2.alpha002
 shared memory (/dev/shm) size .... 20.00 GB
 ```
 
-## How to launch DeepSpeed on NPU
+## How to launch DeepSpeed on Huawei Ascend NPU
 
-To validate the NPU availability and if the accelerator is correctly chosen, here is an example(NPU detection is automatic starting with DeepSpeed v0.12.6):
+To validate the Huawei Ascend NPU availability and if the accelerator is correctly chosen, here is an example(Huawei Ascend NPU detection is automatic starting with DeepSpeed v0.12.6):
 ```
 >>> import torch
 >>> print('torch:',torch.__version__)
@@ -242,6 +242,6 @@ torch_npu: True ,version: 2.2.0
 accelerator: npu
 ```
 
-## Multi-card parallel training using NPU
+## Multi-card parallel training using Huawei Ascend NPU
 
-To perform model training across multiple NPU cards using DeepSpeed, see the examples provided in [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples/blob/master/training/cifar/cifar10_deepspeed.py).
+To perform model training across multiple Huawei Ascend NPU cards using DeepSpeed, see the examples provided in [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples/blob/master/training/cifar/cifar10_deepspeed.py).
