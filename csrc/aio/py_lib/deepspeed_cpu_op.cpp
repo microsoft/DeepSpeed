@@ -61,10 +61,16 @@ void cpu_op_desc_t::run(const int tid,
 {
     // TODO: add file_offset
     assert(tid < _num_threads);
-    const auto base_offset = _file_offset + (_num_bytes_per_thread * tid);
+    const auto buffer_base_offset = _num_bytes_per_thread * tid;
+    const auto file_base_offset = _file_offset + (_num_bytes_per_thread * tid);
+
+    std::cout << "FILE OFFSET: " << _file_offset << std::endl;
+    std::cout << "NUM BTYES : " << _num_bytes_per_thread << std::endl;
+    std::cout << "FIlE BASE OFFSET : " << file_base_offset << std::endl;
+    std::cout << "BUFFER BASE OFFSET : " << buffer_base_offset << std::endl;
 
     std::unique_ptr<io_xfer_ctxt> xfer_ctxt(
-        new io_xfer_ctxt(_fd, base_offset, _num_bytes_per_thread, data_ptr()));
+        new io_xfer_ctxt(_fd, file_base_offset, buffer_base_offset, _num_bytes_per_thread, data_ptr()));
 
     if (aio_config->_overlap_events) {
         do_aio_operation_overlap(_read_op, aio_ctxt, xfer_ctxt, aio_config, nullptr);

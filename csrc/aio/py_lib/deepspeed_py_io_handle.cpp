@@ -76,7 +76,7 @@ int deepspeed_io_handle_t::read(torch::Tensor& buffer, const char* filename, con
     if (fd == -1) { return -1; }
 
     auto read_buffer = (char*)buffer.data_ptr();
-    std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(fd, 0, num_file_bytes, read_buffer));
+    std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(fd, 0, 0, num_file_bytes, read_buffer));
 
     if (_aio_config._overlap_events) {
         do_aio_operation_overlap(true, _aio_ctxt, xfer_ctxt, &_aio_config, nullptr);
@@ -109,7 +109,7 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
 
     auto write_buffer = (char*)buffer.data_ptr();
     const auto num_write_bytes = static_cast<long long int>(buffer.nbytes());
-    std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(fd, 0, num_write_bytes, write_buffer));
+    std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(fd, 0, 0, num_write_bytes, write_buffer));
 
     if (_aio_config._overlap_events) {
         do_aio_operation_overlap(false, _aio_ctxt, xfer_ctxt, &_aio_config, nullptr);
