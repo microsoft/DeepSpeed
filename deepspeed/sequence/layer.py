@@ -143,8 +143,8 @@ def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, asyn
     num_heads = input.shape[2]
 
     if get_num_kv_heads() is not None or num_heads % seq_world_size != 0:
-        # assume here that the number of heads for q is consistent with kv
-        # or require additional logic
+        # Assuming here that the number of heads for q is consistent with kv
+        # If not, additional logic is required for cases like GQA
         if get_num_kv_heads() is None:
             assert num_heads > seq_world_size, f"Number of heads ({num_heads}) must be larger than sequence parallel size ({seq_world_size})"
             # set heads at first call by num_total_heads. then use ``get_num_kv_heads() is not None`` to re-entry uneven path.
