@@ -117,6 +117,24 @@ We hope that the above material is sufficient to get you started with DeepNVMe. 
 ### Pinned Tensors
 A key part of DeepNVMe optimization is the use of direct memory access (DMA) for I/O operations, which requires that the host or device tensor be pinned. To pin host tensors, you can use mechanisms provided by [Pytorch](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html) or [DeepSpeed Accelerators](/tutorials/accelerator-abstraction-interface/#tensor-operations). On the other hand,`gds_handle` provides `new_pinned_device_tensor()` and `pin_device_tensor()` functions for pinning CUDA tensors.
 
+```bash
+>>> h = GDSBuilder().load().gds_handle(num_threads=4)
+>>> import os
+>>> os.path.isfile('/local_nvme/test_1GB.pt')
+False
+>>> import torch
+>>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
+>>> h.pin_device_tensor(t)
+>>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> h.wait()
+1
+>>> os.path.isfile('/local_nvme/test_1GB.pt')
+True
+>>> os.path.getsize('/local_nvme/test_1GB.pt')
+1073741824
+>>> h.unpin_device_tensor(t)
+```
+
 ### Advanced Handle Creation
 Achieving peak I/O performance with DeepNVMe requires careful configuration of handle creation. In particular, the parameters of `aio_handle` and `gds_handle` constructors are performance-critical because they determine how efficiently DeepNVMe interacts with the underlying storage subsystem (i.e., `libaio`, GDS, and SSD). For convenience we make it possible to create handles using default parameter values which will provide decent performance. However, to squeezing out every available performance in your environment will likely require tuning the constructor parameters, namely `block_size`, `queue_depth`, `single_submit`, `overlap_events`, and `num_threads`. The `aio_handle` constructor parameters and default values are illustrated below:
 ```bash
