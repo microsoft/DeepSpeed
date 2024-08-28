@@ -150,7 +150,7 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group):
 
 def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, async_op=False, handle=None, type=None):
     seq_world_size = dist.get_world_size(group)
-    # we only need need_heads once,
+    # we only need num_heads once
     num_heads = input.shape[2]
 
     if get_num_kv_heads() is not None or num_heads % seq_world_size != 0:
@@ -158,7 +158,8 @@ def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, asyn
         # If not, additional logic is required for cases like GQA
         if get_num_kv_heads() is None:
             assert num_heads > seq_world_size, f"Number of heads ({num_heads}) must be larger than sequence parallel size ({seq_world_size})"
-            # set heads at first call by num_total_heads. then use ``get_num_kv_heads() is not None`` to re-entry uneven path.
+            # set heads at first call by num_total_heads.
+            # then use ``get_num_kv_heads() is not None`` to re-entry uneven path.
             set_num_kv_heads(num_heads)
         assert async_op == False, "uneven head sp does not support async op"
         return uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group)
