@@ -305,11 +305,7 @@ def _handle_overflow(cpu_sum, x, i):
 def get_global_norm(norm_list):
     """ Compute total from a list of norms
     """
-    total_norm = 0.0
-    for norm in norm_list:
-        total_norm += norm**2.0
-    # logger.info(f'norm_list = {norm_list} global = {sqrt(total_norm)}')
-    return sqrt(total_norm)
+    return torch.linalg.norm(torch.tensor(norm_list))
 
 
 def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):

@@ -133,8 +133,8 @@ class FusedLamb(torch.optim.Optimizer):
                 if group['max_grad_norm'] > 0:
                     # norm is in fact norm*scale
                     clip = ((grad_norm / scale) + 1e-6) / group['max_grad_norm']
-                    if clip > 1:
-                        combined_scale = clip * scale
+                    clip = torch.clamp(clip, min=1.0)
+                    combined_scale = clip * scale
 
                 #note: p.grad should not ever be set for correct operation of mixed precision optimizer that sometimes sends None gradients
                 if p.grad is None and grad is None:

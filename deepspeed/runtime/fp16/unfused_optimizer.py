@@ -246,8 +246,8 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.cur_scale) + 1e-6) / self.clip_grad
-            if clip > 1:
-                combined_scale = clip * self.cur_scale
+            clip = torch.clamp(clip, min=1.0)
+            combined_scale = clip * self.cur_scale
 
         if apply_scale:
             for group in self.fp32_groups:
