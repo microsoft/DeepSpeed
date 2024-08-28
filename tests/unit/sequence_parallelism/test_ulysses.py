@@ -124,7 +124,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
             if batch_dim_idx == 1:  #seq_len_dim : 0(d0)
                 input_tensor[:] = seq_batch_heads_hash(d0_indices, d1_indices, h_indices,
                                                        d0 * groups._get_sequence_parallel_rank(), 0)
-            elif batch_dim_idx == 0:  #seq_len_dim : 1(d1
+            elif batch_dim_idx == 0:  #seq_len_dim : 1(d1)
                 input_tensor[:] = seq_batch_heads_hash(d0_indices, d1_indices, h_indices, 0,
                                                        d1 * groups._get_sequence_parallel_rank())
             inputs.append(input_tensor)
