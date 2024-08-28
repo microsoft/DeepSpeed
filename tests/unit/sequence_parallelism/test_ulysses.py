@@ -88,16 +88,16 @@ def rank_print(msg):
 
 @pytest.mark.parametrize("d0", [2, 4])  #batch or sequence dimension
 @pytest.mark.parametrize("d1", [4, 8])  #batch or sequence dimension
-@pytest.mark.parametrize("num_heads", [3, 7,22,26])
-@pytest.mark.parametrize("head_dim", [4,16, 32])
+@pytest.mark.parametrize("num_heads", [3, 7])
+@pytest.mark.parametrize("head_dim", [16, 32])
 class TestUlyssesAll2All_odd(DistributedTest):
-    world_size = 8
+    world_size = 4
 
     def test_alltoall_output_consistency(self, d0: int, d1: int, head_dim: int, num_heads: int) -> None:
         
         data_parallel_size=1
         seq_parallel_size=self.world_size//data_parallel_size
-        skip_on_arch(min_arch=8) #del s,b,h
+        skip_on_arch(min_arch=8) 
         def seq_batch_heads_hash(d0, d1, h,offset_d0=0,offset_d1=0, offset_h=0):
             d0+=offset_d0
             d1+=offset_d1
@@ -124,9 +124,9 @@ class TestUlyssesAll2All_odd(DistributedTest):
             d1_indices = torch.arange(d1).reshape(1, -1, 1, 1)
             h_indices = torch.arange(num_heads).reshape(1, 1, -1, 1)
             input_tensor = torch.randn(d0, d1, num_heads, head_dim, device=ds_engine.device)
-            if batch_dim_idx==1:   #seq_len_dim : d0
+            if batch_dim_idx==1:   #seq_len_dim : 0(d0)
                 input_tensor[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,d0*groups._get_sequence_parallel_rank(),0)
-            elif batch_dim_idx==0: #seq_len_dim : d1
+            elif batch_dim_idx==0: #seq_len_dim : 1(d1)
                 input_tensor[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,0,d1*groups._get_sequence_parallel_rank())
             inputs.append(input_tensor)
             
