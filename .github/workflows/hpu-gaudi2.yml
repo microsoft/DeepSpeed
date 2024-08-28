@@ -111,6 +111,7 @@ jobs:
         run: |
           git clone https://github.com/huggingface/transformers
           cd transformers
+          git checkout v4.44.1
           git rev-parse --short HEAD
           pip install .
 
