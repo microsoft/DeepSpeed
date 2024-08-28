@@ -43,8 +43,13 @@ class GDSBuilder(AsyncIOBuilder):
                 self.warning("Please install torch if trying to pre-compile GDS")
             return False
 
-        CUDA_HOME = torch.utils.cpp_extension.CUDA_HOME
-        CUDA_LIB64 = os.path.join(CUDA_HOME, "lib64")
+        if not self.is_rocm_pytorch():
+            CUDA_HOME = torch.utils.cpp_extension.CUDA_HOME
+            CUDA_LIB64 = os.path.join(CUDA_HOME, "lib64")
+        else:
+            CUDA_HOME = torch.utils.cpp_extension.ROCM_HOME
+            CUDA_LIB64 = os.path.join(CUDA_HOME, "lib")
+
         gds_compatible = self.has_function(funcname="cuFileDriverOpen",
                                            libraries=("cufile", ),
                                            library_dirs=(
