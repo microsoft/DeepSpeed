@@ -96,9 +96,9 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
         dist.all_to_all_single(output,input,output_split_sizes=output_splits, \
             input_split_sizes=input_splits,group=group)
         ##################
-        #suppose 7 heads divide into 4 rank [2,2,2,1]
-        #chunk_num_heads_small=1
-        #chunk_num_heads_large=2
+        #suppose 7 heads divide into 4 ranks [2,2,2,1]
+        #chunk_num_heads_small=floor(7/4)=1
+        #chunk_num_heads_large=ceil(7/4)=2
         #num_chunk_heads_large=len([2,2,2])=3, all2all_buffer_counts
         #num_chunk_heads_large=len([1])=1, all2all_buffer_counts
         #total_num_large_heads=sum([2,2,2])=7
@@ -117,11 +117,13 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
         heads_large_chunk=heads_large_chunk.view(num_chunk_heads_large,local_seq_len,chunk_num_heads_large,h_dim,batch_size)
         heads_small_chunk=heads_small_chunk.view(num_chunk_heads_small,local_seq_len,chunk_num_heads_small,h_dim,batch_size)
         if batch_dim_idx==0:
-            order=[4,1,0,2,3]  #[all2all_buffer_counts, local_seq_len, n_heads,dim,batch] - > [batch,local_seq_len,counts*n_heads,dim]
+             #[all2all_buffer_counts, local_seq_len, n_heads,dim,batch]->[batch,local_seq_len,all2all_buffer_counts*n_heads,dim]
+            order=[4,1,0,2,3] 
             heads_large_chunk=heads_large_chunk.permute(order).contiguous().view(batch_size,local_seq_len,total_num_large_heads,-1)
             heads_small_chunk=heads_small_chunk.permute(order).contiguous().view(batch_size,local_seq_len,total_num_small_heads,-1)
         elif batch_dim_idx==1:
-            order=[1,4,0,2,3]  #[all2all_buffer_counts, local_seq_len, n_heads,dim,batch] - > [local_seq_len,batch,counts*n_heads,dim]
+            #[all2all_buffer_counts, local_seq_len, n_heads,dim,batch]->[local_seq_len,batch,all2all_buffer_counts*n_heads,dim]
+            order=[1,4,0,2,3]  
             heads_large_chunk=heads_large_chunk.permute(order).contiguous().view(local_seq_len,batch_size,total_num_large_heads,-1)
             heads_small_chunk=heads_small_chunk.permute(order).contiguous().view(local_seq_len,batch_size,total_num_small_heads,-1)
 
@@ -197,6 +199,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, asyn
 
     res = post_all2all_fun(output)
     return res
+
 
 class _SeqAllToAll(torch.autograd.Function):
 

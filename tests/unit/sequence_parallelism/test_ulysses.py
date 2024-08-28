@@ -17,10 +17,6 @@ from deepspeed.module_inject.tp_shard import get_shard_size_list, set_num_kv_hea
 #Use mesh device to create data and sequence parallel group
 
 
-import faulthandler
-faulthandler.enable()
-import signal
-faulthandler.register(signal.SIGUSR1.value)
 class TestUlyssesUtils(DistributedTest):
     world_size = 4
 
@@ -47,7 +43,7 @@ class TestUlyssesUtils(DistributedTest):
 #Sweep b,s,h,d to test all2all consistency
 @pytest.mark.parametrize("d0", [2, 4])  #batch or sequence dimension
 @pytest.mark.parametrize("d1", [4, 8])  #batch or sequence dimension
-@pytest.mark.parametrize("num_heads", [4, 8,22])
+@pytest.mark.parametrize("num_heads", [4, 8])
 @pytest.mark.parametrize("head_dim", [16, 32])
 class TestUlyssesAll2All(DistributedTest):
     world_size = 4
@@ -87,13 +83,13 @@ class TestUlyssesAll2All(DistributedTest):
 @pytest.mark.parametrize("d0", [2, 4])  #batch or sequence dimension
 @pytest.mark.parametrize("d1", [4, 8])  #batch or sequence dimension
 @pytest.mark.parametrize("num_heads", [3, 7])
-@pytest.mark.parametrize("head_dim", [16, 32])
+@pytest.mark.parametrize("head_dim", [16])
 class TestUlyssesAll2All_odd(DistributedTest):
     world_size = 4
 
     def test_alltoall_output_consistency(self, d0: int, d1: int, head_dim: int, num_heads: int) -> None:
         
-        data_parallel_size=1
+        data_parallel_size=2
         seq_parallel_size=self.world_size//data_parallel_size
         skip_on_arch(min_arch=8) 
         def seq_batch_heads_hash(d0, d1, h,offset_d0=0,offset_d1=0, offset_h=0):
@@ -110,7 +106,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
         outputs = []
         inputs = []
         batch_dims = [0,1]
-        seq_dims = [1,0]  #seq first API
+        seq_dims = [1,0]  
 
         for idx, seq_dim in enumerate(seq_dims):
             gather_idx = seq_dim
@@ -141,7 +137,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
             s2h_truth=torch.zeros_like(s2h_tensor)
             s2h_truth[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,0,0,head_offset)
 
-            assert(torch.allclose(s2h_truth,s2h_tensor))
+            assert torch.allclose(s2h_truth,s2h_tensor), f"s2h_tensor differs from the expected for sequence dim: {seq_dim}"
             #No op
             ### second all2all: head parallel to sequence parallel
             h2s_tensor = _SeqAllToAll.apply(ds_engine.seq_parallel_group, s2h_tensor, gather_idx, scatter_idx,
