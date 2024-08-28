@@ -88,12 +88,15 @@ def rank_print(msg):
 
 @pytest.mark.parametrize("d0", [2, 4])  #batch or sequence dimension
 @pytest.mark.parametrize("d1", [4, 8])  #batch or sequence dimension
-@pytest.mark.parametrize("num_heads", [3, 7,22])
-@pytest.mark.parametrize("head_dim", [16, 32])
+@pytest.mark.parametrize("num_heads", [3, 7,22,26])
+@pytest.mark.parametrize("head_dim", [4,16, 32])
 class TestUlyssesAll2All_odd(DistributedTest):
     world_size = 8
 
     def test_alltoall_output_consistency(self, d0: int, d1: int, head_dim: int, num_heads: int) -> None:
+        
+        data_parallel_size=1
+        seq_parallel_size=self.world_size//data_parallel_size
         skip_on_arch(min_arch=8) #del s,b,h
         def seq_batch_heads_hash(d0, d1, h,offset_d0=0,offset_d1=0, offset_h=0):
             d0+=offset_d0
@@ -103,7 +106,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
         
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
-        ds_engine, _, _, _ = initialize(model=model, config_params={"train_batch_size": 8}, mesh_param=(2, 4))
+        ds_engine, _, _, _ = initialize(model=model, config_params={"train_batch_size": 8}, mesh_param=(data_parallel_size, seq_parallel_size))
 
         scatter_idx = 2
         outputs = []
@@ -116,6 +119,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
             batch_dim_idx =batch_dims[idx]
             
             #4D tensor : b,s,h,d or s,b,h,d
+            #create a hash tensor from pos_id, head_id, and batch_id
             d0_indices = torch.arange(d0).reshape(-1, 1, 1, 1)
             d1_indices = torch.arange(d1).reshape(1, -1, 1, 1)
             h_indices = torch.arange(num_heads).reshape(1, 1, -1, 1)
