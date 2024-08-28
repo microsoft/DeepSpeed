@@ -125,16 +125,16 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group):
             #[all2all_buffer_counts, local_seq_len, n_heads,dim,batch]->[batch,local_seq_len,all2all_buffer_counts*n_heads,dim]
             order = [4, 1, 0, 2, 3]
             heads_large_chunk = heads_large_chunk.permute(order).contiguous().view(batch_size, local_seq_len,
-                                                                                   total_num_large_heads, -1)
+                                                                                   total_num_large_heads, h_dim)
             heads_small_chunk = heads_small_chunk.permute(order).contiguous().view(batch_size, local_seq_len,
-                                                                                   total_num_small_heads, -1)
+                                                                                   total_num_small_heads, h_dim)
         elif batch_dim_idx == 1:
             #[all2all_buffer_counts, local_seq_len, n_heads,dim,batch]->[local_seq_len,batch,all2all_buffer_counts*n_heads,dim]
             order = [1, 4, 0, 2, 3]
             heads_large_chunk = heads_large_chunk.permute(order).contiguous().view(local_seq_len, batch_size,
-                                                                                   total_num_large_heads, -1)
+                                                                                   total_num_large_heads, h_dim)
             heads_small_chunk = heads_small_chunk.permute(order).contiguous().view(local_seq_len, batch_size,
-                                                                                   total_num_small_heads, -1)
+                                                                                   total_num_small_heads, h_dim)
 
         output = torch.cat([heads_large_chunk, heads_small_chunk], dim=2).contiguous()
 
