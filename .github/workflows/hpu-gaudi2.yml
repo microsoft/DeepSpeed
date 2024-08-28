@@ -111,7 +111,7 @@ jobs:
         run: |
           git clone https://github.com/huggingface/transformers
           cd transformers
-          git checkout v4.44.1 # Pin to specific version before we can update torch version to 2.4+ for nn.RMSNorm
+          git checkout v4.44.2 # Pin to specific version before we can update torch version to 2.4+ for nn.RMSNorm
           git rev-parse --short HEAD
           pip install .
 
