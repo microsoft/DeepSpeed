@@ -13,7 +13,7 @@ from deepspeed.sequence.layer import _SeqAllToAll
 from unit.util import skip_on_arch
 from unit.simple_model import *
 from deepspeed.utils import groups
-from deepspeed.module_inject.tp_shard import get_shard_size_list, set_num_kv_heads, get_num_kv_heads
+from deepspeed.module_inject.tp_shard import get_shard_size_list
 #Use mesh device to create data and sequence parallel group
 
 

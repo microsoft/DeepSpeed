@@ -43,6 +43,8 @@ def post_all2all(scatter_idx, batch_dim_idx, seq_world_size, bs, seq_len, num_he
 def uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group):
     seq_world_size = dist.get_world_size(group)
     inp_shape = list(input.shape)
+    assert batch_dim_idx in [0, 1], "batch_dim_idx must be either 0 or 1"
+
     if not (scatter_idx < 2):
         input_splits = get_shard_size_list(inp_shape[scatter_idx], seq_world_size)
         input = input.transpose(0, scatter_idx).contiguous()
