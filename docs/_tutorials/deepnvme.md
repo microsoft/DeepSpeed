@@ -63,7 +63,9 @@ The APIs of interest for performing I/O operations are those named with `pread` 
 False
 >>> import torch
 >>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
->>> r=h.sync_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> from deepspeed.ops.op_builder import AsyncIOBuilder
+>>> h = AsyncIOBuilder().load().aio_handle()
+>>> h.sync_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> os.path.isfile('/local_nvme/test_1GB.pt')
 True
 >>> os.path.getsize('/local_nvme/test_1GB.pt')
@@ -80,6 +82,8 @@ An important DeepNVMe optimization is the non-blocking I/O semantics which enabl
 False
 >>> import torch
 >>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
+>>> from deepspeed.ops.op_builder import AsyncIOBuilder
+>>> h = AsyncIOBuilder().load().aio_handle()
 >>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> h.wait()
 1
@@ -93,12 +97,13 @@ True
 An important DeepNVMe optimization is the ability to parallelize individual I/O operations. This optimization is enabled by specifying the desired parallelism degree when constructing a DeepNVMe handle. Subsequent I/O operations with that handle are automatically parallelized over the requested number of host or device threads, as appropriate. I/O parallelism is composable with either the blocking or non-blocking I/O APIs. The example below illustrates 4-way parallelism of a file write using `async_pwrite`. Note the use of `num_threads` argument to specify the desired parallelism degree in handle creation.
 
 ```bash
->>> h = AsyncIOBuilder().load().aio_handle(num_threads=4)
 >>> import os
 >>> os.path.isfile('/local_nvme/test_1GB.pt')
 False
 >>> import torch
 >>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
+>>> from deepspeed.ops.op_builder import AsyncIOBuilder
+>>> h = AsyncIOBuilder().load().aio_handle(num_threads=4)
 >>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> h.wait()
 1
@@ -118,12 +123,13 @@ We hope that the above material is sufficient to get you started with DeepNVMe. 
 A key part of DeepNVMe optimization is the use of direct memory access (DMA) for I/O operations, which requires that the host or device tensor be pinned. To pin host tensors, you can use mechanisms provided by [Pytorch](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html) or [DeepSpeed Accelerators](/tutorials/accelerator-abstraction-interface/#tensor-operations). On the other hand,`gds_handle` provides `new_pinned_device_tensor()` and `pin_device_tensor()` functions for pinning CUDA tensors.
 
 ```bash
->>> h = GDSBuilder().load().gds_handle(num_threads=4)
 >>> import os
 >>> os.path.isfile('/local_nvme/test_1GB.pt')
 False
 >>> import torch
 >>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
+>>> from deepspeed.ops.op_builder import GDSBuilder
+>>> h = GDSBuilder().load().gds_handle()
 >>> h.pin_device_tensor(t)
 >>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> h.wait()
@@ -136,8 +142,9 @@ True
 ```
 
 ### Advanced Handle Creation
-Achieving peak I/O performance with DeepNVMe requires careful configuration of handle creation. In particular, the parameters of `aio_handle` and `gds_handle` constructors are performance-critical because they determine how efficiently DeepNVMe interacts with the underlying storage subsystem (i.e., `libaio`, GDS, and SSD). For convenience we make it possible to create handles using default parameter values which will provide decent performance. However, to squeezing out every available performance in your environment will likely require tuning the constructor parameters, namely `block_size`, `queue_depth`, `single_submit`, `overlap_events`, and `num_threads`. The `aio_handle` constructor parameters and default values are illustrated below:
+Achieving peak I/O performance with DeepNVMe requires careful configuration of handle creation. In particular, the parameters of `aio_handle` and `gds_handle` constructors are performance-critical because they determine how efficiently DeepNVMe interacts with the underlying storage subsystem (i.e., `libaio`, GDS, and SSD). For convenience we make it possible to create handles using default parameter values which will provide decent performance in most scenarios. However, squeezing out every available performance in your environment will likely require tuning the constructor parameters, namely `block_size`, `queue_depth`, `single_submit`, `overlap_events`, and `num_threads`. The `aio_handle` constructor parameters and default values are illustrated below:
 ```bash
+>>> from deepspeed.ops.op_builder import AsyncIOBuilder
 >>> help(AsyncIOBuilder().load().aio_handle())
 Help on aio_handle in module async_io object:
 
