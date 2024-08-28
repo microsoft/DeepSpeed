@@ -38,9 +38,6 @@ def post_all2all(scatter_idx, batch_dim_idx, seq_world_size, bs, seq_len, num_he
         return output
 
     return post_func
-def rank_print(msg):
-    print(f"[{dist.get_rank()}] ：{msg}")
-
 
 def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
     seq_world_size = dist.get_world_size(group)
@@ -53,10 +50,8 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
 
         output_buffer_shape = [seq_world_size * local_heads] + list(input.shape[1:])
         output = torch.empty(output_buffer_shape, device=input.device, dtype=input.dtype)
-        rank_print("all2all_1 :st")
         dist.all_to_all_single(output,input,output_split_sizes=output_splits,\
             input_split_sizes=input_splits,group=group)
-        rank_print("all2all_1 :en")
         ###[seq_ws*local_heads, ...] to [seq_ws, local_heads, ...]
         output = output.view(seq_world_size, local_heads, *output.shape[1:])
         ###[seq_ws,local_heads,b,seq_len,...] to [seq_ws,seq_len,b,local_heads,...]
@@ -72,9 +67,7 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
             output = output.transpose(1, 3).contiguous()
             ###[seq_ws*local_seq_len, b, local_heads,...]
             output = output.view(inp_shape[gather_idx] * seq_world_size, *output.shape[2:]).contiguous()
-        rank_print("exit 1")
     if scatter_idx < 2:
-        rank_print("enter ")
         # The compatibility handling of 4D and 3D tensors, standardizing to 3D.
         input = input.view(input.shape[0], input.shape[1], -1)
         
@@ -83,91 +76,70 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
         elif batch_dim_idx==1:  #s,b,h
             input=input.transpose(1,2).contiguous() #s,h,b
         seq_len, h, batch_size =input.shape
+        num_local_heads_list = get_shard_size_list(get_num_kv_heads(), seq_world_size)
+        local_heads= num_local_heads_list[groups._get_sequence_parallel_rank()]
+        h_dim=h//local_heads
 
-        input = input.reshape(seq_len*h, batch_size)
+        input = input.view(seq_len*h, batch_size)
         local_seq_len_with_heads = int(input.shape[0] / seq_world_size)
         input_splits = [local_seq_len_with_heads] * seq_world_size
-        num_local_heads_list = get_shard_size_list(get_num_kv_heads(), seq_world_size)
 
-        coeff = int(local_seq_len_with_heads / num_local_heads_list[groups._get_sequence_parallel_rank()])
-        
+
+        coeff = int(local_seq_len_with_heads / local_heads)
         #uneven seq_world_size coeff ,    total_heads/local_heads.
-        heads_scale_coeff = get_num_kv_heads() / num_local_heads_list[groups._get_sequence_parallel_rank()]
+        heads_scale_coeff = get_num_kv_heads() /local_heads
         
         output_splits = [num_local_heads * coeff for num_local_heads in num_local_heads_list]
         output_buff_d1_size = int(heads_scale_coeff * local_seq_len_with_heads)
         total_h = int(inp_shape[gather_idx] * heads_scale_coeff)
         output = torch.empty(output_buff_d1_size, input.shape[1], device=input.device, dtype=input.dtype)
-        rank_print("all2all_2 :st")
         dist.all_to_all_single(output,input,output_split_sizes=output_splits, \
             input_split_sizes=input_splits,group=group)
-        rank_print("all2all_2 :en")
-        downer = get_num_kv_heads() //seq_world_size   #TODO even logic.
-        uper=downer+1
-        uper_counts=get_num_kv_heads()%seq_world_size #3%2=1  7%2=1 #
-        down_counts=seq_world_size-uper_counts
-        a=uper_counts*uper
-        b=down_counts*downer
-        bf=output.shape[0]//(a+b)
+        ##################
+        #suppose 7 heads divide into 4 rank [2,2,2,1]
+        #chunk_num_heads_small=1
+        #chunk_num_heads_large=2
+        #num_chunk_heads_large=len([2,2,2])=3
+        #num_chunk_heads_large=len([1])=3
+        #total_num_large_heads=sum([2,2,2])=7
+        #total_num_small_heads=sum([1])=1
 
-        la=int(bf*a)
-        lb=int(bf*b)
-        uper_output,down_output=output.split([la,lb],dim=0)
-        uper_output2=uper_output.reshape(uper_counts,seq_len//seq_world_size,uper,-1,batch_size).contiguous()
-        down_output2=down_output.reshape(down_counts,seq_len//seq_world_size,downer,-1,batch_size).contiguous()
+        chunk_num_heads_small = get_num_kv_heads() //seq_world_size   # even heads compatible
+        chunk_num_heads_large = chunk_num_heads_small+1
+        num_chunk_heads_large=get_num_kv_heads()%seq_world_size
+        num_chunk_heads_small=seq_world_size-num_chunk_heads_large 
+        total_num_large_heads=num_chunk_heads_large*chunk_num_heads_large
+        total_num_small_heads=num_chunk_heads_small*chunk_num_heads_small
+
+        coeff2=output.shape[0]//(get_num_kv_heads())
         local_seq_len=seq_len//seq_world_size
+        heads_large_combine_size=coeff2*total_num_large_heads
+        heads_small_combine_size=coeff2*total_num_small_heads
+        heads_large_chunk,heads_small_chunk=output.split([heads_large_combine_size,heads_small_combine_size],dim=0)
+        heads_large_chunk=heads_large_chunk.view(num_chunk_heads_large,local_seq_len,chunk_num_heads_large,h_dim,batch_size)
+        heads_small_chunk=heads_small_chunk.view(num_chunk_heads_small,local_seq_len,chunk_num_heads_small,h_dim,batch_size)
         if batch_dim_idx==0:
-            order=[4,1,0,2,3]  #[counts, local_seq_len, n_heads,dim,batch] - > [batch,local_seq_len,counts*n_heads,dim ]
-            uper_output2=uper_output2.permute(order).contiguous().view(batch_size,local_seq_len,a,-1)
-            down_output2=down_output2.permute(order).contiguous().view(batch_size,local_seq_len,b,-1)
+            order=[4,1,0,2,3]  #[counts, local_seq_len, n_heads,dim,batch] - > [batch,local_seq_len,counts*n_heads,dim]
+            heads_large_chunk=heads_large_chunk.permute(order).contiguous().view(batch_size,local_seq_len,total_num_large_heads,-1)
+            heads_small_chunk=heads_small_chunk.permute(order).contiguous().view(batch_size,local_seq_len,total_num_small_heads,-1)
         elif batch_dim_idx==1:
-            order=[1,4,0,2,3]
-            uper_output2=uper_output2.permute(order).contiguous().view(local_seq_len,batch_size,a,-1)
-            down_output2=down_output2.permute(order).contiguous().view(local_seq_len,batch_size,b,-1)
+            order=[1,4,0,2,3]  #[counts, local_seq_len, n_heads,dim,batch] - > [local_seq_len,batch,counts*n_heads,dim]
+            heads_large_chunk=heads_large_chunk.permute(order).contiguous().view(local_seq_len,batch_size,total_num_large_heads,-1)
+            heads_small_chunk=heads_small_chunk.permute(order).contiguous().view(local_seq_len,batch_size,total_num_small_heads,-1)
 
-        final_output=torch.cat([uper_output2,down_output2],dim=2).contiguous()
+        output=torch.cat([heads_large_chunk,heads_small_chunk],dim=2).contiguous()
 
         inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
         output_shape=  inp_shape[: gather_idx] + \
             [total_h,] + \
             inp_shape[gather_idx + 1:]
-        # if(batch_dim_idx==1):
-        #     final_output=final_output.transpose(1,2).contiguous()  #local_seq_len, b , h 
-        # if(batch_dim_idx==0):
-        #     order=[3,0,1,2] 
-        #     final_output=final_output.permute(order).contiguous()
-        f_out = final_output.reshape(output_shape)
+
+        output = output.view(output_shape)
      
-        #[96,4]        
-        # upper_split=[ seq_ws*seq_len*n_heads,16,4]
-
-        #output2 [seq_ws*seq_len*n_heads*dim, batch]  split[upper, downer]
-        #s,b,h,d  2,4,3,16  \
-        # debug=0
-        # output2=output.reshape(2,1,3,16,4) #[ws,  seq_len, nheads,dim,batch]
-        # # output2.permute(1,4,2,3) #s*10 + h*0.1 +b*0.1
-        # #output 0.1  0.2   0.3
-        # #[dim16-heads3-batch4-seq2]  
-        # # s,h,b [2,3,4], dist0 ,预期 十位是0和1，个位是0-2，小数是0.0-0.3
-
-
-        ###对于batch_idx=0  b*10+h+0.1s
-        # b,s,h [2,4,3]  b*10+h+0.1s  十位是0-1， 个位是0-2， 小数是0.0-0.3
-        # b,s,h [2,4,7]  b*10+h+0.1s  十位是0-1， 个位是0-7， 小数是0.0-0.3
-
-        # #
-        # #output2[:,]
-        # #expected : 
-      
-        # f_out = final_output.reshape(output_shape)
-        
-        return f_out
-        output = output.reshape(output_shape)
     return output
 
 
 def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, async_op=False, handle=None, type=None):
-    rank_print("enter single_all_to_all")
     seq_world_size = dist.get_world_size(group)
     # we only need need_heads once,
     num_heads = input.shape[2]

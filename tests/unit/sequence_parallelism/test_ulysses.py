@@ -108,8 +108,8 @@ class TestUlyssesAll2All_odd(DistributedTest):
         scatter_idx = 2
         outputs = []
         inputs = []
-        batch_dims = [1]
-        seq_dims = [0]  #seq first API
+        batch_dims = [0,1]
+        seq_dims = [1,0]  #seq first API
 
         for idx, seq_dim in enumerate(seq_dims):
             gather_idx = seq_dim
@@ -138,10 +138,8 @@ class TestUlyssesAll2All_odd(DistributedTest):
             head_offset=sum(shard_list[:groups._get_sequence_parallel_rank()])
             s2h_truth=torch.zeros_like(s2h_tensor)
             s2h_truth[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,0,0,head_offset)
-            rank_print("asser st")
 
             assert(torch.allclose(s2h_truth,s2h_tensor))
-            rank_print("asser finish")
             #No op
             ### second all2all: head parallel to sequence parallel
             h2s_tensor = _SeqAllToAll.apply(ds_engine.seq_parallel_group, s2h_tensor, gather_idx, scatter_idx,
