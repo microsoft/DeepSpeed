@@ -38,6 +38,8 @@ def post_all2all(scatter_idx, batch_dim_idx, seq_world_size, bs, seq_len, num_he
         return output
 
     return post_func
+def rank_print(msg):
+    print(f"[{dist.get_rank()}] ：{msg}")
 
 
 def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
@@ -51,10 +53,10 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
 
         output_buffer_shape = [seq_world_size * local_heads] + list(input.shape[1:])
         output = torch.empty(output_buffer_shape, device=input.device, dtype=input.dtype)
-
+        rank_print("all2all_1 :st")
         dist.all_to_all_single(output,input,output_split_sizes=output_splits,\
             input_split_sizes=input_splits,group=group)
-
+        rank_print("all2all_1 :en")
         ###[seq_ws*local_heads, ...] to [seq_ws, local_heads, ...]
         output = output.view(seq_world_size, local_heads, *output.shape[1:])
         ###[seq_ws,local_heads,b,seq_len,...] to [seq_ws,seq_len,b,local_heads,...]
@@ -70,7 +72,9 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
             output = output.transpose(1, 3).contiguous()
             ###[seq_ws*local_seq_len, b, local_heads,...]
             output = output.view(inp_shape[gather_idx] * seq_world_size, *output.shape[2:]).contiguous()
+        rank_print("exit 1")
     if scatter_idx < 2:
+        rank_print("enter ")
         # The compatibility handling of 4D and 3D tensors, standardizing to 3D.
         input = input.view(input.shape[0], input.shape[1], -1)
         
@@ -94,9 +98,10 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
         output_buff_d1_size = int(heads_scale_coeff * local_seq_len_with_heads)
         total_h = int(inp_shape[gather_idx] * heads_scale_coeff)
         output = torch.empty(output_buff_d1_size, input.shape[1], device=input.device, dtype=input.dtype)
-
+        rank_print("all2all_2 :st")
         dist.all_to_all_single(output,input,output_split_sizes=output_splits, \
             input_split_sizes=input_splits,group=group)
+        rank_print("all2all_2 :en")
         downer = get_num_kv_heads() //seq_world_size   #TODO even logic.
         uper=downer+1
         uper_counts=get_num_kv_heads()%seq_world_size #3%2=1  7%2=1 #
@@ -108,21 +113,31 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
         la=int(bf*a)
         lb=int(bf*b)
         uper_output,down_output=output.split([la,lb],dim=0)
-        uper_output2=uper_output.reshape(seq_len//seq_world_size,-1,batch_size)
-        down_output2=down_output.reshape(seq_len//seq_world_size,-1,batch_size)
-        final_output=torch.cat([uper_output2,down_output2],dim=1)
+        uper_output2=uper_output.reshape(uper_counts,seq_len//seq_world_size,uper,-1,batch_size).contiguous()
+        down_output2=down_output.reshape(down_counts,seq_len//seq_world_size,downer,-1,batch_size).contiguous()
+        local_seq_len=seq_len//seq_world_size
+        if batch_dim_idx==0:
+            order=[4,1,0,2,3]  #[counts, local_seq_len, n_heads,dim,batch] - > [batch,local_seq_len,counts*n_heads,dim ]
+            uper_output2=uper_output2.permute(order).contiguous().view(batch_size,local_seq_len,a,-1)
+            down_output2=down_output2.permute(order).contiguous().view(batch_size,local_seq_len,b,-1)
+        elif batch_dim_idx==1:
+            order=[1,4,0,2,3]
+            uper_output2=uper_output2.permute(order).contiguous().view(local_seq_len,batch_size,a,-1)
+            down_output2=down_output2.permute(order).contiguous().view(local_seq_len,batch_size,b,-1)
+
+        final_output=torch.cat([uper_output2,down_output2],dim=2).contiguous()
 
         inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
         output_shape=  inp_shape[: gather_idx] + \
             [total_h,] + \
             inp_shape[gather_idx + 1:]
-        if(batch_dim_idx==1):
-            final_output=final_output.transpose(1,2)  #local_seq_len, b , h 
-        if(batch_dim_idx==0):
-            order=[2,0,1] +list(range(3, len(final_output.shape)))
-            final_output=final_output.permute(order)
+        # if(batch_dim_idx==1):
+        #     final_output=final_output.transpose(1,2).contiguous()  #local_seq_len, b , h 
+        # if(batch_dim_idx==0):
+        #     order=[3,0,1,2] 
+        #     final_output=final_output.permute(order).contiguous()
         f_out = final_output.reshape(output_shape)
-
+     
         #[96,4]        
         # upper_split=[ seq_ws*seq_len*n_heads,16,4]
 
@@ -136,19 +151,23 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx,batch_dim_idx, group):
         # # s,h,b [2,3,4], dist0 ,预期 十位是0和1，个位是0-2，小数是0.0-0.3
 
 
-        ###对于batch_idx=0  b*10+h+0.1
+        ###对于batch_idx=0  b*10+h+0.1s
         # b,s,h [2,4,3]  b*10+h+0.1s  十位是0-1， 个位是0-2， 小数是0.0-0.3
+        # b,s,h [2,4,7]  b*10+h+0.1s  十位是0-1， 个位是0-7， 小数是0.0-0.3
+
         # #
         # #output2[:,]
         # #expected : 
       
         # f_out = final_output.reshape(output_shape)
+        
         return f_out
         output = output.reshape(output_shape)
     return output
 
 
 def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, async_op=False, handle=None, type=None):
+    rank_print("enter single_all_to_all")
     seq_world_size = dist.get_world_size(group)
     # we only need need_heads once,
     num_heads = input.shape[2]
@@ -157,7 +176,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, asyn
         # assume here that the number of heads for q is consistent with kv
         # or require additional logic
         if get_num_kv_heads() is None:
-            assert num_heads > seq_world_size, f"Number of heads ({num_total_head}) must be larger than sequence parallel size ({seq_world_size})"
+            assert num_heads > seq_world_size, f"Number of heads ({num_heads}) must be larger than sequence parallel size ({seq_world_size})"
             # set heads at first call by num_total_heads. then use ``get_num_kv_heads() is not None`` to re-entry uneven path.
             set_num_kv_heads(num_heads)
         assert async_op == False, "uneven head sp does not support async op"
@@ -208,7 +227,6 @@ def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, asyn
 
     res = post_all2all_fun(output)
     return res
-
 
 class _SeqAllToAll(torch.autograd.Function):
 

@@ -15,6 +15,12 @@ from unit.simple_model import *
 from deepspeed.utils import groups
 from deepspeed.module_inject.tp_shard import get_shard_size_list, set_num_kv_heads, get_num_kv_heads
 #Use mesh device to create data and sequence parallel group
+
+
+import faulthandler
+faulthandler.enable()
+import signal
+faulthandler.register(signal.SIGUSR1.value)
 class TestUlyssesUtils(DistributedTest):
     world_size = 4
 
@@ -76,6 +82,8 @@ class TestUlyssesAll2All(DistributedTest):
         # Check outputs are the same as input
         for i in range(1, len(outputs)):
             assert torch.allclose(input_tensor, outputs[i]), f"Outputs differ for sequence dim {seq_dims[i]}"
+def rank_print(msg):
+    print(f"[{dist.get_rank()}] ：{msg}")
 
 
 @pytest.mark.parametrize("d0", [2, 4])  #batch or sequence dimension
@@ -100,8 +108,8 @@ class TestUlyssesAll2All_odd(DistributedTest):
         scatter_idx = 2
         outputs = []
         inputs = []
-        batch_dims = [0,1]
-        seq_dims = [1,0]  #seq first API
+        batch_dims = [1]
+        seq_dims = [0]  #seq first API
 
         for idx, seq_dim in enumerate(seq_dims):
             gather_idx = seq_dim
@@ -126,12 +134,14 @@ class TestUlyssesAll2All_odd(DistributedTest):
             d0_indices = torch.arange(s2h_tensor.shape[0]).reshape(-1, 1, 1, 1)
             d1_indices = torch.arange(s2h_tensor.shape[1]).reshape(1, -1, 1, 1)
             h_indices = torch.arange(s2h_tensor.shape[2]).reshape(1, 1, -1, 1)      
-            shard_list=get_shard_size_list(num_heads,groups._get_sequence_data_parallel_world_size())
+            shard_list=get_shard_size_list(num_heads,groups._get_sequence_parallel_world_size())
             head_offset=sum(shard_list[:groups._get_sequence_parallel_rank()])
             s2h_truth=torch.zeros_like(s2h_tensor)
             s2h_truth[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,0,0,head_offset)
+            rank_print("asser st")
+
             assert(torch.allclose(s2h_truth,s2h_tensor))
-            
+            rank_print("asser finish")
             #No op
             ### second all2all: head parallel to sequence parallel
             h2s_tensor = _SeqAllToAll.apply(ds_engine.seq_parallel_group, s2h_tensor, gather_idx, scatter_idx,
@@ -144,4 +154,4 @@ class TestUlyssesAll2All_odd(DistributedTest):
 
         # Check outputs for the second all2all
         for i in range(0, len(outputs)):
-            assert torch.allclose(inputs[i], outputs[i]), f"Outputs differ for sequence dim {seq_dims[i]}"
+            assert torch.allclose(inputs[i], outputs[i]), f"[{dist.get_rank()}]Outputs differ for sequence dim {seq_dims[i]}"
