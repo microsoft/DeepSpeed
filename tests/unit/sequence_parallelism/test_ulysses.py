@@ -82,8 +82,6 @@ class TestUlyssesAll2All(DistributedTest):
         # Check outputs are the same as input
         for i in range(1, len(outputs)):
             assert torch.allclose(input_tensor, outputs[i]), f"Outputs differ for sequence dim {seq_dims[i]}"
-def rank_print(msg):
-    print(f"[{dist.get_rank()}] ：{msg}")
 
 
 @pytest.mark.parametrize("d0", [2, 4])  #batch or sequence dimension
@@ -126,7 +124,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
             input_tensor = torch.randn(d0, d1, num_heads, head_dim, device=ds_engine.device)
             if batch_dim_idx==1:   #seq_len_dim : 0(d0)
                 input_tensor[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,d0*groups._get_sequence_parallel_rank(),0)
-            elif batch_dim_idx==0: #seq_len_dim : 1(d1)
+            elif batch_dim_idx==0: #seq_len_dim : 1(d1
                 input_tensor[:]=seq_batch_heads_hash(d0_indices,d1_indices,h_indices,0,d1*groups._get_sequence_parallel_rank())
             inputs.append(input_tensor)
             
