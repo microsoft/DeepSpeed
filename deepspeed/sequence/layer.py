@@ -73,7 +73,7 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group):
             output = output.view(inp_shape[gather_idx] * seq_world_size, *output.shape[2:]).contiguous()
     else:
         # The compatibility handling of 4D and 3D tensors, standardizing to 3D.
-        input = input.view(input.shape[0], input.shape[1], -1)
+        input = input.reshape(input.shape[0], input.shape[1], -1)
 
         if batch_dim_idx == 0:  #b,s,h
             input = input.permute(1, 2, 0).contiguous()  #s,h,b
