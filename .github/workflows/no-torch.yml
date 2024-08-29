@@ -28,6 +28,7 @@ jobs:
 
       - name: Python environment
         run: |
+          pip uninstall torch --yes
           pip list
 
       - name: Build deepspeed
