@@ -127,7 +127,7 @@ True
 ```
 
 ### Pinned Tensors
-A key part of DeepNVMe optimizations is using direct memory access (DMA) for I/O operations, which requires that the host or device tensor be pinned. To pin host tensors, you can use mechanisms provided by [Pytorch](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html). The following example illustrates writing a pinned CPU tensor to a local NVMe file.
+A key part of DeepNVMe optimizations is using direct memory access (DMA) for I/O operations, which requires that the host or device tensor be pinned. To pin host tensors, you can use mechanisms provided by [Pytorch](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html) or [DeepSpeed Accelerators](/tutorials/accelerator-abstraction-interface/#tensor-operations). The following example illustrates writing a pinned CPU tensor to a local NVMe file.
 
 ```bash
 >>> import os
@@ -181,6 +181,9 @@ We hope that the above material helps you to get started with DeepNVMe. You can 
 2. [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/): used for offloading [parameters](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_param_swapper.py#L111-L117), [gradients](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L41-L43), and [optimizer](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L36-L38).
 3. Simple file read and write [operations](https://github.com/microsoft/DeepSpeedExamples/blob/master/deepnvme/file_access/README.md).  -->
 
+
+## Acknowledgements
+This tutorial has been significantly improved by feedback from [Guanhua Wang](https://github.com/GuanhuaWang), [Masahiro Tanaka](https://github.com/tohtana), and [Stas Bekman](https://github.com/stas00).
 
 ## Appendix
 
