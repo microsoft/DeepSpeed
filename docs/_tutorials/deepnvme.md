@@ -174,7 +174,6 @@ We hope that the above material helps you to get started with DeepNVMe. You can 
 1. [Parameter swapper](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_param_swapper.py#L111-L117) in [ZeRO-Inference](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/zero_inference/README.md) and [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/).
 2. [Optimizer swapper](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L36-L38) in [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/).
 3. [Gradient swapper](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L41-L43) in [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/).
-
 4. Simple file read and write [operations](https://github.com/microsoft/DeepSpeedExamples/blob/master/deepnvme/file_access/README.md).
 
 <!-- 1. ZeRO-Inference: used for [parameter offloading](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_param_swapper.py#L111-L117).
