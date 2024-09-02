@@ -84,7 +84,7 @@ False
 >>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
 >>> from deepspeed.ops.op_builder import AsyncIOBuilder
 >>> h = AsyncIOBuilder().load().aio_handle()
->>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> h.async_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> h.wait()
 1
 >>> os.path.isfile('/local_nvme/test_1GB.pt')
@@ -92,6 +92,19 @@ True
 >>> os.path.getsize('/local_nvme/test_1GB.pt')
 1073741824
 ```
+
+<span style="color:red">Warning for non-blocking I/O operations:</span> To avoid data races and corruptions, `.wait()` must be carefully used to serialize the writing of source tensors, and the reading of destination tensors.  For example, the following update of `t` during a non-blocking file write is unsafe and could corrupt `/local_nvme/test_1GB.pt`.
+
+```bash
+>>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
+>>> from deepspeed.ops.op_builder import AsyncIOBuilder
+>>> h = AsyncIOBuilder().load().aio_handle()
+>>> h.async_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> t += 1 # <--- Data race; avoid by preceding with `h.wait()`
+```
+
+Similar safety problems apply to reading the destination tensor of a non-blocking file read without `.wait()` synchronization.
+
 
 ### Parallel File Write
 An important DeepNVMe optimization is the ability to parallelize individual I/O operations. This optimization is enabled by specifying the desired parallelism degree when constructing a DeepNVMe handle. Subsequent I/O operations with that handle are automatically parallelized over the requested number of host or device threads, as appropriate. I/O parallelism is composable with either the blocking or non-blocking I/O APIs. The example below illustrates 4-way parallelism of a file write using `async_pwrite`. Note the use of `num_threads` argument to specify the desired parallelism degree in handle creation.
@@ -104,7 +117,7 @@ False
 >>> t=torch.empty(1024**3, dtype=torch.uint8).cuda()
 >>> from deepspeed.ops.op_builder import AsyncIOBuilder
 >>> h = AsyncIOBuilder().load().aio_handle(num_threads=4)
->>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> h.async_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> h.wait()
 1
 >>> os.path.isfile('/local_nvme/test_1GB.pt')
@@ -113,14 +126,27 @@ True
 1073741824
 ```
 
-## Putting it together
-We hope that the above material is sufficient to get you started with DeepNVMe. You can visit [here](https://github.com/microsoft/DeepSpeedExamples/tree/master/deepnvme) for end-to-end examples, including [simple file operations](https://github.com/microsoft/DeepSpeedExamples/blob/master/deepnvme/file_access/README.md).
-
-
-## Appendix
-
 ### Pinned Tensors
-A key part of DeepNVMe optimization is the use of direct memory access (DMA) for I/O operations, which requires that the host or device tensor be pinned. To pin host tensors, you can use mechanisms provided by [Pytorch](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html) or [DeepSpeed Accelerators](/tutorials/accelerator-abstraction-interface/#tensor-operations). On the other hand,`gds_handle` provides `new_pinned_device_tensor()` and `pin_device_tensor()` functions for pinning CUDA tensors.
+A key part of DeepNVMe optimizations is using direct memory access (DMA) for I/O operations, which requires that the host or device tensor be pinned. To pin host tensors, you can use mechanisms provided by [Pytorch](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html). The following example illustrates writing a pinned CPU tensor to a local NVMe file.
+
+```bash
+>>> import os
+>>> os.path.isfile('/local_nvme/test_1GB.pt')
+False
+>>> import torch
+>>> t=torch.empty(1024**3, dtype=torch.uint8).pin_memory()
+>>> from deepspeed.ops.op_builder import AsyncIOBuilder
+>>> h = AsyncIOBuilder().load().aio_handle()
+>>> h.async_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> h.wait()
+1
+>>> os.path.isfile('/local_nvme/test_1GB.pt')
+True
+>>> os.path.getsize('/local_nvme/test_1GB.pt')
+1073741824
+```
+
+On the other hand,`gds_handle` provides `new_pinned_device_tensor()` and `pin_device_tensor()` functions for pinning CUDA tensors. The following example illustrates writing a pinned CUDA tensor to a local NVMe file.
 
 ```bash
 >>> import os
@@ -131,7 +157,7 @@ False
 >>> from deepspeed.ops.op_builder import GDSBuilder
 >>> h = GDSBuilder().load().gds_handle()
 >>> h.pin_device_tensor(t)
->>> r=h.async_pwrite(t,'/local_nvme/test_1GB.pt')
+>>> h.async_pwrite(t,'/local_nvme/test_1GB.pt')
 >>> h.wait()
 1
 >>> os.path.isfile('/local_nvme/test_1GB.pt')
@@ -140,6 +166,24 @@ True
 1073741824
 >>> h.unpin_device_tensor(t)
 ```
+
+
+## Putting it together
+We hope that the above material helps you to get started with DeepNVMe. You can also use the following links to see real-world applications of DeepNVMe Deep Learning applications.
+
+1. [Parameter swapper](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_param_swapper.py#L111-L117) in [ZeRO-Inference](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/zero_inference/README.md) and [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/).
+2. [Optimizer swapper](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L36-L38) in [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/).
+3. [Gradient swapper](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L41-L43) in [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/).
+
+4. Simple file read and write [operations](https://github.com/microsoft/DeepSpeedExamples/blob/master/deepnvme/file_access/README.md).
+
+<!-- 1. ZeRO-Inference: used for [parameter offloading](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_param_swapper.py#L111-L117).
+
+2. [ZeRO-Infinity](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/): used for offloading [parameters](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_param_swapper.py#L111-L117), [gradients](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L41-L43), and [optimizer](https://github.com/microsoft/DeepSpeed/blob/9b7fc5452471392b0f58844219fcfdd14a9cdc77/deepspeed/runtime/swap_tensor/partitioned_optimizer_swapper.py#L36-L38).
+3. Simple file read and write [operations](https://github.com/microsoft/DeepSpeedExamples/blob/master/deepnvme/file_access/README.md).  -->
+
+
+## Appendix
 
 ### Advanced Handle Creation
 Achieving peak I/O performance with DeepNVMe requires careful configuration of handle creation. In particular, the parameters of `aio_handle` and `gds_handle` constructors are performance-critical because they determine how efficiently DeepNVMe interacts with the underlying storage subsystem (i.e., `libaio`, GDS, and SSD). For convenience we make it possible to create handles using default parameter values which will provide decent performance in most scenarios. However, squeezing out every available performance in your environment will likely require tuning the constructor parameters, namely `block_size`, `queue_depth`, `single_submit`, `overlap_events`, and `num_threads`. The `aio_handle` constructor parameters and default values are illustrated below:
