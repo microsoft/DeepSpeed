@@ -71,4 +71,4 @@ jobs:
           pip install .[dev]
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests/legacy
-          pytest $PYTEST_OPTS --forked -m "deepspeed" ./
+          pytest $PYTEST_OPTS -s -vv --forked -m "deepspeed" ./
