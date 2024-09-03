@@ -3709,7 +3709,7 @@ class DeepSpeedEngine(Module):
 
         self.optimizer.offload_states(include=include, device=device, pin_memory=pin_memory, non_blocking=non_blocking)
 
-    def offload_states_back(self, non_blocking: bool = False) -> None:
+    def reload_states(self, non_blocking: bool = False) -> None:
         """Move the ZeRO optimizer buffers back to the original device.
 
         Arguments:
@@ -3717,4 +3717,4 @@ class DeepSpeedEngine(Module):
         """
         assert self.zero_optimization_stage(
         ) == ZeroStageEnum.weights, "Moving buffers back is supported only for ZeRO stage 3."
-        self.optimizer.offload_states_back(non_blocking=non_blocking)
+        self.optimizer.reload_states(non_blocking=non_blocking)

@@ -102,7 +102,7 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
 
 class OffloadStateTypeEnum(str, Enum):
     """ Enum for internal buffer types """
-    opt_states = "opt_states"
+    optim_states = "optim_states"
     hp_params = "hp_params"
     lp_params = "lp_params"
     lp_grads = "lp_grads"

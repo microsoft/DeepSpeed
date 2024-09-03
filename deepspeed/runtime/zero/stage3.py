@@ -2872,14 +2872,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.offloaded_states.add(OffloadStateTypeEnum.contiguous_grad_buffer)
 
         # Adam
-        if needs_offload(OffloadStateTypeEnum.opt_states):
+        if needs_offload(OffloadStateTypeEnum.optim_states):
             offload_adam_states(self.optimizer, device, pin_memory=pin_memory, non_blocking=non_blocking)
-            self.offloaded_states.add(OffloadStateTypeEnum.opt_states)
+            self.offloaded_states.add(OffloadStateTypeEnum.optim_states)
 
         gc.collect()
         get_accelerator().empty_cache()
 
-    def offload_states_back(self, non_blocking: bool = False):
+    def reload_states(self, non_blocking: bool = False):
 
         device = get_accelerator().current_device_name()
 
@@ -2928,9 +2928,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.offloaded_states.remove(OffloadStateTypeEnum.contiguous_grad_buffer)
 
         # Adam
-        if OffloadStateTypeEnum.opt_states in self.offloaded_states:
+        if OffloadStateTypeEnum.optim_states in self.offloaded_states:
             offload_adam_states_back(self.optimizer, device, non_blocking=non_blocking)
-            self.offloaded_states.remove(OffloadStateTypeEnum.opt_states)
+            self.offloaded_states.remove(OffloadStateTypeEnum.optim_states)
 
         if non_blocking:
             get_accelerator().synchronize()

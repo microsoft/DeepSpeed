@@ -46,7 +46,7 @@ def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_bl
         assert alloc_after_offload < alloc_before_offload, f"Allocated memory should decrease after offload"
 
         # Load offloaded states back
-        model.offload_states_back()
+        model.reload_states()
         assert alloc_after_offload < get_accelerator().memory_allocated(
         ), f"Allocated memory should increase after offload back"
 
@@ -75,7 +75,7 @@ def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_bl
 
 
 @pytest.mark.parametrize("included_state", [
-    OffloadStateTypeEnum.hp_params, OffloadStateTypeEnum.lp_params, OffloadStateTypeEnum.opt_states,
+    OffloadStateTypeEnum.hp_params, OffloadStateTypeEnum.lp_params, OffloadStateTypeEnum.optim_states,
     OffloadStateTypeEnum.lp_grads, OffloadStateTypeEnum.contiguous_grad_buffer, None
 ])
 @pytest.mark.parametrize("pin_memory", [False, True])
