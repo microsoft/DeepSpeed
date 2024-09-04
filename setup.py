@@ -157,7 +157,7 @@ if BUILD_OP_DEFAULT:
 
 def command_exists(cmd):
     if sys.platform == "win32":
-        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE)
         return result.wait() == 1
     else:
         safe_cmd = ["bash", "-c", f"type {cmd}"]
@@ -204,9 +204,9 @@ git_hash_cmd = "git rev-parse --short HEAD"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
 if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
     try:
-        result = subprocess.check_output(git_hash_cmd, shell=True)
+        result = subprocess.check_output(git_hash_cmd)
         git_hash = result.decode('utf-8').strip()
-        result = subprocess.check_output(git_branch_cmd, shell=True)
+        result = subprocess.check_output(git_branch_cmd)
         git_branch = result.decode('utf-8').strip()
     except subprocess.CalledProcessError:
         git_hash = "unknown"

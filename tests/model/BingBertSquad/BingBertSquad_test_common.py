@@ -42,7 +42,7 @@ class BaseTestCase(unittest.TestCase):
     def clean_test_env(self):
         cmd = "dlts_ssh pkill -9 -f /usr/bin/python"
         print(cmd)
-        subprocess.run(cmd, shell=True, check=False, executable='/bin/bash')
+        subprocess.run(cmd, check=False, executable='/bin/bash')
         time.sleep(20)
 
     def run_BingBertSquad_test(self, test_config, output):
@@ -54,4 +54,4 @@ class BaseTestCase(unittest.TestCase):
         self.ensure_directory_exists(output)
         with open(output, "w") as f:
             print(cmd)
-            subprocess.run(cmd, shell=True, check=False, executable='/bin/bash', stdout=f, stderr=f)
+            subprocess.run(cmd, check=False, executable='/bin/bash', stdout=f, stderr=f)

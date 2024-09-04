@@ -96,7 +96,7 @@ def set_accelerator_visible():
         else:
             assert get_accelerator().device_name() == 'cpu'
             cpu_sockets = int(
-                subprocess.check_output('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l', shell=True))
+                subprocess.check_output('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l'))
             num_accelerators = cpu_sockets
 
         if isinstance(num_accelerators, list):

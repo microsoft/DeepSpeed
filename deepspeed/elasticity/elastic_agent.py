@@ -54,7 +54,7 @@ class DSElasticAgent(LocalElasticAgent):
 
         if master_addr is None:
             # master_addr = _get_fq_hostname()
-            result = subprocess.check_output("hostname -I", shell=True)
+            result = subprocess.check_output("hostname -I")
             master_addr = result.decode('utf-8').split()[0]
 
         store.set("MASTER_ADDR", master_addr.encode(encoding="UTF-8"))
