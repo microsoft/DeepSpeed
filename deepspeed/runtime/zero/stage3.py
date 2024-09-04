@@ -18,7 +18,7 @@ from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced, all_to_all_quant_reduce
-from deepspeed.runtime.utils import inf, is_model_parallel_parameter, get_only_unique_item, offload_adam_states, offload_adam_states_back
+from deepspeed.runtime.utils import inf, is_model_parallel_parameter, get_only_unique_item, offload_adam_states, reload_adam_states
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
@@ -2919,7 +2919,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         # Adam
         if OffloadStateTypeEnum.optim_states in self.offloaded_states:
-            offload_adam_states_back(self.optimizer, device, non_blocking=non_blocking)
+            reload_adam_states(self.optimizer, device, non_blocking=non_blocking)
             self.offloaded_states.remove(OffloadStateTypeEnum.optim_states)
 
         if non_blocking:
