@@ -508,4 +508,4 @@ Below is an example code snippet demonstrating how to offload FP32 parameters an
     # Do something requiring a lot of device memory
     ...
     # Load states back to device memory
-    model.reload_states()
+    ds_engine.reload_states()
