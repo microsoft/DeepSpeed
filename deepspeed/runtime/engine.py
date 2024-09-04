@@ -3687,11 +3687,11 @@ class DeepSpeedEngine(Module):
                        device: OffloadDeviceEnum = OffloadDeviceEnum.cpu,
                        pin_memory: bool = True,
                        non_blocking: bool = False) -> None:
-        """Move the ZeRO optimizer buffers to the specified device.
+        """Offload the engine's states to the specified device.
 
         Arguments:
             include: Optional. The set of states to offload. If not provided, all states are offloaded.
-            device: Optional. The device to move the ZeRO optimizer buffers to.
+            device: Optional. The device to move the ZeRO optimizer buffers to. Currently only `OffloadDeviceEnum.cpu` is supported.
             pin_memory: Optional. Whether to pin the memory of the offloaded states.
             non_blocking: Optional. Whether to offload the states asynchronously.
         """
@@ -3710,7 +3710,7 @@ class DeepSpeedEngine(Module):
         self.optimizer.offload_states(include=include, device=device, pin_memory=pin_memory, non_blocking=non_blocking)
 
     def reload_states(self, non_blocking: bool = False) -> None:
-        """Move the ZeRO optimizer buffers back to the original device.
+        """Reload the engine states to the original device.
 
         Arguments:
             non_blocking: Optional. Whether to offload the states asynchronously.
