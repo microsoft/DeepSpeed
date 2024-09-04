@@ -17,7 +17,23 @@ from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStat
 from deepspeed.utils import safe_get_local_fp32_param, safe_get_local_optimizer_state
 
 
+def validate_device(model, device: torch.device, include) -> None:
+    # Make sure the model parameters are offloaded
+    if include is None or OffloadStateTypeEnum.hp_params in include:
+        assert all(safe_get_local_fp32_param(p).device == device for p in model.parameters())
+    if include is None or OffloadStateTypeEnum.lp_params in include:
+        assert all(p.ds_tensor.device == device for p in model.parameters())
+    if include is None or OffloadStateTypeEnum.lp_grads in include:
+        assert model.optimizer.grad_partitions_flat_buffer.device == device
+    if include is None or OffloadStateTypeEnum.optim_states in include:
+        assert all(safe_get_local_optimizer_state(p, "exp_avg").device == device for p in model.parameters())
+        assert all(safe_get_local_optimizer_state(p, "exp_avg_sq").device == device for p in model.parameters())
+
+
 def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_blocking):
+    # Currently we only support OffloadDeviceEnum.cpu
+    offload_device = OffloadDeviceEnum.cpu
+
     model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
     data_loader = random_dataloader(model=model,
                                     total_samples=10,
@@ -38,14 +54,13 @@ def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_bl
 
         # Start offloading
         alloc_before_offload = get_accelerator().memory_allocated()
-        model.offload_states(include=include,
-                             device=OffloadDeviceEnum.cpu,
-                             pin_memory=pin_memory,
-                             non_blocking=non_blocking)
+        model.offload_states(include=include, device=offload_device, pin_memory=pin_memory, non_blocking=non_blocking)
         alloc_after_offload = get_accelerator().memory_allocated()
         assert alloc_after_offload < alloc_before_offload, f"Allocated memory should decrease after offload"
 
-        # Load offloaded states back
+        validate_device(model, torch.device(offload_device.value), include)
+
+        # Reload states
         model.reload_states()
         assert alloc_after_offload < get_accelerator().memory_allocated(
         ), f"Allocated memory should increase after offload back"
@@ -69,6 +84,8 @@ def run_model(model, config_dict, hidden_dim, dtype, include, pin_memory, non_bl
         adam_exp_avg_sq_restored = [safe_get_local_optimizer_state(p, "exp_avg_sq") for p in model.parameters()]
         for adam_exp_avg_sq_expected, adam_exp_avg_sq_restored in zip(adam_exp_avg_sq, adam_exp_avg_sq_restored):
             assert torch.equal(adam_exp_avg_sq_expected, adam_exp_avg_sq_restored)
+
+        validate_device(model, torch.device(get_accelerator().current_device_name()), include)
 
     # Needed in ZeRO 3. Not doing so can give memory leak
     model.destroy()

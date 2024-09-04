@@ -2825,10 +2825,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.lp_param_contiguous_pin_buffer.copy_(self.lp_param_buffer, non_blocking=non_blocking)
                 cpu_buffer = self.lp_param_contiguous_pin_buffer
             else:
-                self.lp_param_buffer.data = self.lp_param_buffer.to(device, non_blocking=non_blocking)
-                cpu_buffer = self.lp_param_buffer
+                cpu_buffer = self.lp_param_buffer.to(device, non_blocking=non_blocking)
 
-            for tensor, offset, tensor_numel in get_mapping_to_flat_buffer(self.module.parameters()):
+            self.lp_param_buffer.data = cpu_buffer
+            for tensor, offset, tensor_numel in get_mapping_to_flat_buffer(
+                [p.ds_tensor for p in self.module.parameters()]):
                 tensor.data = cpu_buffer.narrow(0, offset, tensor_numel)
 
             self.fp16_partitioned_groups_flat.clear()
@@ -2888,7 +2889,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.lp_param_buffer.data = cpu_buffer.data.to(device, non_blocking=non_blocking)
             self._set_fp16_partitioned_groups_flat()
 
-            for tensor, offset, tensor_numel in get_mapping_to_flat_buffer(self.module.parameters()):
+            for tensor, offset, tensor_numel in get_mapping_to_flat_buffer(
+                [p.ds_tensor for p in self.module.parameters()]):
                 tensor.data = self.lp_param_buffer.narrow(0, offset, tensor_numel)
             self.offloaded_states.remove(OffloadStateTypeEnum.lp_params)
 
