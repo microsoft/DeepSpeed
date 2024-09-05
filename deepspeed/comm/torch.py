@@ -151,11 +151,12 @@ class TorchBackend(Backend):
         op = self._reduce_op(op)
         return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
-    @compiler.disable
     def inference_all_reduce(self, tensor, op, group=None):
-        if self.shm_comm_op == None or self.shm_comm_op.inference_all_reduce(tensor, op) == -1:
+        if not hasattr(torch.ops, 'deepspeed') or not hasattr(torch.ops.deepspeed, 'inference_all_reduce_'):
             op = self._reduce_op(op)
             return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=False)
+        else:
+            return torch.ops.deepspeed.inference_all_reduce_(tensor)
 
     @compiler.disable
     def all_reduce_coalesced(self, tensors, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):
@@ -384,6 +385,14 @@ class TorchBackend(Backend):
             elif op == ReduceOp.BXOR:
                 op = torch.distributed.ReduceOp.BXOR
         return op
+
+    def init_device_mesh(self, mesh_shape, mesh_dim_names):
+        if not required_torch_version(min_version=2.2):
+            raise RuntimeError(f"Current torch version does not have device mesh"
+                               f"api (torch.__version__: {torch.__version__})")
+        return torch.distributed.device_mesh.init_device_mesh(get_accelerator().current_device_name(),
+                                                              mesh_shape,
+                                                              mesh_dim_names=mesh_dim_names)
 
 
 # This will become a light-weight wrapper around torch.distributed functions

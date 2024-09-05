@@ -600,6 +600,21 @@ def get_all_ranks_from_group(group=None):
     return group_ranks
 
 
+def initialize_mesh_device(mesh_shape, mesh_dim_names):
+    global cdb
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    mesh_device = None
+    if hasattr(cdb, 'init_device_mesh'):
+        utils.logger.info(f"Initializing mesh device with backend {cdb.name} \
+                with shape {mesh_shape} and dim names {mesh_dim_names}")
+        mesh_device = cdb.init_device_mesh(mesh_shape, mesh_dim_names)
+    else:
+        if get_rank() == 0:
+            utils.logger.warning_once(f"Backend {cdb.name} does not support mesh device initialization")
+    return mesh_device
+
+
 # Main DeepSpeed Comms. public API.
 def init_distributed(dist_backend=None,
                      auto_mpi_discovery=True,
@@ -618,7 +633,7 @@ def init_distributed(dist_backend=None,
         auto_mpi_discovery Optional (bool). if distributed environment variables are not set, attempt to discover them from MPI
         distributed_port: Optional (int). torch distributed backend port
         verbose: Optional (bool). verbose logging
-        timeout: Optional (timedelta). Timeout for operations executed against the process group. Default value equals 30 minutes.
+        timeout: Optional (timedelta). Timeout for operations executed against the process group. The default value of 30 minutes can be overridden by the environment variable `DEEPSPEED_TIMEOUT`.
         init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
         config: Optional (dict). DeepSpeed configuration for setting up comms options (e.g. Comms profiling)
         rank: Optional (int). The current manually specified rank. Some init_method like “tcp://” need the rank and world_size as well (see: https://pytorch.org/docs/stable/distributed.html#tcp-initialization)

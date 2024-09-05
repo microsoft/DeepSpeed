@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import functools
 import os
 import pkgutil
 import importlib
@@ -41,9 +42,8 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return True
 
     def device_name(self, device_index=None):
-        if device_index is None:
-            return 'hpu'
-        return 'hpu:{}'.format(device_index)
+        # ignoring device_index.
+        return 'hpu'
 
     def device(self, device_index=None):
         return torch.device(self.device_name(device_index))
@@ -74,13 +74,13 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return self.hpu.random.get_rng_state()
 
     def manual_seed(self, seed):
-        self.hpu.random.manual_seed(seed)
+        return self.hpu.random.manual_seed(seed)
 
     def manual_seed_all(self, seed):
         self.hpu.random.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        self.hpu.random.initial_seed(seed)
+    def initial_seed(self):
+        return self.hpu.random.initial_seed()
 
     def default_generator(self, device_index):
         return self.hpu.random.default_generators[device_index]
@@ -196,31 +196,31 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     # Tensor operations
     @property
     def BFloat16Tensor(self):
-        return self.hpu.BFloat16Tensor
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device='hpu')
 
     @property
     def ByteTensor(self):
-        return self.hpu.ByteTensor
+        return functools.partial(torch.tensor, dtype=torch.uint8, device='hpu')
 
     @property
     def DoubleTensor(self):
-        return self.hpu.DoubleTensor
+        return functools.partial(torch.tensor, dtype=torch.double, device='hpu')
 
     @property
     def FloatTensor(self):
-        return self.hpu.FloatTensor
+        return functools.partial(torch.tensor, dtype=torch.float, device='hpu')
 
     @property
     def HalfTensor(self):
-        return self.hpu.HalfTensor
+        return functools.partial(torch.tensor, dtype=torch.half, device='hpu')
 
     @property
     def IntTensor(self):
-        return self.hpu.IntTensor
+        return functools.partial(torch.tensor, dtype=torch.int, device='hpu')
 
     @property
     def LongTensor(self):
-        return self.hpu.LongTensor
+        return functools.partial(torch.tensor, dtype=torch.long, device='hpu')
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory(self.device())
@@ -297,7 +297,11 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return []
 
     def visible_devices_envs(self):
-        return ['HABANA_VISIBLE_MODULES']
+        # Current way deepspeed set this env var is not applicable with all HPU instances
+        # User has to follow instructions in:
+        # https://docs.habana.ai/en/latest/PyTorch/Reference/PT_Multiple_Tenants_on_HPU/Multiple_Workloads_Single_Docker.html
+        # keeping CUDA_VISIBLE_DEVICES
+        return ['CUDA_VISIBLE_DEVICES']  #['HABANA_VISIBLE_MODULES']
 
     def set_visible_devices_envs(self, current_env, local_accelerator_ids):
         for env in self.visible_devices_envs():
