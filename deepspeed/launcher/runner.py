@@ -453,11 +453,14 @@ def main(args=None):
 
     if not args.master_addr:
         assert multi_node_exec
+        import socket
+        hostname = socket.gethostname()
+        host_ip_addr = socket.gethostbyname_ex(hostname)[2]
         first_host = list(active_resources.keys())[0]
         ssh_check_cmd = "ssh "
         if args.ssh_port is not None:
             ssh_check_cmd += f" -p {args.ssh_port}"
-        ssh_check_cmd += f" {first_host} hostname -I"
+        ssh_check_cmd += f" {first_host} {host_ip_addr}"
         hostname_cmd = [ssh_check_cmd]
         try:
             result = subprocess.check_output(hostname_cmd, shell=True)
