@@ -338,7 +338,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.clear_lp_grads()
         loss.backward(**bwd_kwargs)
 
-        if update_hp_grads:
+        if not self.immediate_grad_update and update_hp_grads:
             self.update_hp_grads(clear_lp_grads=clear_lp_grads)
 
     @torch.no_grad()
