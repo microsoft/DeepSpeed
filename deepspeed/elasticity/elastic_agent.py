@@ -53,9 +53,9 @@ class DSElasticAgent(LocalElasticAgent):
                 master_port = sock.getsockname()[1]
 
         if master_addr is None:
-            # master_addr = _get_fq_hostname()
-            result = subprocess.check_output("hostname -I", shell=True)
-            master_addr = result.decode('utf-8').split()[0]
+            import socket
+            hostname = socket.gethostname()
+            master_addr = socket.gethostbyname_ex(hostname)[2]
 
         store.set("MASTER_ADDR", master_addr.encode(encoding="UTF-8"))
         store.set("MASTER_PORT", str(master_port).encode(encoding="UTF-8"))

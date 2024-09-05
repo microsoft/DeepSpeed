@@ -115,7 +115,7 @@ def parse_args(args=None):
                         default="",
                         type=str,
                         help="(optional) IP address of node 0, will be "
-                        "inferred via 'hostname -I' if not specified.")
+                        "inferred via 'socket.gethostname' if not specified.")
 
     parser.add_argument("--node_rank",
                         default=-1,
