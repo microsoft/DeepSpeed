@@ -7,6 +7,7 @@ import functools
 import logging
 import sys
 import os
+import torch
 
 log_levels = {
     "debug": logging.DEBUG,
@@ -18,6 +19,18 @@ log_levels = {
 
 
 class LoggerFactory:
+
+    @staticmethod
+    def logging_decorator(func):
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if torch._dynamo.is_compiling():
+                return
+            else:
+                return func(*args, **kwargs)
+
+        return wrapper
 
     @staticmethod
     def create_logger(name=None, level=logging.INFO):
@@ -44,6 +57,10 @@ class LoggerFactory:
         ch.setLevel(level)
         ch.setFormatter(formatter)
         logger_.addHandler(ch)
+        if os.getenv("DISABLE_LOGS_WHILE_COMPILING", "0") == "1":
+            for method in ['info', 'debug', 'error', 'warning', 'critical', 'exception']:
+                original_logger = getattr(logger_, method)
+                setattr(logger_, method, LoggerFactory.logging_decorator(original_logger))
         return logger_
 
 
