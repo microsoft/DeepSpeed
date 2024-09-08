@@ -489,18 +489,6 @@ class DeepSpeedEngine(Module):
         if self.training_dataloader is not None and self.curriculum_learning_enabled():
             self.training_dataloader.data_sampler.set_custom_curriculum_learning_schedule(schedule_func_dict)
 
-    def get_global_grad_norm(self) -> float:
-        """Return the 2-norm of all gradients. If there is model parallelism,
-        the norm will be global.
-        The computed norm will be cached and reused until the next step() pass.
-        .. note::
-            In the presence of model parallelism, this is a collective call
-            and acts as a barrier among ``mpu.get_model_parallel_group()``.
-        Returns:
-            float: norm
-        """
-        return self._global_grad_norm
-
     def __getattr__(self, name):
         """
         Pass through attributes defined in the model if they are not overridden by ds-engine.
