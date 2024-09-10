@@ -12,7 +12,7 @@
 
 #ifdef BF16_AVAILABLE
 #include <cuda_bf16.h>
-#endif #include < cuda_bf16.h>
+#endif
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 
