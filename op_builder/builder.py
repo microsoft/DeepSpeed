@@ -253,7 +253,8 @@ class OpBuilder(ABC):
             rocm_info = Path("rocminfo")
         rocm_gpu_arch_cmd = str(rocm_info) + " | grep -o -m 1 'gfx.*'"
         try:
-            result = subprocess.check_output(rocm_gpu_arch_cmd, shell=True)
+            safe_cmd = shlex.split(rocm_gpu_arch_cmd)
+            result = subprocess.check_output(safe_cmd)
             rocm_gpu_arch = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
             rocm_gpu_arch = ""
@@ -271,7 +272,8 @@ class OpBuilder(ABC):
         rocm_wavefront_size_cmd = str(
             rocm_info) + " | grep -Eo -m1 'Wavefront Size:[[:space:]]+[0-9]+' | grep -Eo '[0-9]+'"
         try:
-            result = subprocess.check_output(rocm_wavefront_size_cmd, shell=True)
+            safe_cmd = shlex.split(rocm_wavefront_size_cmd)
+            result = subprocess.check_output(rocm_wavefront_size_cmd)
             rocm_wavefront_size = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
             rocm_wavefront_size = "32"
@@ -296,7 +298,7 @@ class OpBuilder(ABC):
         '''
         return []
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         '''
         Check if all non-python dependencies are satisfied to build this op
         '''
@@ -432,7 +434,7 @@ class OpBuilder(ABC):
                          "to detect the CPU architecture. 'lscpu' does not appear to exist on "
                          "your system, will fall back to use -march=native and non-vectorized execution.")
             return None
-        result = subprocess.check_output('lscpu', shell=True)
+        result = subprocess.check_output(['lscpu'])
         result = result.decode('utf-8').strip().lower()
 
         cpu_info = {}
@@ -679,7 +681,7 @@ class CUDAOpBuilder(OpBuilder):
             version_ge_1_5 = ['-DVERSION_GE_1_5']
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         return super().is_compatible(verbose)
 
     def builder(self):
