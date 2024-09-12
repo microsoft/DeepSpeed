@@ -52,6 +52,10 @@ class ZeROOrderedDict(OrderedDict):
         self._parent_module = parent_module
         self._in_forward = False
 
+    def __reduce__(self):
+        r0, _, *r2 = super().__reduce__()
+        return r0, (self._parent_module, ), *r2
+
     def __getitem__(self, key):
         param = super().__getitem__(key)
 
@@ -59,7 +63,8 @@ class ZeROOrderedDict(OrderedDict):
         if param is None:
             return param
 
-        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+        # if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+        if getattr(param, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE:
             if self._parent_module._parameters._in_forward:
                 register_external_parameter(FWD_MODULE_STACK[-1], param)
                 param.all_gather()
