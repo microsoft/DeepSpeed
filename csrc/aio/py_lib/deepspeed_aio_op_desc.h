@@ -17,7 +17,7 @@ struct io_op_desc_t {
     const long long int _file_num_bytes;
     const long long int _file_offset;
     const int _num_threads;
-    const int _num_bytes_per_thread;
+    const long long int _num_bytes_per_thread;
     torch::Tensor _contiguous_buffer;
     const bool _validate;
 

@@ -45,10 +45,12 @@ void io_prep_context::prep_iocbs(const int n_iocbs,
 {
     assert(static_cast<size_t>(n_iocbs) <= _iocbs->size());
     for (auto i = 0; i < n_iocbs; ++i) {
+
         const auto shift = i * _block_size;
         const auto xfer_buffer = (char*)start_buffer + _xfer_ctxt->_buffer_base_offset + shift;
         const auto xfer_offset = _xfer_ctxt->_file_base_offset + start_offset + shift;
         auto byte_count = _block_size;
+
         if ((shift + _block_size) > num_bytes) { byte_count = num_bytes - shift; }
 
         if (_read_op) {

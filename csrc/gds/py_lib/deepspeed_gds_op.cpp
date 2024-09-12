@@ -126,17 +126,17 @@ void gds_op_desc_t::run(const int tid,
 {
     assert(tid < _num_threads);
     check_cudaruntimecall(cudaSetDevice(_buffer.get_device()));
-    int64_t buf_offset = data_ptr() + (_num_bytes_per_thread * tid) - (char*)_base_ptr;
+    const auto buf_offset = data_ptr() + (_num_bytes_per_thread * tid) - (char*)_base_ptr;
     const auto tid_file_offset = _file_offset + (_num_bytes_per_thread * tid);
 
     if (_read_op) {
         auto ret =
             cuFileRead(_cf_handle, _base_ptr, _num_bytes_per_thread, tid_file_offset, buf_offset);
-        if (ret < 0) { _report_error(ret, errno, buf_offset); }
+        if (ret < 0) { _report_error(ret, errno, tid_file_offset); }
     } else {
         auto ret =
             cuFileWrite(_cf_handle, _base_ptr, _num_bytes_per_thread, tid_file_offset, buf_offset);
-        if (ret < 0) { _report_error(ret, errno, buf_offset); }
+        if (ret < 0) { _report_error(ret, errno, tid_file_offset); }
     }
 }
 
