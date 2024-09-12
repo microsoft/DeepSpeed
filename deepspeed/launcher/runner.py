@@ -21,6 +21,7 @@ from copy import deepcopy
 import signal
 import time
 from typing import Tuple, List, Dict
+from collections import defaultdict
 import shlex
 
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner, IMPIRunner
@@ -280,14 +281,13 @@ def parse_node_config(node_config: str) -> Tuple[str, List[int]]:
 def parse_node_config_list(node_config_list: List[str]) -> Dict[str, List[int]]:
     NODE_SEP = '@'
 
-    node_configs = {}
+    node_configs = defaultdict(list)
+
     for node_config in node_config_list.split(NODE_SEP):
         hostname, slots = parse_node_config(node_config)
-        if hostname in node_configs:
-            raise ValueError(f"Duplicate hostname '{hostname}' in --include/--exclude list")
-        node_configs[hostname] = slots
+        node_configs[hostname] += slots
 
-    return node_configs
+    return {k: sorted(list(set(v))) for k, v in node_configs.items()}
 
 
 def parse_resource_filter(host_info, include_str="", exclude_str=""):
