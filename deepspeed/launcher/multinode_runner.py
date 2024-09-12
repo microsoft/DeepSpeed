@@ -34,7 +34,7 @@ class MultiNodeRunner(ABC):
         """Return the command to execute on node"""
 
     def add_export(self, key, var):
-        self.exports[key.strip()] = var.strip()
+        self.exports[key.strip()] = f"\"{var.strip()}\""
 
     def parse_user_args(self):
         return self.args.user_args
@@ -406,7 +406,7 @@ class MVAPICHRunner(MultiNodeRunner):
         if not mpiname_exists:
             warnings.warn("mpiname does not exist, mvapich is not installed properly")
         else:
-            results = subprocess.check_output('mpiname', shell=True)
+            results = subprocess.check_output(['mpiname'])
             mpiname_results = results.decode('utf-8').strip()
             if "MVAPICH2-GDR" in mpiname_results:
                 exists = True
