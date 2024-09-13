@@ -6,11 +6,6 @@
 
 from .builder import MLUOpBuilder
 import torch
-try:
-    import torch_mlu
-except ImportError as e:
-    pass
-
 
 class MLUFusedAdam:
 
