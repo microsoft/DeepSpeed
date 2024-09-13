@@ -25,7 +25,8 @@ class AsyncIOBuilder(OpBuilder):
             'csrc/aio/py_lib/deepspeed_py_aio.cpp', 'csrc/aio/py_lib/deepspeed_py_aio_handle.cpp',
             'csrc/aio/py_lib/deepspeed_aio_thread.cpp', 'csrc/aio/common/deepspeed_aio_utils.cpp',
             'csrc/aio/common/deepspeed_aio_common.cpp', 'csrc/aio/common/deepspeed_aio_types.cpp',
-            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
+            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp', 'csrc/aio/py_lib/deepspeed_py_io_handle.cpp',
+            'csrc/xpu/aio/deepspeed_cpu_op.cpp', 'csrc/aio/py_lib/deepspeed_aio_op_desc.cpp', 
         ]
 
     def include_paths(self):
