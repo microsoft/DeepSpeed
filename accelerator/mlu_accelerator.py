@@ -10,11 +10,6 @@ from .abstract_accelerator import DeepSpeedAccelerator
 import torch
 # During setup stage torch may not be installed, pass on no torch will
 # allow op builder related API to be executed.
-try:
-    import torch_mlu
-except ImportError:
-    pass
-
 
 class MLU_Accelerator(DeepSpeedAccelerator):
 
