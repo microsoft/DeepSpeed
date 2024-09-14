@@ -7,6 +7,7 @@
 from .builder import MLUOpBuilder
 import torch
 
+
 class MLUFusedAdam:
 
     @staticmethod
