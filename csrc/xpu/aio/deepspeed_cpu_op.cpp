@@ -25,16 +25,7 @@ char* cpu_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_pt
 
 void cpu_op_desc_t::finish()
 {
-    if (_read_op) {
-        if (_buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
-        if (_buffer.is_xpu()) { _buffer.copy_(_cpu_buffer.to(torch::kXPU)); }
-#if defined(__ENABLE_CANN__)
-        if (torch_npu::utils::is_npu(_buffer)) {
-            auto device = at::Device("npu:0");
-            _buffer.copy_(_cpu_buffer.to(device));
-        }
-#endif
-    }
+    if (_read_op && _buffer.is_xpu()) { _buffer.copy_(_cpu_buffer.to(torch::kXPU)); }
 }
 
 void cpu_op_desc_t::validate()
