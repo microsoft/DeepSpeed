@@ -20,8 +20,8 @@ from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 def move(tensor, device, keep_module_on_host=False):
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
-    elif keep_module_on_host and device != 'cpu':
-        return tensor.to('cpu')
+    elif keep_module_on_host:
+        return tensor.to('cpu') if device != 'cpu' else tensor
     else:
         # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
         # Using copy=True instead of clone() will help in case of cpu --> cpu.
