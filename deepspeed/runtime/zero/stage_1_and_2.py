@@ -1076,7 +1076,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if self.ipg_bucket_has_moe_params:
                     process_group = self.expert_dp_process_group[param.group_name] if is_moe_param(
                         param) else self.dp_process_group
-                    grad_reduc.data.div_(dist.get_world_size(group=process_group) / float(self.sequence_parallel_size))
 
                 partition_ids = self.param_to_partition_ids[i][param_id]
                 assert all([p_id < dist.get_world_size(group=process_group) for p_id in partition_ids
@@ -1115,8 +1114,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     curr_size += numel
                     prev_id, prev_process_group = partition_id, process_group
 
-            if not self.ipg_bucket_has_moe_params:
-                tensor.div_(dist.get_world_size(group=self.dp_process_group) / float(self.sequence_parallel_size))
+            tensor.div_(dist.get_world_size(group=self.dp_process_group) / float(self.sequence_parallel_size))
 
             buckets = {}
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
