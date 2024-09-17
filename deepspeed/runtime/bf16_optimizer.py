@@ -44,7 +44,7 @@ class BF16_Optimizer(ZeROOptimizer):
                  timers=None,
                  grad_acc_dtype=None,
                  graph_harvesting=False,
-                 immediate_grad_update=False,
+                 immediate_grad_update=True,
                  has_moe_layers=False):
         super().__init__()
         see_memory_usage('begin bf16_optimizer', force=True)
@@ -313,7 +313,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
         self.clear_hp_grads()
 
-    def backward(self, loss, retain_graph=False, update_hp_grads=True, clear_lp_grads=False, skip_loss_backward=False, **bwd_kwargs):
+    def backward(self, loss, retain_graph=False, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
         """Perform a backward pass and copy the low-precision gradients to the
         high-precision copy.
 
@@ -322,10 +322,8 @@ class BF16_Optimizer(ZeROOptimizer):
 
         The low-precision grads are deallocated during this procedure.
         """
-        # import pdb; pdb.set_trace()
-        if not skip_loss_backward:
-            self.clear_lp_grads()
-            loss.backward(retain_graph=retain_graph, **bwd_kwargs)
+        self.clear_lp_grads()
+        loss.backward(retain_graph=retain_graph, **bwd_kwargs)
 
         if update_hp_grads:
             self.update_hp_grads(clear_lp_grads=clear_lp_grads)
@@ -343,7 +341,8 @@ class BF16_Optimizer(ZeROOptimizer):
         lp._hp_grad = hp_grad
         self.fp32_groups_has_gradients[group_idx][param_idx] = True
         # if param_idx == 200:
-        print_rank_0(f"update_hp_grad self={id(self)} {group_idx=} {param_idx=} gnorm={float(lp.grad.norm().float())}", force=True)
+        print_rank_0(f"update_hp_grad self={id(self)} {group_idx=} {param_idx=} gnorm={float(lp.grad.norm().float())}",
+                     force=True)
         #     import pdb; pdb.set_trace()
 
         # clear gradients
@@ -465,11 +464,9 @@ class BF16_Optimizer(ZeROOptimizer):
         if not set_to_none and len(zero_grads_list) > 0:
             torch._foreach_zero_(zero_grads_list)
 
-
     def zero_grad(self, set_to_none=True):
         self.clear_lp_grads(set_to_none)
         self.clear_hp_grads()
-
 
     def state_dict(self):
         state_dict = {}

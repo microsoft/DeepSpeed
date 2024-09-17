@@ -871,14 +871,12 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def overlapping_partition_gradients_reduce_epilogue(self):
         self.independent_gradient_partition_epilogue()
 
-
     def _fill_param_grad_accum_attribute(self, param):
         if param.grad is not None:
             if param.grad_accum is None:
                 param.grad_accum = param.grad.to(self.gradient_accumulation_dtype)
             else:
-                param.grad_accum.add_(
-                    param.grad.to(self.gradient_accumulation_dtype).view(param.grad_accum.shape))
+                param.grad_accum.add_(param.grad.to(self.gradient_accumulation_dtype).view(param.grad_accum.shape))
             param.grad = None
 
     def fill_grad_accum_attribute(self):
@@ -912,10 +910,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         param_tmp = param.expand_as(param)
                         grad_acc = param_tmp.grad_fn.next_functions[0][0]
 
-                        def handle_gradients(*notneeded):
+                        def grad_handling_hook(*notneeded):
                             self.process_gradients(param, i)
 
-                        self._grad_acc_hooks.append(grad_acc.register_hook(handle_gradients))
+                        self._grad_acc_hooks.append(grad_acc.register_hook(grad_handling_hook))
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i)
@@ -1435,16 +1433,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #####################################################################
 
     def process_gradients(self, param, i):
-        param_id = self.get_param_id(param)
+        # param_id = self.get_param_id(param)
         # self.print_rank_0(f"grad_hook: opt={id(self)} {param_id=} {i=}")
         if self.use_grad_accum_attribute:
             self._fill_param_grad_accum_attribute(param)
         if self.partition_gradients or self.overlap_comm:
             self.reduce_ready_partitions_and_remove_grads(param, i)
 
-
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        self.backward_prologue()
         if self.partition_gradients or self.is_gradient_accumulation_boundary:
             self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
@@ -2059,6 +2055,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def backward_prologue(self):
         # import pdb; pdb.set_trace()
+        self.micro_step_id += 1
         if self.contiguous_gradients and self.ipg_buffer is None:
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
@@ -2076,11 +2073,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def backward_epilogue(self):
         # Only for Stage 1, Mode 2
-        # import pdb; pdb.set_trace()
         if self.use_grad_accum_attribute:
             self.fill_grad_accum_attribute()
 
-    def backward(self, loss, retain_graph=False, skip_loss_backward=False):
+    def backward(self, loss, retain_graph=False):
         """
         :attr:`backward` performs the following steps:
 
@@ -2088,22 +2084,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        self.micro_step_id += 1
-        # see_memory_usage(f"begin backward pass {self.micro_step_id=}", force=True)
-        import pdb; pdb.set_trace()
-        if not skip_loss_backward:
-            self.backward_prologue()
+        self.backward_prologue()
 
-            if self.custom_loss_scaler:
-                scaled_loss = self.external_loss_scale * loss
-                scaled_loss.backward(retain_graph=retain_graph)
-            else:
-                self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            scaled_loss.backward(retain_graph=retain_graph)
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
-        import pdb; pdb.set_trace()
         self.backward_epilogue()
-
-        # see_memory_usage(f"end backward pass {self.micro_step_id=}", force=True)
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)

@@ -268,8 +268,8 @@ class DeepSpeedEngine(Module):
 
         # Configure distributed model
         self._configure_distributed_model(model)
-        
-        # self.module_backward_hook = self._create_module_backward_hook(self.module)
+
+        self.module_backward_hook = self._create_module_backward_hook(self.module)
 
         # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
         self.param_names = {param: name for name, param in model.named_parameters()}
@@ -1837,13 +1837,15 @@ class DeepSpeedEngine(Module):
 
         return scaled_loss
 
-
     def _create_module_backward_hook(self, module):
-        def _module_backward_hook(module, *unused):
-            import pdb; pdb.set_trace()
-            print(f"mod_bwd_hook: {id(self)=} {id(module)=} {id(self.optimizer)=}")
 
-        return module.register_full_backward_hook(_module_backward_hook)
+        def _module_backward_hook(module, *unused):
+            # import pdb; pdb.set_trace()
+            print(f"mod_bwd_hook: {id(self)=} {id(module)=} {id(self.optimizer)=}")
+            if hasattr(self.optimizer, 'backward_prologue'):
+                self.optimizer.backward_prologue()
+
+        return module.register_full_backward_pre_hook(_module_backward_hook)
 
     def _module_backward_epilogue(self, loss, i):
         print(f'engine_module_bwd_hook: {id(self)=} loss={id(loss)}, loss_idx={i}')
@@ -1855,7 +1857,7 @@ class DeepSpeedEngine(Module):
         if torch.is_tensor(item):
             return [item]
         elif type(item) in [list, tuple]:
-            l = [] 
+            l = []
             for v in item:
                 l += self._get_tensor_list(v)
         elif isinstance(item, dict):
@@ -1869,16 +1871,16 @@ class DeepSpeedEngine(Module):
         handles = []
         for i, loss in enumerate(loss_tensor_list):
             if loss.requires_grad:
+
                 def wrapper(loss, i):
 
-                    def _engine_backward(*notneeded):                    
+                    def _engine_backward(*notneeded):
                         self._module_backward_epilogue(loss, i)
 
                     handles.append(loss.register_hook(_engine_backward))
 
                 wrapper(loss, i)
-        return handles 
-
+        return handles
 
     @instrument_w_nvtx
     def forward(self, *inputs, **kwargs):
@@ -1948,7 +1950,7 @@ class DeepSpeedEngine(Module):
             # Disable automated discovery of external parameters
             for module in self.module.modules():
                 module._parameters._in_forward = False
-       
+
         # self.loss_hooks = self._create_loss_backward_hooks(loss)
         self._stop_timers(self.engine_timers.forward_timers)
 
@@ -2042,16 +2044,15 @@ class DeepSpeedEngine(Module):
                     )]
                     self.monitor.write_events(self.summary_events)
 
-        return loss 
-    
+        return loss
 
     def _backward_epilogue(self):
         self.allreduce_gradients()
 
-    def _do_optimizer_backward(self, loss, retain_graph, skip_loss_backward):
+    def _do_optimizer_backward(self, loss, retain_graph):
         if self.zero_optimization():
             self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
-            self.optimizer.backward(loss, retain_graph=retain_graph, skip_loss_backward=skip_loss_backward)
+            self.optimizer.backward(loss, retain_graph=retain_graph)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries
             # https://nvidia.github.io/apex/advanced.html#gradient-accumulation-across-iterations
@@ -2064,16 +2065,15 @@ class DeepSpeedEngine(Module):
             else:
                 self.optimizer.backward(loss, retain_graph=retain_graph)
         elif self.bfloat16_enabled():
-            self.optimizer.backward(loss, retain_graph=retain_graph, skip_loss_backward=skip_loss_backward)
+            self.optimizer.backward(loss, retain_graph=retain_graph)
         else:
             if self.eigenvalue_enabled():
                 loss.backward(create_graph=True, retain_graph=True)
             else:
                 loss.backward(retain_graph=retain_graph)
 
-
     @instrument_w_nvtx
-    def backward(self, loss, allreduce_gradients=True, release_loss=False, retain_graph=False, scale_wrt_gas=True, skip_loss_backward=False):
+    def backward(self, loss, allreduce_gradients=True, release_loss=False, retain_graph=False, scale_wrt_gas=True):
         r"""Execute backward pass on the loss
         Arguments:
             loss: Torch tensor on which to execute backward propagation
@@ -2083,7 +2083,8 @@ class DeepSpeedEngine(Module):
         """
 
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
-        import pdb; pdb.set_trace()
+        import pdb
+        pdb.set_trace()
 
         if not allreduce_gradients:
             logger.warning(f"Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed")
@@ -2097,7 +2098,7 @@ class DeepSpeedEngine(Module):
 
         self._start_timers(self.engine_timers.backward_inner_timers)
 
-        self._do_optimizer_backward(loss, retain_graph, skip_loss_backward)
+        self._do_optimizer_backward(loss, retain_graph)
 
         self._stop_timers(self.engine_timers.backward_inner_timers)
 
