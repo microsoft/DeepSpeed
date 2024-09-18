@@ -138,6 +138,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                  fp16_master_weights_and_gradients=False,
                  elastic_checkpoint=False):
 
+        super().__init__()
+
         if offload_optimizer_config is not None and offload_optimizer_config.device != OffloadDeviceEnum.none:
             self.cpu_offload = True
             self.cpu_offload_pin_memory = offload_optimizer_config.pin_memory
@@ -1230,7 +1232,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if param_id not in self.accumulated_grads_in_cpu:
             self.accumulated_grads_in_cpu[param_id] = buffer_to_accumulate_to_in_cpu()
 
-        if self.micro_step_id > 0:
+        if self.micro_step_id > 0 or self.force_overwrite_grads:
             accumulate_gradients()
         else:
             copy_gradients_to_cpu()
@@ -1416,6 +1418,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.params_in_ipg_bucket = []
         self.ipg_bucket_has_moe_params = False
         self.elements_in_ipg_bucket = 0
+        self.force_overwrite_grads = False
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):

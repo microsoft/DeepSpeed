@@ -18,6 +18,9 @@ class DeepSpeedOptimizer(object):
 
 class ZeROOptimizer(DeepSpeedOptimizer):
 
+    def __init__(self):
+        self.force_overwrite_grads = False
+
     def load_hp_checkpoint_state_from_checkpoint_dir(self, lp_groups_name: str, checkpoint_dir: str) -> None:
         checkpoint_dir = os.path.join(checkpoint_dir, "zero")
         optim_state_path = os.path.join(checkpoint_dir, "optimizer_state.pt")
@@ -69,3 +72,5 @@ class ZeROOptimizer(DeepSpeedOptimizer):
                       set_to_none: bool = True,
                       force: bool = False) -> None:
         zero_grad_params(params, set_to_none_fn, self.is_gradient_accumulation_boundary, set_to_none, force)
+        # Flag to indicate that the reduced gradients should be copied to the buffer, not accumulated
+        self.force_overwrite_grads = True

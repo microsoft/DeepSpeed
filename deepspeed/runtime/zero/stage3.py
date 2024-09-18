@@ -156,6 +156,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
     ):
+        super().__init__()
+
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}", force=False)
@@ -294,7 +296,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = INITIAL_MICRO_STEP_ID
-        self.force_overwrite_grads = False
         self.reduce_bucket_size = int(reduce_bucket_size)
 
         if self.all2all_process_group is not None:
@@ -1505,8 +1506,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 param.grad.record_stream(get_accelerator().current_stream())
             param.grad = None
 
-        self.force_overwrite_grads = False
-
         if self.offload_optimizer and self.swap_optimizer:
             for i in offload_fp32_gradients.keys():
                 self.optimizer_swapper.swap_out_gradients(parameter=self.fp32_partitioned_groups_flat[i],
@@ -1731,9 +1730,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         params = [p for group in self.fp16_groups for p in group]
         self._do_zero_grad(params, set_grad_to_none, set_to_none, force)
-
-        # Flag to indicate that the reduced gradients should be copied to the buffer, not accumulated
-        self.force_overwrite_grads = True
 
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.
