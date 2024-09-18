@@ -1633,22 +1633,17 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         return params_in_partition, params_not_in_partition, first_offset
 
-    def zero_grad(self, set_to_none=True):
+    def zero_grad(self, set_to_none=True, force=False):
         """
         Zero FP16 parameter grads.
         """
-        # FP32 grad should never exist.
-        # For speed, set model fp16 grad to None by default
-        # zero all pointers to grad tensors
-        for group in self.bit16_groups:
-            for p in group:
-                if set_to_none:
-                    p.grad = None  # epilogue and in step
-                    p.grad_accum = None
-                else:
-                    if p.grad is not None:
-                        p.grad.detach_()
-                        p.grad.zero_()
+
+        def set_grad_to_none(p):
+            p.grad = None  # epilogue and in step
+            p.grad_accum = None
+
+        params = [p for group in self.bit16_groups for p in group]
+        self._do_zero_grad(params, set_grad_to_none, set_to_none, force)
 
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.

@@ -74,7 +74,7 @@ from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallCl
 from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_clear_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
-from deepspeed.runtime.utils import clip_grad_norm_
+from deepspeed.runtime.utils import clip_grad_norm_, zero_grad_params
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
@@ -2097,12 +2097,27 @@ class DeepSpeedEngine(Module):
         self._is_gradient_accumulation_boundary = is_boundary
         self.optimizer.is_gradient_accumulation_boundary = is_boundary
 
-    def zero_grad(self):
+    def zero_grad(self, set_to_none: bool = True, force: bool = False) -> None:
         """
         Zero parameter grads.
         """
-        for param_name, param in self.module.named_parameters():
-            param.grad = None
+        # zero grad in basic optimizer could be unreliable and may not exhibit
+        # the behavior that we want
+        if self.bfloat16_enabled():
+            # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
+            if self.zero_optimization() and hasattr(self.optimizer, "zero_grad"):
+                self.optimizer.zero_grad(set_to_none, force)
+            else:
+                pass
+        elif self.zero_optimization() or self.fp16_enabled() or self.amp_enabled():
+            self.optimizer.zero_grad(set_to_none, force)
+        else:
+
+            def set_to_none_fn(param):
+                param.grad = None
+
+            zero_grad_params(self.module.parameters(), set_to_none_fn, self.is_gradient_accumulation_boundary(),
+                             set_to_none, force)
 
     def clip_fp32_gradients(self):
         clip_grad_norm_(parameters=self.module.parameters(), max_norm=self.gradient_clipping(), mpu=self.mpu)
@@ -2132,18 +2147,8 @@ class DeepSpeedEngine(Module):
                     self.eigenvalue_enabled(),
                     block_eigenvalue,
                 )
-        # zero grad in basic optimizer could be unreliable and may not exhibit
-        # the behavior that we want
-        if self.bfloat16_enabled():
-            # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
-            if self.zero_optimization() and hasattr(self.optimizer, "zero_grad"):
-                self.optimizer.zero_grad()
-            else:
-                pass
-        elif self.zero_optimization() or self.fp16_enabled() or self.amp_enabled():
-            self.optimizer.zero_grad()
-        else:
-            self.zero_grad()
+
+        self.zero_grad(force=True)
 
         report_progress = self.global_rank == 0 if self.global_rank else True
 

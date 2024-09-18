@@ -8,7 +8,7 @@ Copyright NVIDIA/Megatron
 Helper functions and classes from multiple sources.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Callable
 from deepspeed.moe.utils import is_moe_param
 import os
 import psutil
@@ -1065,3 +1065,32 @@ def get_norm_with_moe_layers(non_expert_norm, mpu, expert_tensors, norm_type=2):
             total_norm = -1
 
     return total_norm
+
+
+warn_zero_grad_shown = False
+
+
+def warn_zero_grad() -> None:
+    global warn_zero_grad_shown
+    if not warn_zero_grad_shown:
+        msg = "zero_grad() was called but gradients are not cleared because " \
+                "the current iteration is not a gradient accumulation boundary. " \
+                "If you want to clear gradients, please set force=True."
+        logger.info(msg)
+        warn_zero_grad_shown = True
+    return
+
+
+def zero_grad_params(params: Iterable[torch.nn.Parameter], set_to_none_fn: Callable[[torch.Tensor], None],
+                     is_gradient_accumulation_boundary: bool, set_to_none: bool, force: bool) -> None:
+    if not is_gradient_accumulation_boundary and not force:
+        warn_zero_grad()
+        return
+
+    for param in params:
+        if set_to_none:
+            set_to_none_fn(param)
+        else:
+            if param.grad is not None:
+                param.grad.detach_()
+                param.grad.zero_()
