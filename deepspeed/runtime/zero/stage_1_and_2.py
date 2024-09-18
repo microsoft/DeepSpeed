@@ -1070,9 +1070,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
                 process_group = self.dp_process_group
 
-                #Averages gradients at parameter level if ipg has a moe param
-                #Otherwise averaging is done at the entire buffer level at the end of the loop
-                # MoE param have different groups
                 if self.ipg_bucket_has_moe_params:
                     process_group = self.expert_dp_process_group[param.group_name] if is_moe_param(
                         param) else self.dp_process_group
