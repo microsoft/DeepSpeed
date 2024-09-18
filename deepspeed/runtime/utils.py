@@ -1094,3 +1094,12 @@ def zero_grad_params(params, set_to_none_fn, is_gradient_accumulation_boundary: 
             if param.grad is not None:
                 param.grad.detach_()
                 param.grad.zero_()
+
+
+def zero_grad_with_grad_acc_boundary_check(optimizer: torch.optim.Optimizer, is_gradient_accumulation_boundary: bool,
+                                           force: bool) -> None:
+    if not is_gradient_accumulation_boundary and not force:
+        warn_zero_grad()
+        return
+
+    optimizer.zero_grad()

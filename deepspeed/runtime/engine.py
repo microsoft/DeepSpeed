@@ -74,7 +74,7 @@ from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallCl
 from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_clear_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
-from deepspeed.runtime.utils import clip_grad_norm_, zero_grad_params
+from deepspeed.runtime.utils import clip_grad_norm_, zero_grad_with_grad_acc_boundary_check
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
@@ -2109,15 +2109,10 @@ class DeepSpeedEngine(Module):
                 self.optimizer.zero_grad(set_to_none, force)
             else:
                 pass
-        elif self.zero_optimization() or self.fp16_enabled() or self.amp_enabled():
+        elif self.zero_optimization():
             self.optimizer.zero_grad(set_to_none, force)
         else:
-
-            def set_to_none_fn(param):
-                param.grad = None
-
-            zero_grad_params(self.module.parameters(), set_to_none_fn, self.is_gradient_accumulation_boundary(),
-                             set_to_none, force)
+            zero_grad_with_grad_acc_boundary_check(self.optimizer, self.is_gradient_accumulation_boundary(), force)
 
     def clip_fp32_gradients(self):
         clip_grad_norm_(parameters=self.module.parameters(), max_norm=self.gradient_clipping(), mpu=self.mpu)
