@@ -5,7 +5,6 @@
 
 import os
 import torch
-from typing import Iterable
 
 from deepspeed.utils import logger
 from deepspeed.utils.tensor_fragment import map_to_flat_opt_states
@@ -66,11 +65,7 @@ class ZeROOptimizer(DeepSpeedOptimizer):
                     continue
                 param_group[key] = value
 
-    def _do_zero_grad(self,
-                      params: Iterable[torch.nn.Parameter],
-                      set_to_none_fn,
-                      set_to_none: bool = True,
-                      force: bool = False) -> None:
+    def _do_zero_grad(self, params, set_to_none_fn, set_to_none: bool = True, force: bool = False) -> None:
         zero_grad_params(params, set_to_none_fn, self.is_gradient_accumulation_boundary, set_to_none, force)
         # Flag to indicate that the reduced gradients should be copied to the buffer, not accumulated
         self.force_overwrite_grads = True

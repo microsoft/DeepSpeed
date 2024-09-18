@@ -1081,8 +1081,8 @@ def warn_zero_grad() -> None:
     return
 
 
-def zero_grad_params(params: Iterable[torch.nn.Parameter], set_to_none_fn, is_gradient_accumulation_boundary: bool,
-                     set_to_none: bool, force: bool) -> None:
+def zero_grad_params(params, set_to_none_fn, is_gradient_accumulation_boundary: bool, set_to_none: bool,
+                     force: bool) -> None:
     if not is_gradient_accumulation_boundary and not force:
         warn_zero_grad()
         return
