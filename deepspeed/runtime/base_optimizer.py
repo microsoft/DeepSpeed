@@ -5,7 +5,7 @@
 
 import os
 import torch
-from typing import Callable, Iterable
+from typing import Iterable
 
 from deepspeed.utils import logger
 from deepspeed.utils.tensor_fragment import map_to_flat_opt_states
@@ -68,7 +68,7 @@ class ZeROOptimizer(DeepSpeedOptimizer):
 
     def _do_zero_grad(self,
                       params: Iterable[torch.nn.Parameter],
-                      set_to_none_fn: Callable[[torch.Tensor], None],
+                      set_to_none_fn,
                       set_to_none: bool = True,
                       force: bool = False) -> None:
         zero_grad_params(params, set_to_none_fn, self.is_gradient_accumulation_boundary, set_to_none, force)
