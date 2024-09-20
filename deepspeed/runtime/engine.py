@@ -2083,8 +2083,6 @@ class DeepSpeedEngine(Module):
         """
 
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
-        import pdb
-        pdb.set_trace()
 
         if not allreduce_gradients:
             logger.warning(f"Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed")
