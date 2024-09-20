@@ -27,6 +27,7 @@ from setuptools import setup, find_packages
 from setuptools.command import egg_info
 import time
 import typing
+import shlex
 
 torch_available = True
 try:
@@ -39,6 +40,8 @@ except ImportError:
 from op_builder import get_default_compute_capabilities, OpBuilder
 from op_builder.all_ops import ALL_OPS, accelerator_name
 from op_builder.builder import installed_cuda_version
+
+from accelerator import get_accelerator
 
 # Fetch rocm state.
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -90,8 +93,12 @@ extras_require = {
     'triton': fetch_requirements('requirements/requirements-triton.txt'),
 }
 
+# Only install pynvml on nvidia gpus.
+if torch_available and get_accelerator().device_name() == 'cuda' and not is_rocm_pytorch:
+    install_requires.append('nvidia-ml-py')
+
 # Add specific cupy version to both onebit extension variants.
-if torch_available and torch.cuda.is_available():
+if torch_available and get_accelerator().device_name() == 'cuda':
     cupy = None
     if is_rocm_pytorch:
         rocm_major, rocm_minor = rocm_version
@@ -120,7 +127,6 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja.
 if torch_available:
-    from accelerator import get_accelerator
     use_ninja = is_env_set("DS_ENABLE_NINJA")
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=use_ninja)
 
@@ -131,7 +137,7 @@ else:
     TORCH_MAJOR = "0"
     TORCH_MINOR = "0"
 
-if torch_available and not torch.cuda.is_available():
+if torch_available and not get_accelerator().device_name() == 'cuda':
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486.
     print("[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
           "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
@@ -152,10 +158,12 @@ if BUILD_OP_DEFAULT:
 
 def command_exists(cmd):
     if sys.platform == "win32":
-        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+        safe_cmd = shlex.split(f'{cmd}')
+        result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
         return result.wait() == 1
     else:
-        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+        safe_cmd = shlex.split(f"bash -c type {cmd}")
+        result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
         return result.wait() == 0
 
 
@@ -178,8 +186,8 @@ for op_name, builder in ALL_OPS.items():
     if op_enabled(op_name) and not op_compatible:
         env_var = op_envvar(op_name)
         if not is_env_set(env_var):
-            builder.warning(f"One can disable {op_name} with {env_var}=0")
-        abort(f"Unable to pre-compile {op_name}")
+            builder.warning(f"Skip pre-compile of incompatible {op_name}; One can disable {op_name} with {env_var}=0")
+        continue
 
     # If op is compatible but install is not enabled (JIT mode).
     if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
@@ -194,13 +202,13 @@ for op_name, builder in ALL_OPS.items():
 print(f'Install Ops={install_ops}')
 
 # Write out version/git info.
-git_hash_cmd = "git rev-parse --short HEAD"
-git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
+git_hash_cmd = shlex.split("bash -c git rev-parse --short HEAD")
+git_branch_cmd = shlex.split("bash -c git rev-parse --abbrev-ref HEAD")
 if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
     try:
-        result = subprocess.check_output(git_hash_cmd, shell=True)
+        result = subprocess.check_output(git_hash_cmd)
         git_hash = result.decode('utf-8').strip()
-        result = subprocess.check_output(git_branch_cmd, shell=True)
+        result = subprocess.check_output(git_branch_cmd)
         git_branch = result.decode('utf-8').strip()
     except subprocess.CalledProcessError:
         git_hash = "unknown"

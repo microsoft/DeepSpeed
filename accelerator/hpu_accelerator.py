@@ -18,6 +18,7 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         self._name = 'hpu'
         self._communication_backend_name = 'hccl'
         self._compile_backend = "hpu_backend"
+        self.apply_hpu_workarounds()
         try:
             import habana_frameworks.torch.hpu as hpu
             hpu.setDeterministic(True)
@@ -27,6 +28,15 @@ class HPU_Accelerator(DeepSpeedAccelerator):
                 f"HPU_Accelerator requires habana_frameworks.torch.hpu, which is not installed on this system.")
 
         self.fp16_supported = None
+
+    def apply_hpu_workarounds(self):
+
+        def update_wa_env_var(key, value):
+            if key not in os.environ.keys():
+                os.environ[key] = value
+
+        update_wa_env_var("PT_HPU_LAZY_ACC_PAR_MODE", "0")
+        update_wa_env_var("PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES", "0")
 
     # Device APIs
     def is_synchronized_device(self):
@@ -42,9 +52,8 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return True
 
     def device_name(self, device_index=None):
-        if device_index is None:
-            return 'hpu'
-        return 'hpu:{}'.format(device_index)
+        # ignoring device_index.
+        return 'hpu'
 
     def device(self, device_index=None):
         return torch.device(self.device_name(device_index))
@@ -298,7 +307,11 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return []
 
     def visible_devices_envs(self):
-        return ['HABANA_VISIBLE_MODULES']
+        # Current way deepspeed set this env var is not applicable with all HPU instances
+        # User has to follow instructions in:
+        # https://docs.habana.ai/en/latest/PyTorch/Reference/PT_Multiple_Tenants_on_HPU/Multiple_Workloads_Single_Docker.html
+        # keeping CUDA_VISIBLE_DEVICES
+        return ['CUDA_VISIBLE_DEVICES']  #['HABANA_VISIBLE_MODULES']
 
     def set_visible_devices_envs(self, current_env, local_accelerator_ids):
         for env in self.visible_devices_envs():
