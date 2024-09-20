@@ -2073,7 +2073,7 @@ class DeepSpeedEngine(Module):
                 loss.backward(retain_graph=retain_graph)
 
     @instrument_w_nvtx
-    def backward(self, loss, allreduce_gradients=True, release_loss=False, retain_graph=False, scale_wrt_gas=True):
+    def backward(self, loss, allreduce_gradients=True, retain_graph=False, scale_wrt_gas=True):
         r"""Execute backward pass on the loss
         Arguments:
             loss: Torch tensor on which to execute backward propagation
@@ -2109,10 +2109,6 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.backward_reduce_timers)
 
         self._stop_timers(self.engine_timers.backward_timers)
-
-        if release_loss:
-            # loss.data = None
-            pass
 
         see_memory_usage("Engine after backward", force=self.memory_breakdown())
 
