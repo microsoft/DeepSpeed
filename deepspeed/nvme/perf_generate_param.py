@@ -19,7 +19,7 @@ def parse_arguments():
                         type=str,
                         default=BENCH_LOG_DIR,
                         help=f'Folder of performance sweep logs. Default is {os.path.join(".", BENCH_LOG_DIR)}')
-    parser.add_argument('--verbose', action='store_true', help='Print debugging information.')    
+    parser.add_argument('--verbose', action='store_true', help='Print debugging information.')
 
     args = parser.parse_args()
     if args.verbose:
@@ -91,7 +91,7 @@ def main():
         quit()
     print(f'Generate DeepNVMe configuration from {args.log_dir} logs')
     generate_main(args.log_dir)
-    
-    
+
+
 if __name__ == "__main__":
     generate_main()

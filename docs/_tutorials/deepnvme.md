@@ -209,10 +209,10 @@ class aio_handle(pybind11_builtins.pybind11_object)
 ```
 
 ### Performance Tuning
-As discussed [earlier](#advanced-handle-creation), achieving peak DeepNVMe performance for a target workload or environment requires using optimally configured `aio_handle` or `gds_handle` handles. For configuration convenience, we provide a utility called `ds_nvme_tune` to automate the discovery of optimal DeepNVMe configurations. `ds_nvme_tune` automatically explores a user-specified or default configuration space and recommends the option that provides the best read and write performance. Below is an example usage of `ds_nvme_tune` to tune `aio_handle` data transfers between GPU memory and a local NVVMe SSD mounted on `/local_nvme`. This example used the default configuration space of `ds_nvme_tune` for tuning. 
+As discussed [earlier](#advanced-handle-creation), achieving peak DeepNVMe performance for a target workload or environment requires using optimally configured `aio_handle` or `gds_handle` handles. For configuration convenience, we provide a utility called `ds_nvme_tune` to automate the discovery of optimal DeepNVMe configurations. `ds_nvme_tune` automatically explores a user-specified or default configuration space and recommends the option that provides the best read and write performance. Below is an example usage of `ds_nvme_tune` to tune `aio_handle` data transfers between GPU memory and a local NVVMe SSD mounted on `/local_nvme`. This example used the default configuration space of `ds_nvme_tune` for tuning.
 
 ```bash
-$ ds_nvme_tune --nvme_dir /local_nvme --gpu 
+$ ds_nvme_tune --nvme_dir /local_nvme --gpu
 Running DeepNVMe performance tuning on ['/local_nvme/']
 Best performance (GB/sec): read =  3.69, write =  3.18
 {
@@ -225,20 +225,19 @@ Best performance (GB/sec): read =  3.69, write =  3.18
    }
 }
 ```
-
-Based on the results, one can reasonably expect to achieve read and write transfer speeds of 3.69 GB/sec and 3.18 GB/sec respectively by using an `aio_handle` configured as below.
+The above tuning was executed on a Lambda workstation equipped with two NVIDIA A6000-48GB GPUs, 252GB of DRAM, and a [CS3040 NVMe 2TB SDD](https://www.pny.com/CS3040-M2-NVMe-SSD?sku=M280CS3040-2TB-RB) with peak read and write speeds of 5.6 GB/s and 4.3 GB/s respecitvely. The tuning required about four and half minutes. Based on the results, one can expect to achieve read and write transfer speeds of 3.69 GB/sec and 3.18 GB/sec respectively by using an `aio_handle` configured as below.
 
 ```python
 >>> from deepspeed.ops.op_builder import AsyncIOBuilder
->>> h = AsyncIOBuilder().load().aio_handle(block_size=1048576, 
-                                           queue_depth=32, 
-                                           single_submit=False, 
-                                           overlap_events=True, 
+>>> h = AsyncIOBuilder().load().aio_handle(block_size=1048576,
+                                           queue_depth=32,
+                                           single_submit=False,
+                                           overlap_events=True,
                                            num_threads=8)
 ```
 
 
-The complete command line options of `ds_nvme_tune` can be obtained using the typically `-h` or `--help`. 
+The full command line options of `ds_nvme_tune` can be obtained via the normal `-h` or `--help`.
 ```bash
 usage: ds_nvme_tune [-h] --nvme_dir NVME_DIR [NVME_DIR ...] [--sweep_config SWEEP_CONFIG] [--no_read] [--no_write] [--io_size IO_SIZE] [--gpu] [--gds] [--flush_page_cache] [--log_dir LOG_DIR] [--loops LOOPS] [--verbose]
 

@@ -62,8 +62,8 @@ def validate_arguments(args):
         """
         print(error_msg)
         quit()
-        
-    
+
+
 def parse_sweep_arguments():
     parser = argparse.ArgumentParser()
 
@@ -91,7 +91,8 @@ def parse_sweep_arguments():
         '--flush_page_cache',
         action='store_true',
         help=
-        'Page cache will not be flushed and reported read speeds may be higher than actual ***Requires sudo access***.')
+        'Page cache will not be flushed and reported read speeds may be higher than actual ***Requires sudo access***.'
+    )
 
     parser.add_argument(
         '--log_dir',
@@ -100,7 +101,7 @@ def parse_sweep_arguments():
         help=f'Output directory for performance log files. Default is {os.path.join(".", BENCH_LOG_DIR)}')
 
     parser.add_argument('--loops', type=int, default=1, help='Count of operation repetitions')
-    
+
     parser.add_argument('--verbose', action='store_true', help='Print debugging information.')
 
     args = parser.parse_args()
@@ -251,8 +252,10 @@ def script_path():
 def async_io_setup():
     return AsyncIOBuilder().is_compatible()
 
+
 def gds_io_setup():
     return GDSBuilder().is_compatible()
+
 
 def remove_folder(folder):
     assert os.path.isdir(folder), f"Error: cannot remove {folder} - folder not found"
@@ -268,7 +271,10 @@ def run_read_sweep(sweep_config, flush_cache_job, sync_job, cmd_lines):
 
     perf_jobs = create_perf_jobs(io_op_desc=READ_OP_DESC, log_dir=log_folder, cmd_lines=read_cmd_lines)
 
-    launch_sweep(sweep_jobs=perf_jobs, sync_job=sync_job, flush_cache_job=flush_cache_job, verbose=sweep_config.verbose)
+    launch_sweep(sweep_jobs=perf_jobs,
+                 sync_job=sync_job,
+                 flush_cache_job=flush_cache_job,
+                 verbose=sweep_config.verbose)
 
 
 def run_write_sweep(sweep_config, flush_cache_job, sync_job, cmd_lines):
@@ -280,7 +286,10 @@ def run_write_sweep(sweep_config, flush_cache_job, sync_job, cmd_lines):
 
     perf_jobs = create_perf_jobs(io_op_desc=WRITE_OP_DESC, log_dir=log_folder, cmd_lines=write_cmd_lines)
 
-    launch_sweep(sweep_jobs=perf_jobs, sync_job=sync_job, flush_cache_job=flush_cache_job, verbose=sweep_config.verbose)
+    launch_sweep(sweep_jobs=perf_jobs,
+                 sync_job=sync_job,
+                 flush_cache_job=flush_cache_job,
+                 verbose=sweep_config.verbose)
 
 
 def sweep_main(args):
@@ -306,6 +315,6 @@ def main():
     print(f"Running DeepNVMe performance sweep on {args.nvme_dir}")
     sweep_main(args)
 
-    
+
 if __name__ == "__main__":
     sweep_main()
