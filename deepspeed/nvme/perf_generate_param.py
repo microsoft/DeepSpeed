@@ -43,7 +43,7 @@ def convert_to_param(key):
     return {
         "single_submit": "true" if key[0] == "single" else "false",
         "overlap_events": "true" if key[1] == "overlap" else "false",
-        "io_parallel": int(key[5]),
+        "num_threads": int(key[5]),
         "queue_depth": int(key[3]),
         "block_size": int(key[4])
     }
@@ -80,7 +80,6 @@ def generate_aio_param(read_log_dir, write_log_dir):
 
 
 def generate_main(log_dir):
-    print(f'Generate DeepNVMe configuration from {log_dir} logs')
     read_log_dir = os.path.join(log_dir, READ_LOG_DIR)
     write_log_dir = os.path.join(log_dir, WRITE_LOG_DIR)
     generate_aio_param(read_log_dir, write_log_dir)
@@ -90,7 +89,8 @@ def main():
     args = parse_arguments()
     if not validate_args(args):
         quit()
-    generate_main(args)
+    print(f'Generate DeepNVMe configuration from {args.log_dir} logs')
+    generate_main(args.log_dir)
     
     
 if __name__ == "__main__":
