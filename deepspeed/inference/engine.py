@@ -198,7 +198,6 @@ class InferenceEngine(Module):
         DeepSpeedSelfAttention.num_layers = 0
         if inference_module is not None:
             inference_module.release_workspace()
-            # set inference_module to None.
             inference_module = None
 
     def profile_model_time(self, use_cuda_events=True):
