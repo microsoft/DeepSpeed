@@ -152,33 +152,38 @@ class WorkspaceOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig = None):
         if config is None:
             config = DeepSpeedInferenceConfig()
+        self.inference_context = InferenceContext.Instance()
+        self._is_allocated = False
         try:
             super(WorkspaceOp, self).__init__(config)
-            self.is_implemented = True
-        except ValueError:
-            self.is_implemented = False
+            if config.dtype == torch.float32:
+                self.allocate_workspace_func = self.inference_module.allocate_workspace_fp32
+            elif config.dtype == torch.bfloat16:
+                self.allocate_workspace_func = self.inference_module.allocate_workspace_bf16
+            else:
+                self.allocate_workspace_func = self.inference_module.allocate_workspace_fp16
+            self.release_workspace_func = self.inference_module.release_workspace
+            self.retake_workspace_func = self.inference_module.retake_workspace
+            self.reset_cache_func = self.inference_module.reset_cache
+        except (ValueError, AttributeError) as e:
+            print(f"Using fallback functions in workspace because of {e}")
+            if config.dtype == torch.float32:
+                self.allocate_workspace_func = self.allocate_workspace_fp32_fallback
+            elif config.dtype == torch.bfloat16:
+                self.allocate_workspace_func = self.allocate_workspace_bf16_fallback
+            else:
+                self.allocate_workspace_func = self.allocate_workspace_fp16_fallback
+            self.release_workspace_func = self.release_workspace_fallback
+            self.retake_workspace_func = self.retake_workspace_fallback
+            self.reset_cache_func = self.reset_cache_fallback
 
-        self.inference_context = InferenceContext.Instance()
-        try:
-            if config.dtype == torch.float32:
-                self.allocate_workspace = self.inference_module.allocate_workspace_fp32
-            elif config.dtype == torch.bfloat16:
-                self.allocate_workspace = self.inference_module.allocate_workspace_bf16
-            else:
-                self.allocate_workspace = self.inference_module.allocate_workspace_fp16
-            self.release_workspace = self.inference_module.release_workspace
-            self.retake_workspace = self.inference_module.retake_workspace
-            self.reset_cache = self.inference_module.reset_cache
-        except AttributeError:
-            if config.dtype == torch.float32:
-                self.allocate_workspace = self.allocate_workspace_fp32_fallback
-            elif config.dtype == torch.bfloat16:
-                self.allocate_workspace = self.allocate_workspace_bf16_fallback
-            else:
-                self.allocate_workspace = self.allocate_workspace_fp16_fallback
-            self.release_workspace = self.release_workspace_fallback
-            self.retake_workspace = self.retake_workspace_fallback
-            self.reset_cache = self.reset_cache_fallback
+    def allocate_workspace(self, *args, **kwargs):
+        self._is_allocated = True
+        return self.allocate_workspace_func(*args, **kwargs)
+
+    def release_workspace(self):
+        self._is_allocated = False
+        return self.release_workspace_func()
 
     def allocate_workspace_fp32_fallback(self, hidden_dim, num_heads, prompt_length, batch_size, num_layers, mp_size,
                                          external_cache, rank, max_out_tokens, min_out_tokens):
@@ -207,5 +212,5 @@ class WorkspaceOp(BaseOp):
     def retake_workspace_fallback(self):
         return self.inference_context.retake_workspace()
 
-    def is_op_implemented(self):
-        return self.is_implemented
+    def is_allocated(self):
+        return self._is_allocated

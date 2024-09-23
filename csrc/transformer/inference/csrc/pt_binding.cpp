@@ -2034,7 +2034,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed memory allocation for GPT inference with " #_name " (CUDA)");                \
     m.def("dequantize_" #_name,                                                                   \
           &ds_dequantize<_dtype>,                                                                 \
-          "DeepSpeed dequantize with " #_name " (CUDA)")
+          "DeepSpeed dequantize with " #_name " (CUDA)");
 
     DEF_OPS(fp32, float);
     DEF_OPS(fp16, __half);

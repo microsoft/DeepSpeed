@@ -169,7 +169,7 @@ class DeepSpeedDiffusersAttention(nn.Module):
             self.norm_factor *= math.sqrt(self.config.layer_id + 1)
             # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
 
-        self.allocate_workspace_func = WorkspaceOp(self.config).allocate_workspace
+        self.workspace = WorkspaceOp(self.config)
         self.score_context_func = SoftmaxContextOp(self.config)
         self.linear_func = LinearOp(self.config)
         self.pad_transform_func = PadTransformOp(self.config)
@@ -177,9 +177,9 @@ class DeepSpeedDiffusersAttention(nn.Module):
     def allocate_workspace(self, size):
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0:
-            self.allocate_workspace_func(self.config.hidden_size, self.config.heads, size[1], size[0],
-                                         DeepSpeedDiffusersAttention.layer_id, self.config.mp_size, False, 0,
-                                         self.config.max_out_tokens, self.config.min_out_tokens)
+            self.workspace.allocate_workspace(self.config.hidden_size, self.config.heads, size[1], size[0],
+                                              DeepSpeedDiffusersAttention.layer_id, self.config.mp_size, False, 0,
+                                              self.config.max_out_tokens, self.config.min_out_tokens)
 
     def forward(self, input, context=None, input_mask=None):
         self.allocate_workspace(input.size())
