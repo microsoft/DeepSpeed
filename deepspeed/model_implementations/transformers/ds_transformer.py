@@ -87,23 +87,20 @@ class DeepSpeedTransformerInference(nn.Module):
         self.layer_norm = LayerNormOp()
         DeepSpeedTransformerInference.workspace = WorkspaceOp(self.config)
         self._should_allocate_workspace = True
-        self.allocate_workspace_func = self.workspace.allocate_workspace
 
     def allocate_workspace(self, size):
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0 and self._should_allocate_workspace:
-            self.allocate_workspace_func(self.config.hidden_size, self.config.heads, size[1], size[0],
-                                         DeepSpeedTransformerInference.layer_id, self.config.mp_size,
-                                         self.config.bigscience_bloom,
-                                         dist.get_rank() if dist.is_initialized() else 0, self.config.max_out_tokens,
-                                         self.config.min_out_tokens)
+            DeepSpeedTransformerInference.workspace(self.config.hidden_size, self.config.heads, size[1], size[0],
+                                                    DeepSpeedTransformerInference.layer_id, self.config.mp_size,
+                                                    self.config.bigscience_bloom,
+                                                    dist.get_rank() if dist.is_initialized() else 0,
+                                                    self.config.max_out_tokens, self.config.min_out_tokens)
             self._should_allocate_workspace = False
 
     @classmethod
     def reset_cache(cls):
-        if cls.workspace is None:
-            cls.workspace = WorkspaceOp()
-        if cls.workspace.is_op_implemented():
+        if cls.workspace is not None:
             cls.workspace.reset_cache()
 
     def forward(

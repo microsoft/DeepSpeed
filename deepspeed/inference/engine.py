@@ -31,7 +31,6 @@ from ..module_inject.replace_policy import generic_policies
 from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor, get_alibi_mask
 from ..ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
 from ..model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
-from ..ops.transformer.inference.op_binding.workspace import WorkspaceOp
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -54,8 +53,8 @@ class InferenceEngine(Module):
         DS_INFERENCE_ENABLED = True
 
         super().__init__()
-        self.workspace = WorkspaceOp()
-        self.destroy()
+        if DeepSpeedTransformerInference.workspace is not None:
+            self.destroy()
 
         self.module = model
         self._config = config
@@ -188,8 +187,9 @@ class InferenceEngine(Module):
     def destroy(self):
         DeepSpeedTransformerInference.layer_id = 0
         DeepSpeedSelfAttention.num_layers = 0
-        if self.workspace.is_op_implemented():
-            self.workspace.release_workspace()
+        if DeepSpeedTransformerInference.workspace.is_allocated():
+            DeepSpeedTransformerInference.workspace.release_workspace()
+        DeepSpeedTransformerInference.workspace = None
 
     def profile_model_time(self, use_cuda_events=True):
         if not self.model_profile_enabled and not self._config.enable_cuda_graph:
