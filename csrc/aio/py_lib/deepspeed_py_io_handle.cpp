@@ -227,11 +227,12 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
         return -1;
     }
     const auto buffer_bytes = static_cast<long long int>(buffer.nbytes());
-    if ((buffer_bytes+file_offset) > num_file_bytes) {
-        std::cout << filename << ": buffer + file offset > file bytes " << buffer_bytes
-                  << "+ " << file_offset << " > " << num_file_bytes << std::endl;
-        assert(0);
-    }
+    // No longer check, b/c buffer can exceed file size to enable 4k alignment
+    //if ((buffer_bytes+file_offset) > num_file_bytes) {
+    //    std::cout << filename << ": buffer + file offset > file bytes " << buffer_bytes
+    //              << "+ " << file_offset << " > " << num_file_bytes << std::endl;
+    //    //assert(0);
+    //}
     assert((buffer_bytes % _num_threads) == 0);
 
     if (!_is_valid_parallel_aio_op(true, buffer_bytes)) { return -1; }
