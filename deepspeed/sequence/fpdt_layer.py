@@ -21,29 +21,18 @@ from einops import rearrange
 
 
 def _rotate_half(x):
-    """
-    change sign so the last dimension becomes [-odd, +even]
-    """
     x = rearrange(x, '... (j d) -> ... j d', j=2)
     x1, x2 = x.unbind(dim=-2)
     return torch.cat((-x2, x1), dim=-1)
 
 
 def _rotate_half_backward(x):
-    """
-    change sign so the last dimension becomes [-odd, +even]
-    """
     x = rearrange(x, '... (j d) -> ... j d', j=2)
     x1, x2 = x.unbind(dim=-2)
     return torch.cat((x2, -x1), dim=-1)
 
 
 def apply_rotary_pos_emb(t, freqs_cos, freqs_sin):
-    """
-    input tensor t is of shape [seq_length, ..., dim]
-    rotary positional embeding tensor freqs is of shape [seq_length, ..., dim]
-    check https://kexue.fm/archives/8265 for detailed formulas
-    """
     rot_dim = freqs_cos.shape[-1]
     # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
     t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
@@ -929,17 +918,6 @@ class FPDT_Attention(torch.nn.Module):
                 inference_params,
                 rotary_pos_emb, 
                 cpu_offloading=True) -> Tensor:
-        """ forward
-
-        Arguments:
-            query (Tensor): query input to the layer
-            key (Tensor): key input to the layer
-            value (Tensor): value input to the layer
-            args: other args
-
-        Returns:
-            * output (Tensor): context output
-        """
         self.num_chunks_attn = layernorm_output.shape[0] * dist.get_world_size(self.spg) // self.chunk_size
 
         if not cpu_offloading:
