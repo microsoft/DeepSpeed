@@ -21,7 +21,7 @@ import deepspeed.runtime.compiler as compiler
 
 import logging
 
-ENABLE_PROFILER = False
+ENABLE_PROFILER = True
 
 
 def debug_rank0(message: str) -> None:

@@ -35,8 +35,8 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 using namespace std;
 using namespace std::chrono;
 
-#define DEBUG_DS_AIO_PERF 0
-#define DEBUG_DS_AIO_SUBMIT_PERF 0
+#define DEBUG_DS_AIO_PERF 1
+#define DEBUG_DS_AIO_SUBMIT_PERF 1
 
 static const std::string c_library_name = "deepspeed_aio";
 
