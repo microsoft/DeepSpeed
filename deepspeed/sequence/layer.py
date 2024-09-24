@@ -196,8 +196,7 @@ class DistributedAttention(torch.nn.Module):
         self.gather_idx = gather_idx
         self.sp_overlap_comm = False
         self.overlap_handles = None
-        self.sp_stream = None
-        # self.sp_stream = sp_stream
+        self.sp_stream = sp_stream
         if sp_stream is not None:
             self.overlap_handles = {}
             self.sp_overlap_comm = True

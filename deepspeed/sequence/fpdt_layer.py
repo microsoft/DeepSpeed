@@ -64,7 +64,6 @@ def apply_rotary_pos_emb_backward(grad_output, freqs_cos, freqs_sin):
     return grad
 
 
-# @torch.jit.script
 def _update_out_and_lse(
     out: torch.Tensor,
     lse: torch.Tensor,
@@ -568,7 +567,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
 
                 qkv_chunk = torch.matmul(layernorm_output[:chunk_size], qkv_linear_weight.t()) + qkv_linear_bias # torch.Size([18126, 1, 12288])
 
-                with torch.cuda.stream(general_offload_stream):
+                with get_accelerator().stream(general_offload_stream):
                     layernorm_output_cpu.append(SequenceChunk(layernorm_output[:chunk_size]))
 
                 layernorm_output = layernorm_output[chunk_size:]
@@ -583,7 +582,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 v_chunk = qkv_chunk[:, :, projection_size+kv_projection_size:].contiguous().reshape(qkv_chunk.shape[0], qkv_chunk.shape[1], -1, hidden_size_per_attention_head).permute(1, 0, 2, 3).contiguous() # b, l, nh, hd
                 v_chunk = single_all_to_all(v_chunk, scatter_idx, gather_idx, spg)
                 
-                torch.distributed.barrier() # torch.cuda.synchronize()
+                torch.distributed.barrier() # get_accelerator().synchronize()
     
                 pos_emb_cos_chunk = pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
                 pos_emb_sin_chunk = pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
@@ -593,7 +592,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 
                 compute_stream.wait_stream(offload_stream)
                 compute_stream.synchronize()
-                with torch.cuda.stream(offload_stream):
+                with get_accelerator().stream(offload_stream):
                     global_q.append(SequenceChunk(q_chunk, is_in_use=True))
                     global_k.append(SequenceChunk(k_chunk, is_in_use=True))
                     global_v.append(SequenceChunk(v_chunk, is_in_use=True))
@@ -604,7 +603,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 cur_attn_lse = None
                 for k_i in range(len(global_k)):
                     causal_chunk = i == k_i
-                    with torch.cuda.stream(compute_stream):
+                    with get_accelerator().stream(compute_stream):
                         block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
                                 global_q[q_compute_chunk_idx].get_gpu_chunk(),
                                 global_k[kv_compute_chunk_idx].get_gpu_chunk(),
@@ -630,12 +629,12 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                             can_offload_kv = False
                         else:
                             if next_kv_compute_chunk_idx != (len(global_k) - 1):
-                                with torch.cuda.stream(offload_stream):
+                                with get_accelerator().stream(offload_stream):
                                     global_k[next_kv_compute_chunk_idx].load_to_gpu()
                                     global_v[next_kv_compute_chunk_idx].load_to_gpu()
 
                     if i == num_chunks - 1 and k_i == num_chunks - 1:
-                        with torch.cuda.stream(offload_stream):
+                        with get_accelerator().stream(offload_stream):
                             global_q[0].load_to_gpu()
                             global_k[0].load_to_gpu()
                             global_v[0].load_to_gpu()
@@ -655,7 +654,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 
                 all2all_output = single_all_to_all(cur_attn_output.to(ctx.dtype).contiguous(), gather_idx, scatter_idx, spg)
                 final_output.append(all2all_output)
-                with torch.cuda.stream(general_offload_stream):
+                with get_accelerator().stream(general_offload_stream):
                     global_o.append(SequenceChunk(cur_attn_output.to(ctx.dtype)))
                     global_lse.append(SequenceChunk(cur_attn_lse[:, :, :, 0].permute(0, 2, 1).contiguous()))
 
@@ -724,16 +723,16 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
         kv_compute_chunk_idx = 0
         last_q_accum_idx = 0
         
-        with torch.cuda.stream(general_offload_stream):
+        with get_accelerator().stream(general_offload_stream):
             layernorm_output[0].load_to_gpu()
             grad_qkv_linear_weight = torch.zeros(qkv_linear_weight.shape, device=qkv_linear_weight.device, dtype=torch.float)
             grad_qkv_linear_bias = torch.zeros(qkv_linear_bias.shape, device=qkv_linear_weight.device, dtype=torch.float)
 
         grad_global_attn_output_chunk = single_all_to_all(grad_output[:, :chunk_size].contiguous(), scatter_idx, gather_idx, spg)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         grad_output = grad_output[:, chunk_size:]
 
-        with torch.cuda.stream(offload_stream):
+        with get_accelerator().stream(offload_stream):
             grad_global_attn_output[0] = SequenceChunk(grad_global_attn_output_chunk, is_in_use=True)
             dq = [SequenceChunk(torch.zeros(global_q[0].chunk_shape, dtype=torch.float, device=device), is_in_use=True)] + [SequenceChunk(torch.zeros(global_q[0].chunk_shape, dtype=torch.float, device='cpu', pin_memory=True), device) for _ in range(num_chunks - 1)]
             dk_accum = torch.zeros(global_k[0].chunk_shape, dtype=torch.float, device=device)
@@ -751,7 +750,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 dk_this = torch.zeros(global_k[0].chunk_shape, dtype=dtype, device=device)
                 dv_this = torch.zeros(global_v[0].chunk_shape, dtype=dtype, device=device)
                 
-                with torch.cuda.stream(compute_stream):
+                with get_accelerator().stream(compute_stream):
                     _flash_attn_backward(
                         grad_global_attn_output[q_compute_chunk_idx].get_gpu_chunk(),
                         global_q[q_compute_chunk_idx].get_gpu_chunk(),
@@ -783,7 +782,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 if next_q_compute_chunk_idx == q_compute_chunk_idx:
                         can_offload_q = False
                 else:
-                    with torch.cuda.stream(offload_stream):
+                    with get_accelerator().stream(offload_stream):
                         if i > 0 or q_i > 0:
                             if can_offload_q and last_q_accum_idx != i: # the first q chunk calculate in the loop will be sent out, therefore we do not offload it
                                 dq[last_q_accum_idx].offload()
@@ -803,14 +802,14 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 compute_stream.wait_stream(offload_stream)
                 compute_stream.synchronize()
                 
-                with torch.cuda.stream(compute_stream):
+                with get_accelerator().stream(compute_stream):
                     dq[q_compute_chunk_idx].check_gpu_chunk()
                     dq[q_compute_chunk_idx].gpu_chunk.add_(dq_this) 
                     dk_accum.add_(dk_this)
                     dv_accum.add_(dv_this)
 
                 offload_stream.wait_stream(compute_stream)
-                with torch.cuda.stream(offload_stream):
+                with get_accelerator().stream(offload_stream):
                     dq[q_compute_chunk_idx].overwrite_to_cpu()
 
                 if can_offload_q:
@@ -836,9 +835,9 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
             
             general_offload_stream.synchronize()
             compute_stream.wait_stream(general_offload_stream)
-            torch.distributed.barrier() # torch.cuda.synchronize()
+            torch.distributed.barrier() # get_accelerator().synchronize()
 
-            with torch.cuda.stream(compute_stream):
+            with get_accelerator().stream(compute_stream):
                 input_chunk = layernorm_output[i].get_gpu_chunk().reshape(-1, layernorm_output[i].chunk_shape[-1])
 
                 dq_accum = dq_accum.flatten(2).permute(1, 0, 2)
@@ -867,11 +866,11 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
 
             if i != (len(global_k) - 1):
                 next_kv_compute_chunk_idx = kv_compute_chunk_idx + 1
-                with torch.cuda.stream(offload_stream):
+                with get_accelerator().stream(offload_stream):
                     global_k[next_kv_compute_chunk_idx].load_to_gpu()
                     global_v[next_kv_compute_chunk_idx].load_to_gpu()
 
-                with torch.cuda.stream(general_offload_stream):
+                with get_accelerator().stream(general_offload_stream):
                     layernorm_output[next_kv_compute_chunk_idx].load_to_gpu()
 
             compute_stream.wait_stream(offload_stream)
@@ -986,11 +985,9 @@ class FPDT_Attention(torch.nn.Module):
         return output, self.qkv_dense_bias if self.reture_bias else None
 
 
-@torch.jit.script
 def bias_gelu(x):
     return  x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
 
-@torch.jit.script
 def bias_gelu_back(g, x):
     tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
     # sqrt(2/pi) * 3 * 0.044715 -> 0.1070322243
