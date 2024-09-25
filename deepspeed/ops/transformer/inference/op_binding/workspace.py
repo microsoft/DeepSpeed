@@ -185,6 +185,9 @@ class WorkspaceOp(BaseOp):
         self._is_allocated = False
         return self.release_workspace_func()
 
+    def reset_cache(self):
+        return self.reset_cache_func() if self.reset_cache_func else None
+
     def allocate_workspace_fp32_fallback(self, hidden_dim, num_heads, prompt_length, batch_size, num_layers, mp_size,
                                          external_cache, rank, max_out_tokens, min_out_tokens):
         return self.inference_context.gen_workspace(num_layers, num_heads, batch_size, prompt_length, hidden_dim,
