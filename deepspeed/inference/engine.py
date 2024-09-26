@@ -73,8 +73,8 @@ class InferenceEngine(Module):
         if hasattr(self.module, "config"):
             TransformerPolicy.hf_model_config = self.module.config
 
-        if config.dtype not in get_accelerator().is_fp16_supported():
-            raise ValueError(f"Data type {config} is not supported by {get_accelerator().device_name()} accelerator")
+        if config.dtype not in get_accelerator().supported_dtypes():
+            raise ValueError(f"Data type {config.dtype} is not supported by {get_accelerator().device_name()} accelerator")
 
         # todo: keep this self.injection_dict because we don't use to change config.injection_policy API
         # todo: this will get changed when Molly's PR on auto injection dict is merged
