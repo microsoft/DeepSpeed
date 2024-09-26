@@ -333,7 +333,8 @@ class AutoTP():
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         # For mixtral-7x8b, need to skip MoE gate linear replace.
-        if name == "block_sparse_moe.gate":
+        if name == "block_sparse_moe.gate" or (('mlp.shared_expert_gate' == name or 'mlp.gate' == name)
+                                               and 'qwen2_moe' in str(type(self.module))):
             return child
         # For Yuan model
         if 'Yuan' in str(self.module):
@@ -473,10 +474,7 @@ class AutoTP():
             if len(child._buffers) != 0 and self.state_dict is not None:
                 Loading.load_buffer(child, self.state_dict, checking_key)
             if child.__class__ in self.linear_policies:
-                if ('shared_expert_gate' not in checking_key and '.gate.' not in checking_key
-                        and 'qwen2_moe' in str(type(r_module))) or 'qwen2_moe' not in str(type(r_module)):
-                    setattr(
-                        r_module, name, self.linear_policies[child.__class__](child, prev_name + '.' + name,
+                setattr(r_module, name, self.linear_policies[child.__class__](child, prev_name + '.' + name,
                                                                               self.conv_linear_layer))
             elif any(isinstance(child, lp) for lp in self.linear_policies):
                 # Added for falcon model support
