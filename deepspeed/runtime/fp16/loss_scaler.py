@@ -23,6 +23,7 @@ Commit: 93ab4bea59dc5cbf97c079d313741866af4deac9
 
 import torch
 from deepspeed import comm as dist
+from deepspeed.runtime.constants import FP16_INITIAL_SCALE_POWER_DEFAULT
 from deepspeed.utils import logger
 
 INITIAL_LOSS_SCALE = 'init_scale'
@@ -109,14 +110,14 @@ class DynamicLossScaler(LossScalerBase):
     always using the highest loss scale possible without incurring overflow.
 
     Args:
-        init_scale (float, optional, default=2**32):  Initial loss scale attempted by :class:`DynamicLossScaler.`
+        init_scale (float, optional, default=2**16):  Initial loss scale attempted by :class:`DynamicLossScaler.`
         scale_factor (float, optional, default=2.0):  Factor used when adjusting the loss scale. If an overflow is encountered, the loss scale is readjusted to loss scale/``scale_factor``.  If ``scale_window`` consecutive iterations take place without an overflow, the loss scale is readjusted to loss_scale*``scale_factor``.
         scale_window (int, optional, default=1000):  Number of consecutive iterations without an overflow to wait before increasing the loss scale.
         consecutive_hysteresis (bool, optional, default=False): Whether to refill hysteresis if we reach an iteration that doesn't overflow
     """
 
     def __init__(self,
-                 init_scale=2**32,
+                 init_scale=2**FP16_INITIAL_SCALE_POWER_DEFAULT,
                  scale_factor=2.,
                  scale_window=1000,
                  min_scale=1,
