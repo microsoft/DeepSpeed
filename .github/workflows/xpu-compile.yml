@@ -51,6 +51,7 @@ jobs:
     - name: Compile Status
       shell: bash
       run: |
+        export FI_HMEM=system
         ulimit -n 1048575
         cd tests/torch_compile
         export ZE_AFFINITY_MASK=0,1
