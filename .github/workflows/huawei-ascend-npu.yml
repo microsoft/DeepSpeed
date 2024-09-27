@@ -1,0 +1,124 @@
+name: huawei-ascend-npu
+
+defaults:
+  run:
+    shell: bash -ieo pipefail {0}
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/huawei-ascend-npu.yml'
+      - 'requirements/**'
+  schedule:
+    - cron: "0 0 * * *"
+  
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  unit-tests:
+    runs-on: [self-hosted, ascend, npu]
+    container:
+      image: ascendai/cann
+      ports:
+        - 80
+      volumes:
+        - /usr/local/dcmi:/usr/local/dcmi
+        - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi 
+        - /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/
+        - /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info
+        - /etc/ascend_install.info:/etc/ascend_install.info   
+      options: --network host
+               --name deepspeed_unit-tests
+               --device /dev/davinci4
+               --device /dev/davinci_manager
+               --device /dev/devmm_svm
+               --device /dev/hisi_hdc
+               --shm-size "20g"
+               --entrypoint /bin/bash
+               
+    env:
+      PT_HPU_LAZY_MODE: 0
+      TORCHINDUCTOR_COMPILE_THREADS: 1
+      TEST_LIST: |
+        test_accelerator.py
+        test_autotuning.py
+        test_compression.py
+               
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install pytorch 
+      run: |
+        npu-smi info
+        apt-get update   
+        source /root/.bashrc
+
+        pip install torch==2.2.0 torchvision==0.17.0 torch_npu==2.2.0 numpy==1.26.4 cloudpickle tornado ml-dtypes -i https://pypi.tuna.tsinghua.edu.cn/simple
+        
+        python << EOF 
+        if __name__ == '__main__':
+            import torch
+            import torch_npu
+            torch_npu.npu.set_device("npu:0") 
+            print(f"Device Name: {torch.npu.get_device_name(0)}")
+            print(f"Device Count: {torch.npu.device_count()}")
+            print(f"Device Available: {torch.npu.is_available()}")
+        EOF
+        
+    - name: Install transformers
+      run: |
+        source /root/.bashrc
+        echo "y" | apt-get install git
+        git clone https://github.com/huggingface/transformers
+        cd transformers
+        git rev-parse --short HEAD
+        pip install . -i https://pypi.tuna.tsinghua.edu.cn/simple
+            
+    - name: Install deepspeed
+      run: |
+        source /root/.bashrc
+        pip install .[1bit,npu,autotuning,inf] -i  https://pypi.tuna.tsinghua.edu.cn/simple
+        ds_report
+
+    - name: Python environment
+      run: |
+        source /root/.bashrc
+        pip list
+
+    - name: Unit tests
+      run: |
+        source /root/.bashrc
+        unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
+        
+        cd tests/unit
+        pytest --verbose accelerator/*
+        pytest --verbose autotuning/*
+        pytest --verbose checkpoint/test_reshape_checkpoint.py
+        pytest --verbose checkpoint/test_moe_checkpoint.py
+        pytest --verbose checkpoint/test_shared_weights.py
+        pytest --verbose launcher/test_ds_arguments.py launcher/test_run.py
+        pytest --verbose model_parallelism/*
+        pytest --verbose moe/test_moe_tp.py
+        pytest --verbose monitor/*
+        pytest --verbose utils/*
+        pytest --verbose runtime/test_ds_config_model.py
+        pytest --verbose runtime/pipe/test_pipe_schedule.py
+        pytest --verbose runtime/zero/test_zero_config.py
+        pytest --verbose runtime/zero/test_zero_tiled.py
+        pytest --verbose runtime/zero/test_zeropp.py
+        pytest --verbose runtime/test_autocast.py
+        pytest --verbose runtime/test_data.py
+        pytest --verbose runtime/test_runtime_utils.py
+        pytest --verbose runtime/activation_checkpointing/*
+        pytest --verbose runtime/utils/*
+        pytest --verbose runtime/zero/test_zero_dynamic_class.py
+
+
+
+ 
