@@ -5,7 +5,11 @@
 # DeepSpeed Team
 
 from .builder import MLUOpBuilder
-import torch
+
+try:
+    import torch
+except: ImportError as e:
+    pass
 
 
 class MLUFusedAdam:
@@ -13,12 +17,6 @@ class MLUFusedAdam:
     @staticmethod
     def multi_tensor_adam(chunk_size, noop_flag_buffer, tensor_lists, lr, beta1, beta2, epsilon, step, adam_w_mode,
                           bias_correction, weight_decay, *args):
-        try:
-            import torch
-        except ImportError:
-            if verbose:
-                self.warning("Please install torch if trying to pre-compile GDS")
-            return False
 
         torch.ops.torch_mlu.fused_adam(noop_flag_buffer, tensor_lists[0], tensor_lists[1], tensor_lists[2],
                                        tensor_lists[3], lr, beta1, beta2, epsilon, step, adam_w_mode, bias_correction,
