@@ -25,6 +25,11 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
 
+import logging
+
+logger = mp.log_to_stderr()
+logger.setLevel(logging.INFO)
+
 
 def is_rocm_pytorch():
     return hasattr(torch.version, 'hip') and torch.version.hip is not None
