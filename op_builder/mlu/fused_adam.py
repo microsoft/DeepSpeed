@@ -8,7 +8,7 @@ from .builder import MLUOpBuilder
 
 try:
     import torch
-except: ImportError as e:
+except ImportError as e:
     pass
 
 
