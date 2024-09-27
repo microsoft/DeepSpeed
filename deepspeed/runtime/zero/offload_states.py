@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from typing import Set
 import torch
 
@@ -43,7 +48,6 @@ def reload_adam_states(optimizer, device, non_blocking: bool = False):
             move_back_key(state, "exp_avg_sq")
 
 
-            
 def get_state_devices(model, state: OffloadStateTypeEnum) -> Set[torch.device]:
     """Retrieve the devices of the specified state of the model.
 
