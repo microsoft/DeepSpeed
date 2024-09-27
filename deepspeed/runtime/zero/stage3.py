@@ -103,7 +103,7 @@ def unwrap_model_for_generation(model):
     return
 
 
-INITIAL_MICRO_STEP_ID = -1
+INITIAL_MICRO_STEP_ID = 0
 
 
 class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
@@ -156,6 +156,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
     ):
+        super().__init__()
+
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}", force=False)
@@ -293,7 +295,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.micro_step_id = 0
+        self.micro_step_id = INITIAL_MICRO_STEP_ID
         self.reduce_bucket_size = int(reduce_bucket_size)
 
         if self.all2all_process_group is not None:
@@ -1463,7 +1465,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             # move or accumulate gradient partition to target buffer
             grad_buffer = self.__param_id_to_grad_partition[param.ds_id].narrow(0, 0, grad_partition.numel())
             buffers.append(grad_buffer)
-            if self.micro_step_id == 0:  # don't accumulate
+            if self.micro_step_id == 0 or self.force_overwrite_grads:  # don't accumulate
                 grad_buffer.copy_(grad_partition, non_blocking=True)
                 # ensure grad buffer is a CUDA buffer to speed up the next few
                 # operations and so it can be used asynchronously
@@ -1719,24 +1721,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return params_in_partition, params_not_in_partition, first_offset
 
     @instrument_w_nvtx
-    def zero_grad(self, set_to_none=True):
-        """
-        Zero FP16 parameter grads.
-        """
-        self.micro_step_id = 0
+    def zero_grad(self, set_to_none=True, force=False):
 
-        # FP32 grad should never exist.
-        # For speed, set model fp16 grad to None by default
-        for group in self.fp16_groups:
-            for p in group:
-                if set_to_none:
-                    if p.grad is not None and get_accelerator().on_accelerator(p.grad):
-                        p.grad.record_stream(get_accelerator().current_stream())
-                    p.grad = None
-                else:
-                    if p.grad is not None:
-                        p.grad.detach_()
-                        p.grad.zero_()
+        def set_grad_to_none(p):
+            if p.grad is not None and get_accelerator().on_accelerator(p.grad):
+                p.grad.record_stream(get_accelerator().current_stream())
+            p.grad = None
+
+        params = [p for group in self.fp16_groups for p in group]
+        self._do_zero_grad(params, set_grad_to_none, set_to_none, force)
 
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.
@@ -1856,7 +1849,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.norm_for_param_grads = {}
 
     def _pre_step(self):
-        self.micro_step_id = 0
+        self.micro_step_id = INITIAL_MICRO_STEP_ID
 
         print_rank_0(f"Inside Step function")
         see_memory_usage(f"In step before checking overflow", force=False)

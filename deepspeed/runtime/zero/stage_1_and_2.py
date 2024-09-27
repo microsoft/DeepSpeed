@@ -138,6 +138,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                  fp16_master_weights_and_gradients=False,
                  elastic_checkpoint=False):
 
+        super().__init__()
+
         if offload_optimizer_config is not None and offload_optimizer_config.device != OffloadDeviceEnum.none:
             self.cpu_offload = True
             self.cpu_offload_pin_memory = offload_optimizer_config.pin_memory
@@ -1230,7 +1232,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if param_id not in self.accumulated_grads_in_cpu:
             self.accumulated_grads_in_cpu[param_id] = buffer_to_accumulate_to_in_cpu()
 
-        if self.micro_step_id > 0:
+        if self.micro_step_id > 0 or self.force_overwrite_grads:
             accumulate_gradients()
         else:
             copy_gradients_to_cpu()
@@ -1416,6 +1418,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.params_in_ipg_bucket = []
         self.ipg_bucket_has_moe_params = False
         self.elements_in_ipg_bucket = 0
+        self.force_overwrite_grads = False
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
@@ -1632,22 +1635,17 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         return params_in_partition, params_not_in_partition, first_offset
 
-    def zero_grad(self, set_to_none=True):
+    def zero_grad(self, set_to_none=True, force=False):
         """
         Zero FP16 parameter grads.
         """
-        # FP32 grad should never exist.
-        # For speed, set model fp16 grad to None by default
-        # zero all pointers to grad tensors
-        for group in self.bit16_groups:
-            for p in group:
-                if set_to_none:
-                    p.grad = None  # epilogue and in step
-                    p.grad_accum = None
-                else:
-                    if p.grad is not None:
-                        p.grad.detach_()
-                        p.grad.zero_()
+
+        def set_grad_to_none(p):
+            p.grad = None  # epilogue and in step
+            p.grad_accum = None
+
+        params = [p for group in self.bit16_groups for p in group]
+        self._do_zero_grad(params, set_grad_to_none, set_to_none, force)
 
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.
