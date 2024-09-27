@@ -510,7 +510,7 @@ Below is an example code snippet demonstrating how to offload FP32 parameters an
     # Load states back to device memory
     ds_engine.reload_states()
 
-``deepspeed.runtime.zero.offload_states import get_state_devices`` returns devices of the specified state.
+``deepspeed.runtime.zero.offload_states.get_state_devices`` returns devices of the specified state.
 
 .. code-block:: python
 
