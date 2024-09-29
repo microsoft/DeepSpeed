@@ -91,7 +91,6 @@ extras_require = {
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
     'sd': fetch_requirements('requirements/requirements-sd.txt'),
     'triton': fetch_requirements('requirements/requirements-triton.txt'),
-    'npu': fetch_requirements('requirements/requirements-npu.txt'),
 }
 
 # Only install pynvml on nvidia gpus.
