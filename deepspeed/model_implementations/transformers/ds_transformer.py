@@ -92,11 +92,11 @@ class DeepSpeedTransformerInference(nn.Module):
     def allocate_workspace(self, size):
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0 and self._should_allocate_workspace:
-            DeepSpeedTransformerInference.workspace(self.config.hidden_size, self.config.heads, size[1], size[0],
-                                                    DeepSpeedTransformerInference.layer_id, self.config.mp_size,
-                                                    self.config.bigscience_bloom,
-                                                    dist.get_rank() if dist.is_initialized() else 0,
-                                                    self.config.max_out_tokens, self.config.min_out_tokens)
+            DeepSpeedTransformerInference.workspace.allocate_workspace(
+                self.config.hidden_size, self.config.heads, size[1], size[0], DeepSpeedTransformerInference.layer_id,
+                self.config.mp_size, self.config.bigscience_bloom,
+                dist.get_rank() if dist.is_initialized() else 0, self.config.max_out_tokens,
+                self.config.min_out_tokens)
             self._should_allocate_workspace = False
 
     @classmethod
