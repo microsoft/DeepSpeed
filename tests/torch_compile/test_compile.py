@@ -16,24 +16,20 @@ torch._dynamo.config.cache_size_limit = 100
 
 import collections
 
-import os
-os.environ["TORCH_COMPILE_DEBUG"] = "1"
-os.environ["TORCHDYNAMO_VERBOSE"] = "1"
-os.environ["TORCH_LOGS"] = "+graph_breaks"
-
 def get_dynamo_stats():
     # TODO: consider deepcopy'ing the entire counters struct and
     # adding a helper to do subtraction on it
-    return collections.Counter({
-        "calls_captured": torch._dynamo.utils.counters["stats"]["calls_captured"],
-        "unique_graphs": torch._dynamo.utils.counters["stats"]["unique_graphs"],
-        "graph_breaks": sum(torch._dynamo.utils.counters["graph_break"].values()),
-        # NB: The plus removes zero counts
-        "unique_graph_breaks": len(+torch._dynamo.utils.counters["graph_break"]),
-        "autograd_captures": torch._dynamo.utils.counters["compiled_autograd"]["captures"],
-        "autograd_compiles": torch._dynamo.utils.counters["compiled_autograd"]["compiles"],
-        "cudagraph_skips": torch._dynamo.utils.counters["inductor"]["cudagraph_skips"],
-    })
+    return torch._dynamo.utils.counters["graph_break"]
+    #return collections.Counter({
+        #"calls_captured": torch._dynamo.utils.counters["stats"]["calls_captured"],
+        #"unique_graphs": torch._dynamo.utils.counters["stats"]["unique_graphs"],
+        #"graph_breaks": sum(torch._dynamo.utils.counters["graph_break"].values()),
+        ## NB: The plus removes zero counts
+        #"unique_graph_breaks": len(+torch._dynamo.utils.counters["graph_break"]),
+        #"autograd_captures": torch._dynamo.utils.counters["compiled_autograd"]["captures"],
+        #"autograd_compiles": torch._dynamo.utils.counters["compiled_autograd"]["compiles"],
+        #"cudagraph_skips": torch._dynamo.utils.counters["inductor"]["cudagraph_skips"],
+    #})
 
 
 class RandomDataset(Dataset):
@@ -100,5 +96,6 @@ dynamo_stats = get_dynamo_stats()
 dynamo_stats.subtract(start_stats)
 
 if comm.get_rank() == 0:
-    print(dynamo_stats)
-    print(torch._dynamo.utils.counters)
+    print(dynamo_stats['graph_breaks'])
+    for item in dynamo_states.items():
+        print(item)
