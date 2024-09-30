@@ -415,7 +415,7 @@ The routines for modifying parameters and optimizer states can be used at any po
 .. code-block:: python
 
     [...]
-    from deepspeed.runtime.zero.utils import is_zero_param      
+    from deepspeed.runtime.zero.utils import is_zero_param
     from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
     from deepspeed.utils import safe_set_local_fp32_param, safe_set_local_optimizer_state
     # Here is an example to zero all the fp32 parameters and optimizer states.
@@ -443,16 +443,16 @@ The routines for modifying gradients can be used after ``backward`` but before `
 
     backward(loss)
     [...]
-    from deepspeed.runtime.zero.utils import is_zero_param      
+    from deepspeed.runtime.zero.utils import is_zero_param
     from deepspeed.utils import safe_set_full_grad, safe_set_local_grad
-    # Here is an example of how to zero all the gradients. 
+    # Here is an example of how to zero all the gradients.
     for n, lp in model.named_parameters():
         # 1. For zero stage 1, 2, or 3 set the full gradient.
         zero_tensor = torch.zeros(lp.ds_shape) if is_zero_param(lp) else torch.zeros(lp.shape)
 
         safe_set_full_grad(lp, zero_tensor)
 
-        # 2. For zero stage 3, each process sets its local gradient partition. 
+        # 2. For zero stage 3, each process sets its local gradient partition.
         zero_tensor_local = torch.zeros_like(lp.ds_tensor.shape)
 
         safe_set_local_grad(lp, zero_tensor_local)
