@@ -82,6 +82,11 @@ residual = torch.rand(256, 256, dtype=torch.float).to(get_accelerator().current_
 
 start_stats = get_dynamo_stats()
 
+if comm.get_rank() == 0:
+    #print(dynamo_stats['graph_breaks'])
+    for item in dynamo_stats.items():
+        print(item)
+
 for step, batch in enumerate(rand_loader):
     if step % 10 == 0 and comm.get_rank() == 0:
         print(f'step={step}')
@@ -93,7 +98,6 @@ for step, batch in enumerate(rand_loader):
     model_engine.step()
 
 dynamo_stats = get_dynamo_stats()
-dynamo_stats.subtract(start_stats)
 
 if comm.get_rank() == 0:
     #print(dynamo_stats['graph_breaks'])
