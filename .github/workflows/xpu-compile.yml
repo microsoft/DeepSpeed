@@ -57,3 +57,7 @@ jobs:
         export ZE_AFFINITY_MASK=0,1
         deepspeed test_compile.py --deepspeed_config ds_config.json 2>&1 | tee log.txt
         cat log.txt |  grep "'graph_breaks'" | sed 's/,/ /g' | awk '{print $2}' >> $GITHUB_STEP_SUMMARY
+        # print log.txt content for debugging
+        echo "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+        cat log.txt
+        echo "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
