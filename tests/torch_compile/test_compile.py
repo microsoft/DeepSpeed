@@ -16,6 +16,10 @@ torch._dynamo.config.cache_size_limit = 100
 
 import collections
 
+import os
+os.environ["TORCH_COMPILE_DEBUG"] = "1"
+os.environ["TORCHDYNAMO_VERBOSE"] = "1"
+os.environ["TORCH_LOGS"] = "+graph_breaks"
 
 def get_dynamo_stats():
     # TODO: consider deepcopy'ing the entire counters struct and
@@ -97,5 +101,4 @@ dynamo_stats.subtract(start_stats)
 
 if comm.get_rank() == 0:
     print(dynamo_stats)
-    print(torch._dynamo.utils.counters["stats"]["calls_captured"])
-    print(torch._dynamo.utils.log)
+    print(torch._dynamo.utils.counters)
