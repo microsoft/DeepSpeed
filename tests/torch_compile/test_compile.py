@@ -96,6 +96,6 @@ dynamo_stats = get_dynamo_stats()
 dynamo_stats.subtract(start_stats)
 
 if comm.get_rank() == 0:
-    print(dynamo_stats['graph_breaks'])
+    #print(dynamo_stats['graph_breaks'])
     for item in dynamo_stats.items():
         print(item)
