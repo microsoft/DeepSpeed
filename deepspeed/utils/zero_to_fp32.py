@@ -32,9 +32,6 @@ from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import (DS_VERSION, OPTIMIZER_STATE_DICT, SINGLE_PARTITION_OF_FP32_GROUPS,
                                             FP32_FLAT_GROUPS, ZERO_STAGE, PARTITION_COUNT, PARAM_SHAPES, BUFFER_NAMES,
                                             FROZEN_PARAM_SHAPES, FROZEN_PARAM_FRAGMENTS)
-from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, WEIGHTS_NAME
-from transformers.modeling_utils import shard_checkpoint
-from safetensors.torch import save_file
 
 
 @dataclass
@@ -427,7 +424,7 @@ def _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
     offset = 0
     total_numel = 0
     total_params = 0
-    for name, shape in tqdm(param_shapes.items(), desc='Gather Sharded Weights'):
+    for name, shape in tqdm(param_shapes.items(), desc='Gathering Sharded Weights'):
         unpartitioned_numel = shape.numel()
         total_numel += unpartitioned_numel
         total_params += 1
@@ -541,22 +538,52 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_dir,
         - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in the file named ``latest`` in the checkpoint folder, e.g., ``global_step14``
         - ``exclude_frozen_parameters``: exclude frozen parameters
     """
+    # Dependency pre-check
+    if safe_serialization:
+        try:
+            from safetensors.torch import save_file
+        except ImportError:
+            print('If you want to use `safe_serialization`, please `pip install safetensors`')
+            raise
+    if max_shard_size is not None:
+        try:
+            from huggingface_hub import split_torch_state_dict_into_shards
+        except ImportError:
+            print('If you want to use `max_shard_size`, please `pip install huggingface_hub`')
+            raise
+
+    # Convert zero checkpoint to state_dict
     state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag, exclude_frozen_parameters)
-    print(f"Saving fp32 state dict to {output_dir}")
-    weights_name = SAFE_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-    shards, index = shard_checkpoint(state_dict, max_shard_size=max_shard_size, weights_name=weights_name)
+
+    # Shard the model if it is too big.
+    weights_name = "model.safetensors" if safe_serialization else "pytorch_model.bin"
+    if max_shard_size is not None:
+        filename_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(".safetensors", "{suffix}.safetensors")
+        state_dict_split = split_torch_state_dict_into_shards(
+            state_dict, filename_pattern=filename_pattern, max_shard_size=max_shard_size)
+    else:
+        from collections import namedtuple
+        StateDictSplit = namedtuple("StateDictSplit", ["is_sharded", "filename_to_tensors"])
+        state_dict_split = StateDictSplit(is_sharded=False, filename_to_tensors={weights_name: list(state_dict.keys())})
+
 
     # Save the model
-    for shard_file, shard in shards.items():
+    filename_to_tensors = state_dict_split.filename_to_tensors.items()
+    for shard_file, tensors in tqdm(filename_to_tensors, desc="Saving checkpoint shards"):
+        shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
         output_path = os.path.join(output_dir, shard_file)
         if safe_serialization:
             save_file(shard, output_path, metadata={"format": "pt"})
         else:
             torch.save(shard, output_path)
 
-    # Save the index as well
-    if index is not None:
-        save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
+    # Save index if sharded
+    if state_dict_split.is_sharded:
+        index = {
+            "metadata": state_dict_split.metadata,
+            "weight_map": state_dict_split.tensor_to_filename,
+        }
+        save_index_file = "model.safetensors.index.json" if safe_serialization else "pytorch_model.bin.index.json"
         save_index_file = os.path.join(output_dir, save_index_file)
         with open(save_index_file, "w", encoding="utf-8") as f:
             content = json.dumps(index, indent=2, sort_keys=True) + "\n"
@@ -610,7 +637,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "output_dir",
         type=str,
-        help="path to the pytorch fp32 state_dict output file "
+        help="directory to the pytorch fp32 state_dict output files"
              "(e.g. path/checkpoint-12-output/)")
     parser.add_argument(
         "--max_shard_size",
