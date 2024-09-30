@@ -9,6 +9,7 @@ using namespace std;
 
 io_op_desc_t::io_op_desc_t(const bool read_op,
                            const torch::Tensor& buffer,
+                           const bool is_managed,
                            const int fd,
                            const char* filename,
                            const long long int file_num_bytes,
@@ -16,6 +17,7 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
                            const bool validate)
     : _read_op(read_op),
       _buffer(buffer),
+      _is_managed(is_managed),
       _fd(fd),
       _filename(filename),
       _file_num_bytes(file_num_bytes),

@@ -209,8 +209,9 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const long long int file_num_bytes,
     const bool validate)
 {
+    bool is_managed = _pinned_tensor_mgr->is_managed(buffer);
     return std::make_shared<cpu_op_desc_t>(
-        read_op, buffer, fd, filename, file_num_bytes, _num_threads, validate);
+        read_op, buffer, is_managed, fd, filename, file_num_bytes, _num_threads, validate);
 }
 
 int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
@@ -229,7 +230,7 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
         std::cout << filename << ": buffer nbytes != file bytes " << buffer_bytes
                   << " != " << num_file_bytes << std::endl;
     }
-    assert(static_cast<long long int>(buffer.nbytes()) == num_file_bytes);
+    assert(buffer_bytes == num_file_bytes);
     assert((num_file_bytes % _num_threads) == 0);
 
     if (!_is_valid_parallel_aio_op(true, num_file_bytes)) { return -1; }
@@ -288,7 +289,7 @@ int deepspeed_io_handle_t::async_pwrite(const torch::Tensor& buffer, const char*
     return pwrite(buffer, filename, false, true);
 }
 
-at::Tensor deepspeed_io_handle_t::new_cpu_locked_tensor(const size_t num_elem,
+at::Tensor deepspeed_io_handle_t::new_cpu_locked_tensor(const long long int num_elem,
                                                         const torch::Tensor& example_tensor)
 {
     return _pinned_tensor_mgr->alloc(num_elem, example_tensor.scalar_type());

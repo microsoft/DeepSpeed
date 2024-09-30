@@ -103,7 +103,7 @@ int get_file_size(const char* filename, long long int& size)
     return 0;
 }
 
-void* ds_page_aligned_alloc(const size_t size, const bool lock)
+void* ds_page_aligned_alloc(const long long int size, const bool lock)
 {
     void* ptr;
     int retval;

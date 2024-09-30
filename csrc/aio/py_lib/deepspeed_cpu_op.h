@@ -13,6 +13,7 @@ struct cpu_op_desc_t : io_op_desc_t {
 
     cpu_op_desc_t(const bool read_op,
                   const torch::Tensor& buffer,
+                  const bool is_managed,
                   const int fd,
                   const char* filename,
                   const long long int file_num_bytes,

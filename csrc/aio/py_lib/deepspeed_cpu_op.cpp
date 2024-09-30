@@ -9,23 +9,25 @@ using namespace std;
 
 cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
                              const torch::Tensor& buffer,
+                             const bool is_managed,
                              const int fd,
                              const char* filename,
                              const long long int file_num_bytes,
                              const int num_threads,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, num_threads, validate),
+    : io_op_desc_t(read_op, buffer, is_managed, fd, filename, file_num_bytes, num_threads, validate),
       _cpu_buffer(buffer)
 {
     // Need to use CPU bounce buffer if buffer is not a page-locked DRAM memory.
-    _use_bounce_buffer = !(_buffer.is_cpu() && _buffer.is_pinned());
+    _use_bounce_buffer = !(_buffer.is_cpu() && (_buffer.is_pinned() || _is_managed));
     if (_use_bounce_buffer) {
         if (_read_op) {
             auto options = torch::TensorOptions()
                                .dtype(_buffer.dtype())
                                .layout(_buffer.layout())
-                               .device(torch::kCPU);
-            _cpu_buffer = torch::empty(_buffer.nbytes(), options).pin_memory();
+                               .device(torch::kCPU)
+                               .requires_grad(false);
+            _cpu_buffer = torch::empty(_buffer.numel(), options).pin_memory();
         } else {
             _cpu_buffer = _buffer.to(torch::kCPU).pin_memory();
         }
@@ -37,9 +39,10 @@ char* cpu_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_pt
 
 void cpu_op_desc_t::finish()
 {
-    if (_read_op) {
+    if (_read_op && _use_bounce_buffer) {
         if (_buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
         if (_buffer.is_xpu()) { _buffer.copy_(_cpu_buffer.to(torch::kXPU)); }
+        if (_buffer.is_cpu()) { _buffer.copy_(_cpu_buffer); }
 #if defined(__ENABLE_CANN__)
         if (torch_npu::utils::is_npu(_buffer)) {
             auto device = at::Device("npu:0");
