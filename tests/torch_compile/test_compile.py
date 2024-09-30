@@ -97,3 +97,5 @@ dynamo_stats.subtract(start_stats)
 
 if comm.get_rank() == 0:
     print(dynamo_stats)
+    print(torch._dynamo.utils.counters["stats"]["calls_captured"])
+    print(torch._dynamo.utils.log)
