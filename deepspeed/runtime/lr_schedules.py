@@ -675,6 +675,11 @@ class WarmupLR(object):
         self.warmup_type = warmup_type
         self.inverse_log_warm_up = 1.0 / math.log(self.warmup_num_steps)
         self.last_batch_iteration = last_batch_iteration
+        # Initialize lr in optimizer
+        if last_batch_iteration == -1:
+            for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+                param_group['lr'] = lr
+            self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
 
     def get_lr(self):
         if self.last_batch_iteration < 0:
@@ -818,6 +823,12 @@ class WarmupCosineLR(object):
             logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
                 total_num_steps, warmup_num_steps))
         self.org_lrs = [group['lr'] for group in self.optimizer.param_groups]
+        
+        # Initialize lrs in optimizer groups
+        if last_batch_iteration == -1:
+            for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+                param_group['lr'] = lr
+            self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
 
     def get_lr_ratio(self):
         if self.last_batch_iteration < 0:
