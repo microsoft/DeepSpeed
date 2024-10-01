@@ -1117,7 +1117,7 @@ def configure(
             mp_size = mpu.get_model_parallel_world_size()
             mp_group = mpu.get_model_parallel_group()
 
-    #print configuration once
+    #print configuration only once
     see_memory_usage("After configuration", force=False)
     if dist.get_rank() == 0:
         logger.info(f"Activation Checkpointing Information")
