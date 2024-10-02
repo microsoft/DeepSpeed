@@ -137,7 +137,7 @@ void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc
             std::lock_guard<std::mutex> lock(ctxt->_work_sync._mutex);
             ctxt->_work_queue.push(scheduled_op);
         }
-        ctxt->_work_sync._cond_var2.notify_one();
+        ctxt->_work_sync._cond_var.notify_one();
     }
     _num_pending_ops++;
 }
@@ -147,7 +147,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
     std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
     for (auto& ctxt : _thread_contexts) {
         std::unique_lock<std::mutex> lock(ctxt->_complete_sync._mutex);
-        ctxt->_complete_sync._cond_var2.wait(lock,
+        ctxt->_complete_sync._cond_var.wait(lock,
                                              [ctxt] { return !ctxt->_complete_queue.empty(); });
         completed_op = ctxt->_complete_queue.front();
         ctxt->_complete_queue.pop();
@@ -163,7 +163,7 @@ void deepspeed_io_handle_t::_stop_threads()
             std::lock_guard<std::mutex> lock(ctxt->_work_sync._mutex);
             ctxt->_time_to_exit = true;
         }
-        ctxt->_work_sync._cond_var2.notify_one();
+        ctxt->_work_sync._cond_var.notify_one();
     }
 }
 
