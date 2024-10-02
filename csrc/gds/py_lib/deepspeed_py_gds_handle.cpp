@@ -28,7 +28,7 @@ deepspeed_gds_handle_t::deepspeed_gds_handle_t(const int block_size,
 
 deepspeed_gds_handle_t::~deepspeed_gds_handle_t() { _close_cuFile(); }
 
-const int deepspeed_gds_handle_t::get_thread_count() const { return _intra_gds_op_parallelism; }
+const int deepspeed_gds_handle_t::get_intra_op_parallelism() const { return _intra_gds_op_parallelism; }
 
 void deepspeed_gds_handle_t::_init_cuFile(const int block_size, const int queue_depth)
 {

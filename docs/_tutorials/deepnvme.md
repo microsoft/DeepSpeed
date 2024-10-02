@@ -50,7 +50,7 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>> h = AsyncIOBuilder().load().aio_handle()
 >>> h.
 h.async_pread(             h.free_cpu_locked_tensor(  h.get_overlap_events(      h.get_single_submit(       h.new_cpu_locked_tensor(   h.pwrite(                  h.sync_pread(              h.wait(
-h.async_pwrite(            h.get_block_size(          h.get_queue_depth(         h.get_thread_count(        h.pread(                   h.read(                    h.sync_pwrite(             h.write(
+h.async_pwrite(            h.get_block_size(          h.get_queue_depth(         h.get_intra_op_parallelism(        h.pread(                   h.read(                    h.sync_pwrite(             h.write(
 ```
 The APIs of interest for performing I/O operations are those named with `pread` and `pwrite` substrings. For brevity, we will focus on the file write APIs, namely `sync_pwrite`, `async_pwrite`, and `pwrite`. We will discuss only `sync_pwrite` and `async_pwrite` below because they are specializations of `pwrite`.
 
@@ -292,6 +292,6 @@ Function | Description
 |---|---|
 get_queue_depth | Return queue depth setting |
 get_single_submit | Return whether single_submit is enabled |
-get_thread_count | Return I/O parallelism degree |
+get_intra_op_parallelism | Return I/O parallelism degree |
 get_block_size | Return I/O block size setting |
 get_overlap_events | Return whether overlap_event is enabled |

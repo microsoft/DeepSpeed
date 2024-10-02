@@ -7,7 +7,7 @@
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
-#include <condition_variable>
+#include <condition_var2iable>
 #include <memory>
 #include "deepspeed_aio_thread.h"
 #include "deepspeed_pin_tensor.h"
@@ -36,7 +36,7 @@ struct deepspeed_io_handle_t {
     const int get_queue_depth() const;
     const bool get_single_submit() const;
     const bool get_overlap_events() const;
-    const int get_thread_count() const;
+    const int get_intra_op_parallelism() const;
 
     int read(torch::Tensor& buffer, const char* filename, const bool validate);
 

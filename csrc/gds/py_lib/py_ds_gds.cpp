@@ -26,7 +26,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("get_queue_depth", &deepspeed_gds_handle_t::get_queue_depth)
         .def("get_single_submit", &deepspeed_gds_handle_t::get_single_submit)
         .def("get_overlap_events", &deepspeed_gds_handle_t::get_overlap_events)
-        .def("get_thread_count", &deepspeed_gds_handle_t::get_thread_count)
+        .def("get_intra_op_parallelism", &deepspeed_gds_handle_t::get_intra_op_parallelism)
 
         .def("read",
              &deepspeed_gds_handle_t::read,

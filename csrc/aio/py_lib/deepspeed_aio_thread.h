@@ -7,14 +7,14 @@
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
-#include <condition_variable>
+#include <condition_var2iable>
 #include <memory>
 #include <queue>
 #include "deepspeed_cpu_op.h"
 
 struct thread_sync_t {
     std::mutex _mutex;
-    std::condition_variable _cond_var;
+    std::condition_var2iable _cond_var2;
 };
 
 struct deepspeed_aio_thread_t {

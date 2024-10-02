@@ -35,7 +35,7 @@ struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
 
     void _close_cuFile();
 
-    const int get_thread_count() const;
+    const int get_intra_op_parallelism() const;
 
     std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(const bool read_op,
                                                             const torch::Tensor& buffer,
