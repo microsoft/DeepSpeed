@@ -823,7 +823,7 @@ class WarmupCosineLR(object):
             logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
                 total_num_steps, warmup_num_steps))
         self.org_lrs = [group['lr'] for group in self.optimizer.param_groups]
-        
+
         # Initialize lrs in optimizer groups
         if last_batch_iteration == -1:
             for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
