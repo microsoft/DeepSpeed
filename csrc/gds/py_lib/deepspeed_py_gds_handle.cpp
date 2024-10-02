@@ -20,20 +20,21 @@ deepspeed_gds_handle_t::deepspeed_gds_handle_t(const int block_size,
                                                const bool single_submit,
                                                const bool overlap_events,
                                                const int num_threads)
-    : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, 1)
+    : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, 1),
+    _num_gpu_threads(num_threads)
 {
-    _init_cuFile(block_size, queue_depth, num_threads);
+    _init_cuFile(block_size,queue_depth);
 }
 
 deepspeed_gds_handle_t::~deepspeed_gds_handle_t() { _close_cuFile(); }
 
-void deepspeed_gds_handle_t::_init_cuFile(const int block_size,
-                                          const int queue_depth,
-                                          const int num_threads)
+const int deepspeed_gds_handle_t::get_thread_count() const { return _num_gpu_threads; }
+
+void deepspeed_gds_handle_t::_init_cuFile(const int block_size, const int queue_depth)
 {
     if (deepspeed_gds_handle_t::s_cuFile_init == 0) {
         std::string depthStr = std::to_string(queue_depth);
-        std::string threadsStr = std::to_string(num_threads);
+        std::string threadsStr = std::to_string(_num_gpu_threads);
         std::string json1 = R"({"execution": {"max_io_queue_depth": )" + depthStr + ", ";
         std::string json2 = R"("max_request_parallelism": )" + threadsStr + ", ";
         std::string json3 = R"("max_io_threads": )" + threadsStr + ", ";

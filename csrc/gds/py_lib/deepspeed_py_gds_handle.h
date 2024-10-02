@@ -12,6 +12,8 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 #include "deepspeed_py_io_handle.h"
 
 struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
+    const int _num_gpu_threads;
+
     deepspeed_gds_handle_t(const int block_size,
                            const int queue_depth,
                            const bool single_submit,
@@ -29,9 +31,11 @@ struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
 
     bool unpin_device_tensor(const torch::Tensor& buffer);
 
-    void _init_cuFile(const int block_size, const int queue_length, const int num_threads);
+    void _init_cuFile(const int block_size, const int queue_depth);
 
     void _close_cuFile();
+
+    const int get_thread_count() const;
 
     std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(const bool read_op,
                                                             const torch::Tensor& buffer,
