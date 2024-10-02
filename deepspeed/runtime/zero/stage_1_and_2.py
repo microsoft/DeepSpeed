@@ -954,7 +954,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         # if param_id == 200:
         # import pdb; pdb.set_trace()
-        # self.print_rank_0(f"add_grad_to_bucket self={id(self)} {param_id=} {i=} gnorm={float(grad_reduc.norm().float())}")
+        # self.print_rank_0(
+        #     f"add_grad_to_bucket self={id(self)} {param_id=} {i=} gnorm={float(grad_reduc.norm().float())}")
         if self.contiguous_gradients:
             if param.numel() > self.reduce_bucket_size:
                 self.extra_large_param_to_reduce = param
@@ -1409,7 +1410,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 # if param_id == 200:
                 #     # import pdb; pdb.set_trace()
                 grad_reduc = self.get_gradient_for_reduction(param)
-                # self.print_rank_0(f"reduce_grads: self={id(self)} {param_id=} {i=} gnorm={float(grad_reduc.norm().float())}")
+                # self.print_rank_0(
+                #     f"reduce_grads: self={id(self)} {param_id=} {i=} gnorm={float(grad_reduc.norm().float())}")
                 if self.partition_gradients:
                     if not self.is_param_in_current_partition[param_id]:
                         if self.overlap_comm and self.contiguous_gradients is False:
@@ -1433,14 +1435,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #####################################################################
 
     def process_gradients(self, param, i):
-        # param_id = self.get_param_id(param)
-        # self.print_rank_0(f"grad_hook: opt={id(self)} {param_id=} {i=}")
+        param_id = self.get_param_id(param)
+        self.print_rank_0(f"grad_hook: opt={id(self)} {param_id=} {i=}")
         if self.use_grad_accum_attribute:
             self._fill_param_grad_accum_attribute(param)
         if self.partition_gradients or self.overlap_comm:
             self.reduce_ready_partitions_and_remove_grads(param, i)
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
+        import pdb
+        pdb.set_trace()
         if self.partition_gradients or self.is_gradient_accumulation_boundary:
             self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
@@ -2055,6 +2059,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def backward_prologue(self):
         # import pdb; pdb.set_trace()
+        # self.print_rank_0(f"opt_bwd_prologue: {id(self)=}")
         self.micro_step_id += 1
         if self.contiguous_gradients and self.ipg_buffer is None:
             self.ipg_buffer = []
@@ -2084,7 +2089,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        self.backward_prologue()
+        # self.backward_prologue()
+        # self.print_rank_0(f'optim_bwd: {id(self)=} {id(loss)=}')
 
         if self.custom_loss_scaler:
             scaled_loss = self.external_loss_scale * loss
@@ -2092,7 +2098,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
-        self.backward_epilogue()
+        # self.backward_epilogue()
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)

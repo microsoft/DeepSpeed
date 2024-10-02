@@ -269,7 +269,9 @@ class DeepSpeedEngine(Module):
         # Configure distributed model
         self._configure_distributed_model(model)
 
-        self.module_backward_hook = self._create_module_backward_hook(self.module)
+        self.module_forward_pre_hook = self._create_module_forward_pre_hook()
+        self.module_forward_post_hook = self._create_module_forward_post_hook()
+        self.module_backward_pre_hook = self._create_module_backward_pre_hook()
 
         # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
         self.param_names = {param: name for name, param in model.named_parameters()}
@@ -1837,62 +1839,34 @@ class DeepSpeedEngine(Module):
 
         return scaled_loss
 
-    def _create_module_backward_hook(self, module):
+    def _create_module_backward_pre_hook(self):
 
-        def _module_backward_hook(module, *unused):
+        def _module_backward_hook(module, grad_output):
             # import pdb; pdb.set_trace()
-            print(f"mod_bwd_hook: {id(self)=} {id(module)=} {id(self.optimizer)=}")
+            # print(f"mod_bwd_hook: {id(self)=} {id(module)=} {id(self.optimizer)=} {id(grad_output)=}")
             if hasattr(self.optimizer, 'backward_prologue'):
                 self.optimizer.backward_prologue()
 
-        return module.register_full_backward_pre_hook(_module_backward_hook)
+        return self.module.register_full_backward_pre_hook(_module_backward_hook)
 
-    def _module_backward_epilogue(self, loss, i):
-        print(f'engine_module_bwd_hook: {id(self)=} loss={id(loss)}, loss_idx={i}')
-        # import pdb; pdb.set_trace()
-        # self.optimizer.backward_epilogue()
-        # self.allreduce_gradients()
+    def _create_module_forward_pre_hook(self):
 
-    def _get_tensor_list(self, item):
-        if torch.is_tensor(item):
-            return [item]
-        elif type(item) in [list, tuple]:
-            l = []
-            for v in item:
-                l += self._get_tensor_list(v)
-        elif isinstance(item, dict):
-            l = []
-            for v in item.values():
-                l += self._get_tensor_list(v)
-        return []
+        def _module_forward_pre_hook(module, inputs):
+            # print(f"mod_fwd_pre_hook: {id(self)=} {id(module)=} {id(input)=}")
+            self._forward_prologue(inputs)
 
-    def _create_loss_backward_hooks(self, loss):
-        loss_tensor_list = self._get_tensor_list(loss)
-        handles = []
-        for i, loss in enumerate(loss_tensor_list):
-            if loss.requires_grad:
+        return self.module.register_forward_pre_hook(_module_forward_pre_hook)
 
-                def wrapper(loss, i):
+    def _create_module_forward_post_hook(self):
 
-                    def _engine_backward(*notneeded):
-                        self._module_backward_epilogue(loss, i)
+        def _module_forward_post_hook(module, input, output):
+            # print(f"mod_fwd_post_hook: {id(self)=} {id(module)=} {id(input)=} {id(output)=}")
+            self._forward_epilogue()
 
-                    handles.append(loss.register_hook(_engine_backward))
+        return self.module.register_forward_hook(_module_forward_post_hook)
 
-                wrapper(loss, i)
-        return handles
-
-    @instrument_w_nvtx
-    def forward(self, *inputs, **kwargs):
-        r"""Execute forward propagation
-        Arguments:
-            *inputs: Variable length input list
-            **kwargs: variable length keyword arguments
-        """
-
-        if self.autotuning_profile_model_info():
-            ma = get_ma_status()
-        else:
+    def _forward_prologue(self, inputs, kwargs=None):
+        if not self.autotuning_profile_model_info():
             see_memory_usage("Engine before forward", force=self.memory_breakdown())
 
         flops_profiler_active = (self.flops_profiler_enabled()
@@ -1915,20 +1889,26 @@ class DeepSpeedEngine(Module):
         if flops_profiler_active:
             self.flops_profiler.start_profile(ignore_list=None)
 
-        if self.module.training:
-            if self.progressive_layer_drop:
-                kwargs.update(self.progressive_layer_drop.get_state())
+        if kwargs is not None:
+            if self.module.training:
+                if self.progressive_layer_drop:
+                    kwargs.update(self.progressive_layer_drop.get_state())
 
-        if self.__class__.__name__ != "PipelineEngine":
-            # TODO: The above if condition is a HACK since for PipelineEngine
-            # it's difficult to inject argument in forward pass.
-            if self.module.training and self.curriculum_enabled_legacy():
-                self.curriculum_scheduler_legacy.update_difficulty(self.global_steps + 1)
-                if self.curriculum_params_legacy()["curriculum_type"] == "seqlen":
-                    kwargs.update({"curriculum_seqlen": self.curriculum_scheduler_legacy.get_current_difficulty()})
+            if self.__class__.__name__ != "PipelineEngine":
+                # TODO: The above if condition is a HACK since for PipelineEngine
+                # it's difficult to inject argument in forward pass.
+                if self.module.training and self.curriculum_enabled_legacy():
+                    self.curriculum_scheduler_legacy.update_difficulty(self.global_steps + 1)
+                    if self.curriculum_params_legacy()["curriculum_type"] == "seqlen":
+                        kwargs.update({"curriculum_seqlen": self.curriculum_scheduler_legacy.get_current_difficulty()})
 
         if self.module.training and self.random_ltd_enabled():
             self.random_ltd_scheduler.update_seq(self.global_steps)
+
+        if self.training_dataloader is None:
+            self.tput_timer.start()
+
+        self._start_timers(self.engine_timers.forward_timers)
 
         if self.zero_optimization_partition_weights():
             # Enable automated discovery of external parameters by indicating that
@@ -1936,34 +1916,43 @@ class DeepSpeedEngine(Module):
             for module in self.module.modules():
                 module._parameters._in_forward = True
 
-        self._start_timers(self.engine_timers.forward_timers)
-
-        if self.training_dataloader is None:
-            self.tput_timer.start()
-
         if self.fp16_auto_cast():
             inputs = self._cast_inputs_half(inputs)
 
-        loss = self.module(*inputs, **kwargs)
-
+    def _forward_epilogue(self):
         if self.zero_optimization_partition_weights():
             # Disable automated discovery of external parameters
             for module in self.module.modules():
                 module._parameters._in_forward = False
 
-        # self.loss_hooks = self._create_loss_backward_hooks(loss)
         self._stop_timers(self.engine_timers.forward_timers)
+
+        flops_profiler_active = (self.flops_profiler_enabled()
+                                 and self.global_steps == self.flops_profiler_profile_step() and self.global_rank == 0)
 
         if flops_profiler_active:
             self.flops_profiler.stop_profile()
+
+        if not self.autotuning_profile_model_info():
+            see_memory_usage("Engine after forward", force=self.memory_breakdown())
+
+    @instrument_w_nvtx
+    def forward(self, *inputs, **kwargs):
+        r"""Execute forward propagation
+        Arguments:
+            *inputs: Variable length input list
+            **kwargs: variable length keyword arguments
+        """
+        if self.autotuning_profile_model_info():
+            ma = get_ma_status()
+
+        loss = self.module(*inputs, **kwargs)
 
         if self.autotuning_profile_model_info():
             activation_mem = get_ma_status() - ma
             self.autotuning_model_info["activation_mem_per_gpu"] = activation_mem
             print_json_dist(self.autotuning_model_info, [0], path=self.autotuning_model_info_path())
             exit()
-        else:
-            see_memory_usage("Engine after forward", force=self.memory_breakdown())
 
         return loss
 
@@ -2024,6 +2013,9 @@ class DeepSpeedEngine(Module):
                 self.buffered_allreduce_fallback(grads=grads, elements_per_buffer=bucket_size)
 
     def _backward_prologue(self, loss):
+        see_memory_usage("Engine before backward", force=self.memory_breakdown())
+        # print(f"_bwd_engine_prologue: {id(self)=}   {id(loss)=}")
+
         if self.scale_wrt_gas is not None:
             scale_wrt_gas = self.scale_wrt_gas
 
@@ -2046,8 +2038,16 @@ class DeepSpeedEngine(Module):
 
         return loss
 
-    def _backward_epilogue(self):
-        self.allreduce_gradients()
+    def _backward_epilogue(self, allreduce_gradients=True):
+        self._start_timers(self.engine_timers.backward_reduce_timers)
+
+        if allreduce_gradients and self.enable_backward_allreduce:
+            # Traditional code path that allreduces the module parameter grads
+            self.allreduce_gradients()
+
+        self._stop_timers(self.engine_timers.backward_reduce_timers)
+
+        see_memory_usage("Engine after backward", force=self.memory_breakdown())
 
     def _do_optimizer_backward(self, loss, retain_graph):
         if self.zero_optimization():
@@ -2081,15 +2081,11 @@ class DeepSpeedEngine(Module):
             retain_graph: bool, default: false
                 forward on user defined choice of retain_graph
         """
-
-        see_memory_usage("Engine before backward", force=self.memory_breakdown())
-
         if not allreduce_gradients:
             logger.warning(f"Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed")
 
-        loss = self._backward_prologue(loss)
-
         self._start_timers(self.engine_timers.backward_timers)
+        loss = self._backward_prologue(loss)
 
         assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
             "must provide optimizer during init in order to use backward"
@@ -2100,17 +2096,9 @@ class DeepSpeedEngine(Module):
 
         self._stop_timers(self.engine_timers.backward_inner_timers)
 
-        self._start_timers(self.engine_timers.backward_reduce_timers)
-
-        if allreduce_gradients and self.enable_backward_allreduce:
-            # Traditional code path that allreduces the module parameter grads
-            self.allreduce_gradients()
-
-        self._stop_timers(self.engine_timers.backward_reduce_timers)
+        self._backward_epilogue(allreduce_gradients)
 
         self._stop_timers(self.engine_timers.backward_timers)
-
-        see_memory_usage("Engine after backward", force=self.memory_breakdown())
 
         return loss
 
