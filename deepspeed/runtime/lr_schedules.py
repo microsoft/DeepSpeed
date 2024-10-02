@@ -684,7 +684,7 @@ class WarmupLR(object):
     def get_lr(self):
         if self.last_batch_iteration < 0:
             logger.warning("Attempting to get learning rate from scheduler before it has started")
-            return [0.0]
+            return self.min_lrs
         gamma = self._get_gamma()
         return [min_lr + (delta_lr * gamma) for min_lr, delta_lr in zip(self.min_lrs, self.delta_lrs)]
 
