@@ -144,7 +144,7 @@ class TestRead(DistributedTest):
             h.free_cpu_locked_tensor(aio_buffer)
 
 
-@pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False]) 
+@pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False])
 @pytest.mark.parametrize("single_submit", [True, False])
 @pytest.mark.parametrize("overlap_events", [True, False])
 class TestWrite(DistributedTest):

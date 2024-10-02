@@ -29,7 +29,7 @@ void deepspeed_aio_thread_t::run()
         {
             std::unique_lock<std::mutex> lock(_work_sync._mutex);
             _work_sync._cond_var2.wait(lock,
-                                      [this] { return (!_work_queue.empty() || _time_to_exit); });
+                                       [this] { return (!_work_queue.empty() || _time_to_exit); });
             if (!_work_queue.empty()) {
                 next_io_op = _work_queue.front();
                 _work_queue.pop();

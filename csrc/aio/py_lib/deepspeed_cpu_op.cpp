@@ -15,7 +15,14 @@ cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
                              const long long int file_num_bytes,
                              const int intra_op_parallelism,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, is_managed, fd, filename, file_num_bytes, intra_op_parallelism, validate),
+    : io_op_desc_t(read_op,
+                   buffer,
+                   is_managed,
+                   fd,
+                   filename,
+                   file_num_bytes,
+                   intra_op_parallelism,
+                   validate),
       _cpu_buffer(buffer)
 {
     // Need to use CPU bounce buffer if buffer is not a page-locked DRAM memory.

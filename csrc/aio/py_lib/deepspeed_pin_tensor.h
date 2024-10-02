@@ -24,6 +24,6 @@ struct deepspeed_pin_tensor_t {
     torch::Tensor alloc(const long long num_elem, const at::ScalarType& elem_type);
 
     bool free(torch::Tensor& locked_tensor);
-    
+
     bool is_managed(const torch::Tensor& buffer);
 };

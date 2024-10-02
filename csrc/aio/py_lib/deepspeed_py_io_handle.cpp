@@ -148,7 +148,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
     for (auto& ctxt : _thread_contexts) {
         std::unique_lock<std::mutex> lock(ctxt->_complete_sync._mutex);
         ctxt->_complete_sync._cond_var2.wait(lock,
-                                            [ctxt] { return !ctxt->_complete_queue.empty(); });
+                                             [ctxt] { return !ctxt->_complete_queue.empty(); });
         completed_op = ctxt->_complete_queue.front();
         ctxt->_complete_queue.pop();
     }

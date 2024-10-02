@@ -19,7 +19,8 @@ deepspeed_pin_tensor_t::~deepspeed_pin_tensor_t()
     _locked_tensors.clear();
 }
 
-torch::Tensor deepspeed_pin_tensor_t::alloc(const long long int num_elem, const at::ScalarType& elem_type)
+torch::Tensor deepspeed_pin_tensor_t::alloc(const long long int num_elem,
+                                            const at::ScalarType& elem_type)
 {
     const auto num_bytes = num_elem * elementSize(elem_type);
     auto pinned_buffer = ds_page_aligned_alloc(num_bytes, true);
@@ -47,9 +48,7 @@ bool deepspeed_pin_tensor_t::free(torch::Tensor& locked_tensor)
 bool deepspeed_pin_tensor_t::is_managed(const torch::Tensor& buffer)
 {
     auto addr = buffer.data_ptr();
-    if (!buffer.is_cpu()){ return false;}
-    if (_locked_tensors.find(addr) != _locked_tensors.end()) {
-        return true;
-    }
+    if (!buffer.is_cpu()) { return false; }
+    if (_locked_tensors.find(addr) != _locked_tensors.end()) { return true; }
     return false;
 };

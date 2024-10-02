@@ -21,14 +21,17 @@ deepspeed_gds_handle_t::deepspeed_gds_handle_t(const int block_size,
                                                const bool overlap_events,
                                                const int intra_op_parallelism)
     : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, 1),
-    _intra_gds_op_parallelism(intra_op_parallelism)
+      _intra_gds_op_parallelism(intra_op_parallelism)
 {
-    _init_cuFile(block_size,queue_depth);
+    _init_cuFile(block_size, queue_depth);
 }
 
 deepspeed_gds_handle_t::~deepspeed_gds_handle_t() { _close_cuFile(); }
 
-const int deepspeed_gds_handle_t::get_intra_op_parallelism() const { return _intra_gds_op_parallelism; }
+const int deepspeed_gds_handle_t::get_intra_op_parallelism() const
+{
+    return _intra_gds_op_parallelism;
+}
 
 void deepspeed_gds_handle_t::_init_cuFile(const int block_size, const int queue_depth)
 {
