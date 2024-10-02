@@ -13,9 +13,9 @@ cpu_op_desc_t::cpu_op_desc_t(const bool read_op,
                              const int fd,
                              const char* filename,
                              const long long int file_num_bytes,
-                             const int num_threads,
+                             const int intra_op_parallelism,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, is_managed, fd, filename, file_num_bytes, num_threads, validate),
+    : io_op_desc_t(read_op, buffer, is_managed, fd, filename, file_num_bytes, intra_op_parallelism, validate),
       _cpu_buffer(buffer)
 {
     // Need to use CPU bounce buffer if buffer is not a page-locked DRAM memory.
@@ -61,7 +61,7 @@ void cpu_op_desc_t::run(const int tid,
                         std::unique_ptr<aio_context>& aio_ctxt,
                         deepspeed_aio_config_t* aio_config)
 {
-    assert(tid < _num_threads);
+    assert(tid < _intra_op_parallelism);
     const auto base_offset = _num_bytes_per_thread * tid;
 
     std::unique_ptr<io_xfer_ctxt> xfer_ctxt(

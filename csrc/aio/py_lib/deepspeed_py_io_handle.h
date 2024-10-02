@@ -16,7 +16,7 @@ struct deepspeed_io_handle_t {
     std::unique_ptr<struct aio_context> _aio_ctxt;
     const bool _single_submit;
     const bool _overlap_events;
-    const int _num_threads;
+    const int _intra_op_parallelism;
     deepspeed_aio_config_t _aio_config;
 
     std::vector<std::shared_ptr<struct deepspeed_aio_thread_t>> _thread_contexts;
@@ -28,7 +28,7 @@ struct deepspeed_io_handle_t {
                           const int queue_depth,
                           const bool single_submit,
                           const bool overlap_events,
-                          const int num_threads);
+                          const int intra_op_parallelism);
 
     virtual ~deepspeed_io_handle_t() = 0;
 

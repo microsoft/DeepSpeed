@@ -12,13 +12,13 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 #include "deepspeed_py_io_handle.h"
 
 struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
-    const int _num_gpu_threads;
+    const int _intra_gds_op_parallelism;
 
     deepspeed_gds_handle_t(const int block_size,
                            const int queue_depth,
                            const bool single_submit,
                            const bool overlap_events,
-                           const int num_threads);
+                           const int intra_op_parallelism);
 
     ~deepspeed_gds_handle_t();
 

@@ -27,7 +27,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "queue_depth"_a = 128,
              "single_submit"_a = false,
              "overlap_events"_a = false,
-             "num_threads"_a = 1)
+             "intra_op_parallelism"_a = 1)
 
         .def("get_block_size", &deepspeed_aio_handle_t::get_block_size)
         .def("get_queue_depth", &deepspeed_aio_handle_t::get_queue_depth)
