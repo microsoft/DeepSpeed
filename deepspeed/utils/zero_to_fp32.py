@@ -523,9 +523,12 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_f
     return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_parameters)
 
 
-def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_dir,
-                                               max_shard_size="5GB", safe_serialization=False,
-                                               tag=None, exclude_frozen_parameters=False):
+def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
+                                               output_dir,
+                                               max_shard_size="5GB",
+                                               safe_serialization=False,
+                                               tag=None,
+                                               exclude_frozen_parameters=False):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
     loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
@@ -559,13 +562,14 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_dir,
     weights_name = "model.safetensors" if safe_serialization else "pytorch_model.bin"
     if max_shard_size is not None:
         filename_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(".safetensors", "{suffix}.safetensors")
-        state_dict_split = split_torch_state_dict_into_shards(
-            state_dict, filename_pattern=filename_pattern, max_shard_size=max_shard_size)
+        state_dict_split = split_torch_state_dict_into_shards(state_dict,
+                                                              filename_pattern=filename_pattern,
+                                                              max_shard_size=max_shard_size)
     else:
         from collections import namedtuple
         StateDictSplit = namedtuple("StateDictSplit", ["is_sharded", "filename_to_tensors"])
-        state_dict_split = StateDictSplit(is_sharded=False, filename_to_tensors={weights_name: list(state_dict.keys())})
-
+        state_dict_split = StateDictSplit(is_sharded=False,
+                                          filename_to_tensors={weights_name: list(state_dict.keys())})
 
     # Save the model
     filename_to_tensors = state_dict_split.filename_to_tensors.items()
@@ -634,19 +638,18 @@ if __name__ == "__main__":
     parser.add_argument("checkpoint_dir",
                         type=str,
                         help="path to the desired checkpoint folder, e.g., path/checkpoint-12")
-    parser.add_argument(
-        "output_dir",
-        type=str,
-        help="directory to the pytorch fp32 state_dict output files"
-             "(e.g. path/checkpoint-12-output/)")
+    parser.add_argument("output_dir",
+                        type=str,
+                        help="directory to the pytorch fp32 state_dict output files"
+                        "(e.g. path/checkpoint-12-output/)")
     parser.add_argument(
         "--max_shard_size",
         type=str,
         default="5GB",
         help="The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size"
-             "lower than this size. If expressed as a string, needs to be digits followed by a unit (like `5MB`"
-             "We default it to 5GB in order for models to be able to run easily on free-tier google colab instances"
-             "without CPU OOM issues.")
+        "lower than this size. If expressed as a string, needs to be digits followed by a unit (like `5MB`"
+        "We default it to 5GB in order for models to be able to run easily on free-tier google colab instances"
+        "without CPU OOM issues.")
     parser.add_argument(
         "--safe_serialization",
         default=False,
