@@ -105,9 +105,10 @@ if comm.get_rank() == 0:
     # print a table head first
     # then print total number at the end of the table
     # print a tag 'dynamo_output' before each line to allow post processing
-    #print("dynamo_output | Reason | Count |")
-    #print("dynamo_output | ------ | ----- |")
+    print("dynamo_output | Reason | Count |")
+    print("dynamo_output | ------ | ----- |")
     for item in dynamo_stats.items():
-        #print(f"dynamo_output | {item[0]} | {item[1]} |")
-        print(f"dynamo_output {item}")
-    #print(f"dynamo_output | Total | {sum(dynamo_stats.values())} |")
+        # replace '|' in item[0] with a literal '|' to avoid mess with table format
+        item = (item[0].replace('|', r'\|'), item[1])
+        print(f"dynamo_output | {item[0]} | {item[1]} |")
+    print(f"dynamo_output | Total | {sum(dynamo_stats.values())} |")
