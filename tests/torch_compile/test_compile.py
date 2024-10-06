@@ -20,16 +20,6 @@ def get_dynamo_stats():
     # TODO: consider deepcopy'ing the entire counters struct and
     # adding a helper to do subtraction on it
     return torch._dynamo.utils.counters["graph_break"]
-    #return collections.Counter({
-        #"calls_captured": torch._dynamo.utils.counters["stats"]["calls_captured"],
-        #"unique_graphs": torch._dynamo.utils.counters["stats"]["unique_graphs"],
-        #"graph_breaks": sum(torch._dynamo.utils.counters["graph_break"].values()),
-        ## NB: The plus removes zero counts
-        #"unique_graph_breaks": len(+torch._dynamo.utils.counters["graph_break"]),
-        #"autograd_captures": torch._dynamo.utils.counters["compiled_autograd"]["captures"],
-        #"autograd_compiles": torch._dynamo.utils.counters["compiled_autograd"]["compiles"],
-        #"cudagraph_skips": torch._dynamo.utils.counters["inductor"]["cudagraph_skips"],
-    #})
 
 
 class RandomDataset(Dataset):
@@ -100,10 +90,7 @@ for step, batch in enumerate(rand_loader):
 dynamo_stats = get_dynamo_stats()
 
 if comm.get_rank() == 0:
-    #print(dynamo_stats['graph_breaks'])
-    # print break down of graph break stats with markdown, print in table format, start with number of graph breaks, which is second item of each tuple. Then follow by reason, which is first item of each tuple
-    # print a table head first
-    # then print total number at the end of the table
+    # print break down of graph break stats with markdown, print in table format, start with reason, then count
     # print a tag 'dynamo_output' before each line to allow post processing
     print("dynamo_output | Reason | Count |")
     print("dynamo_output | ------ | ----- |")
