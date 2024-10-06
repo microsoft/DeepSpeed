@@ -14,7 +14,6 @@ from torch.utils.data import Dataset, DataLoader
 
 torch._dynamo.config.cache_size_limit = 100
 
-import collections
 
 def get_dynamo_stats():
     # TODO: consider deepcopy'ing the entire counters struct and
