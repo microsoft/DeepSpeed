@@ -101,5 +101,11 @@ dynamo_stats = get_dynamo_stats()
 
 if comm.get_rank() == 0:
     #print(dynamo_stats['graph_breaks'])
+    # print break down of graph break stats with markdown, print in table format, start with number of graph breaks, which is second item of each tuple. Then follow by reason, which is first item of each tuple
+    # print a table head first
+    # then print total number at the end of the table
+    print("| Reason | Count |")
+    print("| ------ | ----- |")
     for item in dynamo_stats.items():
-        print(item)
+        print(f"| {item[0]} | {item[1]} |")
+    print(f"| Total | {sum(dynamo_stats.values())} |")
