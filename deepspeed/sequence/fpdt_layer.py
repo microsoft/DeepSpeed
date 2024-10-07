@@ -18,16 +18,7 @@ from deepspeed.accelerator import get_accelerator
 from packaging import version
 from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
 from einops import rearrange
-from .layer import single_all_to_all
-
-
-def _rotate_half(x):
-    """
-    change sign so the last dimension becomes [-odd, +even]
-    """
-    x = rearrange(x, '... (j d) -> ... j d', j=2)
-    x1, x2 = x.unbind(dim=-2)
-    return torch.cat((-x2, x1), dim=-1)
+from .layer import single_all_to_all, apply_rotary_pos_emb
 
 
 def _rotate_half_backward(x):
@@ -39,23 +30,6 @@ def _rotate_half_backward(x):
     return torch.cat((x2, -x1), dim=-1)
 
 
-def apply_rotary_pos_emb(t, freqs_cos, freqs_sin):
-    """
-    input tensor t is of shape [seq_length, ..., dim]
-    rotary positional embeding tensor freqs is of shape [seq_length, ..., dim]
-    check https://kexue.fm/archives/8265 for detailed formulas
-    """
-    rot_dim = freqs_cos.shape[-1]
-    # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
-    t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
-
-    # first part is cosine component
-    # second part is sine component, need to change signs with _rotate_half method
-    t = (t * freqs_cos) + (_rotate_half(t) * freqs_sin)
-
-    res = t if t_pass.shape[-1] == 0 else torch.cat((t, t_pass), dim=-1)
-    return res
-
 
 def apply_rotary_pos_emb_backward(grad_output, freqs_cos, freqs_sin):
     rot_dim = freqs_cos.shape[-1]
@@ -65,7 +39,6 @@ def apply_rotary_pos_emb_backward(grad_output, freqs_cos, freqs_sin):
     return grad
 
 
-# @torch.jit.script
 def _update_out_and_lse(
     out: torch.Tensor,
     lse: torch.Tensor,
