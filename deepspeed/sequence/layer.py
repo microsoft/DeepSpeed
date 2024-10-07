@@ -206,7 +206,14 @@ class DistributedAttention(torch.nn.Module):
         if self.sp_overlap_comm and hasattr(layer, 'done_event'):
             self.dafult_stream.wait_event(layer.done_event)
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, batch_dim_idx: int, rotary_pos_emb=None, *args: Any, **kwargs) -> Tensor:
+    def forward(self,
+                query: Tensor,
+                key: Tensor,
+                value: Tensor,
+                batch_dim_idx: int,
+                rotary_pos_emb=None,
+                *args: Any,
+                **kwargs) -> Tensor:
         """ forward
 
         Arguments:
