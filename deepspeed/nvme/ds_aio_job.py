@@ -39,9 +39,10 @@ class Job(object):
             self.output_fd = None
 
 
-def run_job(job):
+def run_job(job, verbose=False):
     args = shlex.split(' '.join(job.cmd()))
-    print(f'args = {args}')
+    if verbose:
+        print(f'args = {args}')
     job.open_output_file()
     proc = subprocess.run(args=args, stdout=job.get_stdout(), stderr=job.get_stderr(), cwd=job.get_cwd())
     job.close_output_file()
