@@ -197,7 +197,10 @@ def safe_set_full_optimizer_state(param, value, optim_state_key):
 
 # TODO: Figure out the correct return dtype
 def safe_get_full_grad(param):
-    """Assemble and return the fp32 gradient of a low-precision (e.g., fp16) parameter.
+    """
+        Assemble and return the fp32 gradient of a low-precision (e.g., fp16) parameter.
+        The return data type is that used for gradient accumulation. This is usually the param data type,
+        but could also be different (e.g., bf16 param training with fp32 gradient accumulation).
 
         Args:
             param (``torch.nn.Parameter``): A model parameter
@@ -217,108 +220,93 @@ def safe_get_full_grad(param):
 
 
 def safe_set_full_grad(param, value):
-    """Update the partitioned gradient of a low-precision (e.g., fp16) parameter.
+    """
+        Update the partitioned gradient of a low-precision (e.g., fp16) parameter.
+        To avoid precision issues, the update value should have the data type of
+        gradient accumulation.
 
         Args:
             param (``torch.nn.Parameter``): A model parameter
-            value (``torch.Tensor``): New value
+            value (``torch.Tensor``): The un-partitioned new gradient value.
     """
     if param.grad is not None:
         param.grad.copy_(value)
-        return
-
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
+    elif hasattr(param, 'ds_id'):
+        # ZeRO stage 3 param
         param._z3_optimizer.set_fp32_grad_for_param(value, param)
-
-    # ZeRO stage 1, 2, and bf16_optimizer params
-    if hasattr(param, '_hp_mapping'):
+    elif hasattr(param, '_hp_mapping'):
+        # ZeRO stage 1, 2, and bf16_optimizer params
         param.set_full_hp_grad(value)
 
 
 ### Local API  START ###
 def safe_get_local_grad(param):
-    """Get the fp32 gradient of a partitioned parameter.
+    """
+        Get the local gradient partition of a ZeRO-3 partitioned parameter.
+        The return data type is that used for gradient accumulation. This is usually the param data type,
+        but could also be different (e.g., bf16 param training with fp32 gradient accumulation).
         Args:
             param (``torch.nn.Parameter``): A model parameter
     """
-    if param.grad is not None:
-        return param.grad
-
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
-        return param._z3_optimizer.get_local_fp32_grad_for_param(param)
-
-    return None
+    assert hasattr(param, 'ds_id'), f'This API is only defined for ZeRO-3 partitioned parameters'
+    return param._z3_optimizer.get_local_fp32_grad_for_param(param)
 
 
 def safe_set_local_grad(param, value):
-    """Update the gradient of a partitioned parameter.
-        Args:
-            param (``torch.nn.Parameter``): A model parameter
-            value (``torch.Tensor``): New value
     """
-    if param.grad is not None:
-        return param.grad.copy_(value)
+        Update the local gradient partition of a ZeRO-3 partitioned parameter.
+        To avoid precision issues, the update value should have the data type of
+        gradient accumulation.
 
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
-        return param._z3_optimizer.set_local_grad_for_param(value, param)
-
-    return None
+        Args:
+            param (``torch.nn.Parameter``): A model parameter.
+            value (``torch.Tensor``): New value of local gradient partition.
+    """
+    assert hasattr(param, 'ds_id'), f'This API is only defined for ZeRO-3 partitioned parameters'
+    param._z3_optimizer.set_local_grad_for_param(value, param)
 
 
 def safe_get_local_fp32_param(param):
-    """Get the fp32 partitioned parameter.
+    """Get the local partition of a ZeRO-3 partitioned parameter in fp32 precision.
         Args:
-            param (``torch.nn.Parameter``): A model parameter
+            param (``torch.nn.Parameter``): A model parameter.
     """
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
-        return param._z3_optimizer.get_local_fp32_param(param)
-
-    return None
+    assert hasattr(param, 'ds_id'), f'This API is only defined for ZeRO-3 partitioned parameters'
+    return param._z3_optimizer.get_local_fp32_param(param)
 
 
 def safe_get_local_optimizer_state(param, optim_state_key):
-    """Get the fp32 optimizer state of a partitioned parameter.
+    """Get the local optimizer state partition of ZeRO-3 partitioned parameter in fp32 precision.
         Args:
             param (``torch.nn.Parameter``): A model parameter
             optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer)
     """
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
-        return param._z3_optimizer.get_local_fp32_param(param, optim_state_key)
-
-    return None
+    assert hasattr(param, 'ds_id'), f'This API is only defined for ZeRO-3 partitioned parameters'
+    return param._z3_optimizer.get_local_fp32_param(param, optim_state_key)
 
 
 def safe_set_local_optimizer_state(param, value, optim_state_key):
-    """Update the fp32 optimizer state of a partitioned parameter.
+    """Update the local optimizer state partition of a ZeRO-3 partitioned parameter.
         Args:
-            param (``torch.nn.Parameter``): A model parameter
-            value (``torch.Tensor``): New value
-            optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer)
+            param (``torch.nn.Parameter``): A model parameter.
+            value (``torch.Tensor``): New value of local optimizer state partition.
+            optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer).
     """
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
-        param._z3_optimizer.set_local_hp_param(value, param, optim_state_key)
+    assert hasattr(param, 'ds_id'), f'This API is only defined for ZeRO-3 partitioned parameters'
+    param._z3_optimizer.set_local_hp_param(value, param, optim_state_key)
 
 
 def safe_set_local_fp32_param(param, value):
-    """Update the partitioned fp32 parameter.
+    """Update the local partition of ZeRO-3 partitioned parameter.
         Args:
-            param (``torch.nn.Parameter``): A model parameter
-            value (``torch.Tensor``): New value
+            param (``torch.nn.Parameter``): A model parameter.
+            value (``torch.Tensor``): New value of local parameter partition.
     """
-    # ZeRO stage 3 param
-    if hasattr(param, 'ds_id'):
-        param._z3_optimizer.set_local_hp_param(value, param)
+    assert hasattr(param, 'ds_id'), f'This API is only defined for ZeRO-3 partitioned parameters'
+    param._z3_optimizer.set_local_hp_param(value, param)
 
 
 ### Local API  END ###
-
-# TODO: Implement API for setting ZeRO partitioned gradients
 
 
 def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict, offload_gradient_dict, use_offload,
