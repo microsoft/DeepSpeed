@@ -677,9 +677,7 @@ class WarmupLR(object):
         self.last_batch_iteration = last_batch_iteration
         # Initialize lr in optimizer
         if last_batch_iteration == -1:
-            for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
-                param_group['lr'] = lr
-            self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+            self.update_lr()
 
     def get_lr(self):
         if self.last_batch_iteration < 0:
@@ -694,13 +692,17 @@ class WarmupLR(object):
         assert getattr(self, '_last_lr', None) is not None, "need to call step() first"
         return self._last_lr
 
+    def update_lr(self):
+        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+            param_group['lr'] = lr
+        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+        return
+
     def step(self, last_batch_iteration=None):
         if last_batch_iteration is None:
             last_batch_iteration = self.last_batch_iteration + 1
         self.last_batch_iteration = last_batch_iteration
-        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
-            param_group['lr'] = lr
-        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+        self.update_lr()
 
     def state_dict(self):
         return {'last_batch_iteration': self.last_batch_iteration}
@@ -826,9 +828,7 @@ class WarmupCosineLR(object):
 
         # Initialize lrs in optimizer groups
         if last_batch_iteration == -1:
-            for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
-                param_group['lr'] = lr
-            self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+            self.update_lr()
 
     def get_lr_ratio(self):
         if self.last_batch_iteration < 0:
@@ -851,15 +851,17 @@ class WarmupCosineLR(object):
         ratio = max(0.0, self.cos_min_ratio + ratio_delta * ratio)
         return ratio
 
+    def update_lr(self):
+        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+            param_group['lr'] = lr
+        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+        return
+
     def step(self, last_batch_iteration=None):
         if last_batch_iteration is None:
             last_batch_iteration = self.last_batch_iteration + 1
         self.last_batch_iteration = last_batch_iteration
-
-        lrs = self.get_lr()
-        for param_group, lr in zip(self.optimizer.param_groups, lrs):
-            param_group['lr'] = lr
-        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+        self.update_lr()
 
     def get_lr(self):
         if self.last_batch_iteration < 0:
