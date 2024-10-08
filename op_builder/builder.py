@@ -296,7 +296,7 @@ class OpBuilder(ABC):
         '''
         return []
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         '''
         Check if all non-python dependencies are satisfied to build this op
         '''
@@ -432,7 +432,7 @@ class OpBuilder(ABC):
                          "to detect the CPU architecture. 'lscpu' does not appear to exist on "
                          "your system, will fall back to use -march=native and non-vectorized execution.")
             return None
-        result = subprocess.check_output('lscpu', shell=True)
+        result = subprocess.check_output(['lscpu'])
         result = result.decode('utf-8').strip().lower()
 
         cpu_info = {}
@@ -482,7 +482,8 @@ class OpBuilder(ABC):
             cmds = [cmd]
         valid = False
         for cmd in cmds:
-            result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+            safe_cmd = ["bash", "-c", f"type {cmd}"]
+            result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
             valid = valid or result.wait() == 0
 
         if not valid and len(cmds) > 1:
@@ -678,7 +679,7 @@ class CUDAOpBuilder(OpBuilder):
             version_ge_1_5 = ['-DVERSION_GE_1_5']
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         return super().is_compatible(verbose)
 
     def builder(self):
