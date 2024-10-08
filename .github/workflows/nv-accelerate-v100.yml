@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, nvidia, cu117, v100]
+    runs-on: [self-hosted, nvidia, cu121, v100]
 
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install -U --cache-dir $TORCH_CACHE torch torchvision --index-url https://download.pytorch.org/whl/cu118
+          pip install -U --cache-dir $TORCH_CACHE torch torchvision --index-url https://download.pytorch.org/whl/cu121
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -47,6 +47,7 @@ jobs:
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           git clone https://github.com/huggingface/accelerate
           cd accelerate
+          git checkout ae9cb6e4db6f81fd18148c2cc67d72b903d81a46
           git rev-parse --short HEAD
           # installing dependencies
           pip install .[testing]
@@ -55,4 +56,4 @@ jobs:
           # tmp fix: force newer datasets version
           #pip install "datasets>=2.0.0"
           pip list
-          pytest $PYTEST_OPTS --color=yes --durations=0 --verbose tests/deepspeed -k "not test_prepare_multiple_models_zero3_inference"
+          pytest $PYTEST_OPTS --color=yes --durations=0 --verbose tests/deepspeed
