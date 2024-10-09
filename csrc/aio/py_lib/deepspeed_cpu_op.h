@@ -6,14 +6,17 @@
 #include <memory>
 #include <queue>
 #include "deepspeed_aio_op_desc.h"
+// #include "deepspeed_pin_tensor.h"
 
 struct cpu_op_desc_t : io_op_desc_t {
     torch::Tensor _cpu_buffer;
     bool _use_bounce_buffer;
+    bool _is_managed_bounce_buffer;
+    const std::unique_ptr<struct deepspeed_pin_tensor_t>& _pinned_tensor_mgr;
 
     cpu_op_desc_t(const bool read_op,
                   const torch::Tensor& buffer,
-                  const bool is_managed,
+                  const std::unique_ptr<struct deepspeed_pin_tensor_t>& pinned_tensor_mgr,
                   const int fd,
                   const char* filename,
                   const long long int file_num_bytes,
@@ -29,4 +32,7 @@ struct cpu_op_desc_t : io_op_desc_t {
     void validate();
 
     void finish();
+
+    void _alloc_bounce_buffer();
+    void _free_bounce_buffer();
 };

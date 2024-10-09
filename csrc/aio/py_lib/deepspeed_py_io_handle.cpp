@@ -209,9 +209,14 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const long long int file_num_bytes,
     const bool validate)
 {
-    bool is_managed = _pinned_tensor_mgr->is_managed(buffer);
-    return std::make_shared<cpu_op_desc_t>(
-        read_op, buffer, is_managed, fd, filename, file_num_bytes, _intra_op_parallelism, validate);
+    return std::make_shared<cpu_op_desc_t>(read_op,
+                                           buffer,
+                                           _pinned_tensor_mgr,
+                                           fd,
+                                           filename,
+                                           file_num_bytes,
+                                           _intra_op_parallelism,
+                                           validate);
 }
 
 int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,

@@ -22,6 +22,7 @@ struct deepspeed_pin_tensor_t {
     ~deepspeed_pin_tensor_t();
 
     torch::Tensor alloc(const long long num_elem, const at::ScalarType& elem_type);
+    torch::Tensor alloc(const int64_t num_elem, const torch::TensorOptions& options);
 
     bool free(torch::Tensor& locked_tensor);
 

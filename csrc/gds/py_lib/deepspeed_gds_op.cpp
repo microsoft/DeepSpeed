@@ -92,20 +92,12 @@ void gds_op_desc_t::remove_buffer_from_registry(const torch::Tensor& buffer)
 
 gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const torch::Tensor& buffer,
-                             const bool is_managed,
                              const int fd,
                              const char* filename,
                              const long long int file_num_bytes,
                              const int intra_op_parallelism,
                              const bool validate)
-    : io_op_desc_t(read_op,
-                   buffer,
-                   is_managed,
-                   fd,
-                   filename,
-                   file_num_bytes,
-                   intra_op_parallelism,
-                   validate)
+    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, intra_op_parallelism, validate)
 {
     _contiguous_buffer = _buffer.contiguous();
     const int64_t device = _buffer.get_device();
