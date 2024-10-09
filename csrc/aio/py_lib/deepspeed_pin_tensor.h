@@ -15,13 +15,13 @@ Functionality for managing CPU tensors occupying page-locked memory.
 #include "deepspeed_py_aio.h"
 
 struct deepspeed_pin_tensor_t {
-    std::map<void*, long long int> _locked_tensors;
+    std::map<void*, int64_t> _locked_tensors;
 
     deepspeed_pin_tensor_t() = default;
 
     ~deepspeed_pin_tensor_t();
 
-    torch::Tensor alloc(const long long num_elem, const at::ScalarType& elem_type);
+    torch::Tensor alloc(const int64_t num_elem, const at::ScalarType& elem_type);
     torch::Tensor alloc(const int64_t num_elem, const torch::TensorOptions& options);
 
     bool free(torch::Tensor& locked_tensor);

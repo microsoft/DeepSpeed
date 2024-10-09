@@ -6,7 +6,6 @@
 #include <memory>
 #include <queue>
 #include "deepspeed_aio_op_desc.h"
-// #include "deepspeed_pin_tensor.h"
 
 struct cpu_op_desc_t : io_op_desc_t {
     torch::Tensor _cpu_buffer;
@@ -19,7 +18,7 @@ struct cpu_op_desc_t : io_op_desc_t {
                   const std::unique_ptr<struct deepspeed_pin_tensor_t>& pinned_tensor_mgr,
                   const int fd,
                   const char* filename,
-                  const long long int file_num_bytes,
+                  const int64_t file_num_bytes,
                   const int intra_op_parallelism,
                   const bool validate);
 

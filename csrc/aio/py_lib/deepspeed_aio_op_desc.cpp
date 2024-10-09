@@ -11,7 +11,7 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
                            const torch::Tensor& buffer,
                            const int fd,
                            const char* filename,
-                           const long long int file_num_bytes,
+                           const int64_t file_num_bytes,
                            const int intra_op_parallelism,
                            const bool validate)
     : _read_op(read_op),

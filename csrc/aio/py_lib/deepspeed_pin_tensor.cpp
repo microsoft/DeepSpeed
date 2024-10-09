@@ -29,11 +29,10 @@ torch::Tensor deepspeed_pin_tensor_t::alloc(const int64_t num_elem,
 
     _locked_tensors[pinned_buffer] = num_bytes;
 
-    return at::from_blob(pinned_buffer, static_cast<long long int>(num_elem), options);
+    return at::from_blob(pinned_buffer, static_cast<int64_t>(num_elem), options);
 }
 
-torch::Tensor deepspeed_pin_tensor_t::alloc(const long long int num_elem,
-                                            const at::ScalarType& elem_type)
+torch::Tensor deepspeed_pin_tensor_t::alloc(const int64_t num_elem, const at::ScalarType& elem_type)
 {
     auto options = torch::TensorOptions().dtype(elem_type).device(torch::kCPU).requires_grad(false);
     return alloc(num_elem, options);

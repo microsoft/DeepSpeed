@@ -61,7 +61,7 @@ struct deepspeed_io_handle_t {
     int async_pwrite(const torch::Tensor& buffer, const char* filename);
 
     // TODO: Make API's args to be shape and dtype.
-    torch::Tensor new_cpu_locked_tensor(const long long int num_elem,
+    torch::Tensor new_cpu_locked_tensor(const int64_t num_elem,
                                         const torch::Tensor& example_tensor);
 
     bool free_cpu_locked_tensor(torch::Tensor&);
@@ -74,13 +74,12 @@ struct deepspeed_io_handle_t {
 
     std::shared_ptr<struct io_op_desc_t> _wait_for_aio_work();
 
-    bool _is_valid_parallel_aio_op(const bool read_op, const long long int num_bytes);
+    bool _is_valid_parallel_aio_op(const bool read_op, const int64_t num_bytes);
 
-    virtual std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(
-        const bool read_op,
-        const torch::Tensor& buffer,
-        const int fd,
-        const char* filename,
-        const long long int file_num_bytes,
-        const bool validate);
+    virtual std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(const bool read_op,
+                                                                    const torch::Tensor& buffer,
+                                                                    const int fd,
+                                                                    const char* filename,
+                                                                    const int64_t file_num_bytes,
+                                                                    const bool validate);
 };

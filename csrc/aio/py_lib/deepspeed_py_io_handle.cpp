@@ -64,13 +64,13 @@ int deepspeed_io_handle_t::read(torch::Tensor& buffer, const char* filename, con
 
     assert(_aio_ctxt);
 
-    long long num_file_bytes;
+    int64_t num_file_bytes;
     if (-1 == get_file_size(filename, num_file_bytes)) {
         const auto error_code = errno;
         report_file_error(filename, " fstat for read", error_code);
         return -1;
     }
-    assert(static_cast<long long int>(buffer.nbytes()) == num_file_bytes);
+    assert(static_cast<int64_t>(buffer.nbytes()) == num_file_bytes);
 
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
@@ -108,7 +108,7 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
     if (fd == -1) { return -1; }
 
     auto write_buffer = (char*)buffer.data_ptr();
-    const auto num_write_bytes = static_cast<long long int>(buffer.nbytes());
+    const auto num_write_bytes = static_cast<int64_t>(buffer.nbytes());
     std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(fd, 0, num_write_bytes, write_buffer));
 
     if (_aio_config._overlap_events) {
@@ -188,8 +188,7 @@ int deepspeed_io_handle_t::wait()
     return num_completed_ops;
 }
 
-bool deepspeed_io_handle_t::_is_valid_parallel_aio_op(const bool read_op,
-                                                      const long long int num_bytes)
+bool deepspeed_io_handle_t::_is_valid_parallel_aio_op(const bool read_op, const int64_t num_bytes)
 {
     const auto op_string = read_op ? "Read" : "Write";
     if (num_bytes % get_intra_op_parallelism()) {
@@ -206,7 +205,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const torch::Tensor& buffer,
     const int fd,
     const char* filename,
-    const long long int file_num_bytes,
+    const int64_t file_num_bytes,
     const bool validate)
 {
     return std::make_shared<cpu_op_desc_t>(read_op,
@@ -224,13 +223,13 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
                                  const bool validate,
                                  const bool async)
 {
-    long long num_file_bytes;
+    int64_t num_file_bytes;
     if (-1 == get_file_size(filename, num_file_bytes)) {
         const auto error_code = errno;
         report_file_error(filename, " fstat for read", error_code);
         return -1;
     }
-    const auto buffer_bytes = static_cast<long long int>(buffer.nbytes());
+    const auto buffer_bytes = static_cast<int64_t>(buffer.nbytes());
     if (buffer_bytes != num_file_bytes) {
         std::cout << filename << ": buffer nbytes != file bytes " << buffer_bytes
                   << " != " << num_file_bytes << std::endl;
@@ -257,7 +256,7 @@ int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
                                   const bool validate,
                                   const bool async)
 {
-    const auto num_write_bytes = static_cast<long long int>(buffer.nbytes());
+    const auto num_write_bytes = static_cast<int64_t>(buffer.nbytes());
     assert((num_write_bytes % _intra_op_parallelism) == 0);
 
     if (!_is_valid_parallel_aio_op(false, num_write_bytes)) { return -1; }
@@ -294,7 +293,7 @@ int deepspeed_io_handle_t::async_pwrite(const torch::Tensor& buffer, const char*
     return pwrite(buffer, filename, false, true);
 }
 
-at::Tensor deepspeed_io_handle_t::new_cpu_locked_tensor(const long long int num_elem,
+at::Tensor deepspeed_io_handle_t::new_cpu_locked_tensor(const int64_t num_elem,
                                                         const torch::Tensor& example_tensor)
 {
     return _pinned_tensor_mgr->alloc(num_elem, example_tensor.scalar_type());

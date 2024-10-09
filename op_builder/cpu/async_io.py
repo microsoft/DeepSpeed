@@ -3,7 +3,6 @@
 
 # DeepSpeed Team
 
-import os
 import distutils.spawn
 import subprocess
 
