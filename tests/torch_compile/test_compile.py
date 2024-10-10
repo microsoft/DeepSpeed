@@ -16,8 +16,6 @@ torch._dynamo.config.cache_size_limit = 100
 
 
 def get_dynamo_stats():
-    # TODO: consider deepcopy'ing the entire counters struct and
-    # adding a helper to do subtraction on it
     return torch._dynamo.utils.counters["graph_break"]
 
 
@@ -59,7 +57,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1, help='local rank passed from distributed launcher')
 parser.add_argument('--deepspeed_config',
                     type=str,
-                    default='ds_config.json',
+                    default='ds_config_z3.json',
                     help='path to DeepSpeed configuration file')
 cmd_args = parser.parse_args()
 
