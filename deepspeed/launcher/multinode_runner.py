@@ -148,10 +148,9 @@ class OpenMPIRunner(MultiNodeRunner):
         btl_tcp_opt = ['--mca', 'btl_tcp_if_include', 'eth0']
         if len(launcher_args) >= 2:
             for i in range(len(launcher_args) - 1):
-                if launcher_args[i] == '-mca' or launcher_args[i] == '--mca':
-                    if launcher_args[i + 1] == 'btl_tcp_if_include':
-                        btl_tcp_opt = []
-                        break
+                if launcher_args[i] in ['-mca', '--mca'] and launcher_args[i + 1] == 'btl_tcp_if_include':
+                    btl_tcp_opt = []
+                    break
 
         mpirun_cmd = [
             'mpirun',
