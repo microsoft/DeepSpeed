@@ -11,7 +11,6 @@ from torch import Tensor
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 
-from packaging import version
 from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
 from einops import rearrange
 from .layer import single_all_to_all, apply_rotary_pos_emb
@@ -419,7 +418,8 @@ class SequenceChunk:
         self.device = chunk.device if device is None else device
 
         cpu_chunk = torch.empty(chunk.shape, dtype=chunk.dtype, device='cpu', pin_memory=True)
-        if chunk.is_cuda:
+
+        if get_accelerator().on_accelerator(chunk):
             cpu_chunk.copy_(chunk, non_blocking=True)
         else:
             cpu_chunk = chunk
@@ -552,7 +552,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                     hidden_size_per_attention_head).permute(1, 0, 2, 3).contiguous()  # b, l, nh, hd
                 v_chunk = single_all_to_all(v_chunk, scatter_idx, gather_idx, 0, spg)
 
-                torch.distributed.barrier()
+                dist.barrier()
 
                 pos_emb_cos_chunk = pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
                 pos_emb_sin_chunk = pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
@@ -776,7 +776,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                         if grad_global_attn_output[next_q_compute_chunk_idx] is None:
                             grad_global_attn_output_chunk = single_all_to_all(grad_output[:, :chunk_size].contiguous(),
                                                                               scatter_idx, gather_idx, 0, spg)
-                            torch.distributed.barrier()
+                            dist.barrier()
                             grad_output = grad_output[:, chunk_size:]
                             grad_global_attn_output[next_q_compute_chunk_idx] = SequenceChunk(
                                 grad_global_attn_output_chunk, is_in_use=True)
@@ -821,7 +821,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
 
             general_offload_stream.synchronize()
             compute_stream.wait_stream(general_offload_stream)
-            torch.distributed.barrier()
+            dist.barrier()
 
             with get_accelerator().stream(compute_stream):
                 input_chunk = layernorm_output[i].get_gpu_chunk().reshape(-1, layernorm_output[i].chunk_shape[-1])
@@ -1080,10 +1080,7 @@ class FPDT_LogitsLoss(torch.autograd.Function):
         loss = loss.t().contiguous()
         loss_all = torch.empty(seqlen, batch_size, dtype=loss.dtype, device=loss.device).contiguous()
 
-        if version.parse(torch.__version__) >= version.parse('1.13'):
-            torch.distributed.all_gather_into_tensor(loss_all, loss, group=spg)
-        else:
-            torch.distributed._all_gather_base(loss_all, loss, group=spg)
+        dist.allgather_fn(loss_all, loss, group=spg)
 
         return loss_all
 

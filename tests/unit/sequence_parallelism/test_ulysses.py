@@ -5,11 +5,14 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
+from torch.nn.parameter import Parameter
 import deepspeed.comm as dist
 from deepspeed import initialize
 from transformers import AutoModel
 from unit.common import DistributedTest
 from deepspeed.sequence.layer import _SeqAllToAll
+from deepspeed.sequence.fpdt_layer import _FPDTGPUOffloadingAttentionImpl_
 from unit.util import skip_on_arch
 
 
@@ -75,3 +78,57 @@ class TestUlyssesAll2All(DistributedTest):
         # Check outputs are the same as input
         for i in range(1, len(outputs)):
             assert torch.allclose(input_tensor, outputs[i]), f"Outputs differ for sequence dim {seq_dims[i]}"
+
+
+@pytest.mark.parametrize("d0", [1, 4])  #batch dimension
+@pytest.mark.parametrize("d1", [2048, 4096])  #sequence dimension
+@pytest.mark.parametrize("chunk_size", [512, 1024])  #size of chunk
+@pytest.mark.parametrize("num_heads", [4, 8])
+@pytest.mark.parametrize("head_dim", [16, 32])
+class TestFPDTAttention():
+
+    def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
+                                                          num_heads: int) -> None:
+        skip_on_arch(min_arch=8)
+        model = AutoModel.from_pretrained('bert-base-uncased')
+        ds_engine, _, _, _ = initialize(
+            model=model,
+            config_params={
+                "train_batch_size": 8,
+                "data_parallel_size": 1,
+                "sequence_parallel_size": 1
+            },
+        )
+        #3D tensor : l, b, d
+        dim = head_dim * num_heads
+        input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device)
+        spg = ds_engine.seq_parallel_group
+
+        qkv_linear_weight = Parameter(torch.empty(dim + 2 * dim, dim, device=ds_engine.device, dtype=torch.half))
+
+        qkv_linear_bias = Parameter(torch.empty(dim + 2 * dim, device=ds_engine.device, dtype=torch.half))
+
+        num_chunks_attn = input_tensor.shape[0] * dist.get_world_size(spg) // chunk_size
+        fpdt_output = _FPDTGPUOffloadingAttentionImpl_.apply(input_tensor, None, None, None, spg, 2, 0, dim, dim,
+                                                             head_dim, dim, qkv_linear_weight, qkv_linear_bias, 0,
+                                                             num_chunks_attn, True)
+
+        # baseline
+        qkv = torch.matmul(input_tensor, qkv_linear_weight.t()) + qkv_linear_bias
+        q = qkv[:, :, :dim].contiguous().reshape(qkv.shape[0], qkv.shape[1], -1, head_dim).permute(1, 2, 0,
+                                                                                                   3).contiguous()
+        k = qkv[:, :, dim:dim * 2].contiguous().reshape(qkv.shape[0], qkv.shape[1], -1,
+                                                        head_dim).permute(1, 2, 0, 3).contiguous()
+        v = qkv[:, :, dim * 2:dim * 3].contiguous().reshape(qkv.shape[0], qkv.shape[1], -1,
+                                                            head_dim).permute(1, 2, 0,
+                                                                              3).contiguous()  # b, nhead, l, d
+
+        scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim, dtype=torch.half))
+
+        causal_mask = torch.triu(torch.ones(d1, d1), diagonal=1).bool()
+        causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
+        scores = scores.masked_fill(causal_mask, float('-inf'))
+        attn_weights = F.softmax(scores, dim=-1)
+        output = torch.matmul(attn_weights, v)
+
+        assert torch.allclose(fpdt_output, output)
