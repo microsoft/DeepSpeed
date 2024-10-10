@@ -5,6 +5,7 @@
 
 from .bert import DS_BERTContainer, HFBertLayerPolicy
 from .bloom import DS_BloomContainer, BLOOMLayerPolicy, supported_models
+from .bigcode import DS_BigCodeContainer, HFBigCodeLayerPolicy
 from .distil_bert import DS_DistilBERTContainer, HFDistilBertLayerPolicy
 from .gpt2 import DS_GPT2Container, HFGPT2LayerPolicy
 from .gptj import DS_GPTJContainer, HFGPTJLayerPolicy
