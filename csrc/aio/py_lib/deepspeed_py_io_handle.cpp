@@ -108,7 +108,7 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
     if (fd == -1) { return -1; }
 
     auto write_buffer = (char*)buffer.data_ptr();
-    const auto num_write_bytes = static_cast<long long int>(buffer.nbytes());
+    const auto num_write_bytes = static_cast<int64_t>(buffer.nbytes());
     std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(fd, 0, 0, num_write_bytes, write_buffer));
 
     if (_aio_config._overlap_events) {
@@ -205,9 +205,8 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const torch::Tensor& buffer,
     const int fd,
     const char* filename,
-<<<<<<< HEAD
-    const long long int file_num_bytes,
-    const long long int file_offset,
+    const int64_t file_num_bytes,
+    const int64_t file_offset,
     const bool validate)
 {
     return std::make_shared<cpu_op_desc_t>(read_op,
@@ -224,7 +223,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
 int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
                                  const char* filename,
                                  const bool validate,
-                                 const long long int file_offset,
+                                 const int64_t file_offset,
                                  const bool async)
 {
     int64_t num_file_bytes;
@@ -233,7 +232,7 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
         report_file_error(filename, " fstat for read", error_code);
         return -1;
     }
-    const auto buffer_bytes = static_cast<long long int>(buffer.nbytes());
+    const auto buffer_bytes = static_cast<int64_t>(buffer.nbytes());
     // No longer check, b/c buffer can exceed file size to enable 4k alignment
     //if ((buffer_bytes+file_offset) > num_file_bytes) {
     //    std::cout << filename << ": buffer + file offset > file bytes " << buffer_bytes
@@ -278,7 +277,7 @@ int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
     return wait();
 }
 
-int deepspeed_io_handle_t::sync_pread(torch::Tensor& buffer, const char* filename, const long long int file_offset)
+int deepspeed_io_handle_t::sync_pread(torch::Tensor& buffer, const char* filename, const int64_t file_offset)
 {
     return pread(buffer, filename, false, file_offset, false);
 }
@@ -288,7 +287,7 @@ int deepspeed_io_handle_t::sync_pwrite(const torch::Tensor& buffer, const char* 
     return pwrite(buffer, filename, false, false);
 }
 
-int deepspeed_io_handle_t::async_pread(torch::Tensor& buffer, const char* filename, const long long int file_offset)
+int deepspeed_io_handle_t::async_pread(torch::Tensor& buffer, const char* filename, const int64_t file_offset)
 {
     return pread(buffer, filename, false, file_offset, true);
 }

@@ -14,8 +14,8 @@ cpu_op_desc_t::cpu_op_desc_t(
     const std::unique_ptr<struct deepspeed_pin_tensor_t>& pinned_tensor_mgr,
     const int fd,
     const char* filename,
-    const long long int file_num_bytes,
-    const long long int file_offset,
+    const int64_t file_num_bytes,
+    const int64_t file_offset,
     const int intra_op_parallelism,
     const bool validate)
     : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, intra_op_parallelism, validate),

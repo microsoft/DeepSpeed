@@ -18,9 +18,9 @@ const int c_block_size = 128 * 1024;
 const int c_io_queue_depth = 8;
 
 io_xfer_ctxt::io_xfer_ctxt(const int fd,
-                           const long long int file_offset,
-                           const long long int buffer_offset,
-                           const long long int num_bytes,
+                           const int64_t file_offset,
+                           const int64_t buffer_offset,
+                           const int64_t num_bytes,
                            const void* buffer)
     : _fd(fd), 
       _file_base_offset(file_offset), 
@@ -88,7 +88,7 @@ int io_prep_generator::prep_iocbs(const int n_iocbs, std::vector<struct iocb*>* 
     for (auto i = 0; i < actual_n_iocbs; ++i, ++_next_iocb_index) {
         const auto xfer_buffer = (char*)_xfer_ctxt->_mem_buffer + _xfer_ctxt->_buffer_base_offset + (_next_iocb_index * _block_size);
         const auto xfer_offset = _xfer_ctxt->_file_base_offset + (_next_iocb_index * _block_size);
-        const auto num_bytes = min(static_cast<long long int>(_block_size), _remaining_bytes);
+        const auto num_bytes = min(static_cast<int64_t>(_block_size), _remaining_bytes);
         if (_read_op) {
             io_prep_pread(iocbs->at(i), _xfer_ctxt->_fd, xfer_buffer, num_bytes, xfer_offset);
         } else {

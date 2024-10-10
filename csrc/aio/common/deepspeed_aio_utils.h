@@ -30,15 +30,15 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 
 struct io_xfer_ctxt {
     const int _fd;
-    const long long int _file_base_offset;
-    const long long int _buffer_base_offset;
+    const int64_t _file_base_offset;
+    const int64_t _buffer_base_offset;
     const void* _mem_buffer;
     const int64_t _num_bytes;
 
     io_xfer_ctxt(const int fd,
-                 const long long int file_offset,
-                 const long long int buffer_offset,
-                 const long long int num_bytes,
+                 const int64_t file_offset,
+                 const int64_t buffer_offset,
+                 const int64_t num_bytes,
                  const void* buffer);
 };
 
