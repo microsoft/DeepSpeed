@@ -24,7 +24,7 @@ struct gds_op_desc_t : io_op_desc_t {
                   const char* filename,
                   const long long int file_num_bytes,
                   const long long int file_offset,
-                  const int num_threads,
+                  const int intra_op_parallelism,
                   const bool validate);
 
     void run(const int tid,

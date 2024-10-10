@@ -16,7 +16,7 @@ struct io_op_desc_t {
     const std::string _filename;
     const long long int _file_num_bytes;
     const long long int _file_offset;
-    const int _num_threads;
+    const int _intra_op_parallelism;
     const long long int _num_bytes_per_thread;
     torch::Tensor _contiguous_buffer;
     const bool _validate;
@@ -27,7 +27,7 @@ struct io_op_desc_t {
                  const char* filename,
                  const long long int file_num_bytes,
                  const long long int file_offset,
-                 const int num_threads,
+                 const int intra_op_parallelism,
                  const bool validate);
 
     virtual void run(const int tid,

@@ -13,7 +13,7 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
                            const char* filename,
                            const long long int file_num_bytes,
                            const long long int file_offset,
-                           const int num_threads,
+                           const int intra_op_parallelism,
                            const bool validate)
     : _read_op(read_op),
       _buffer(buffer),
@@ -21,8 +21,8 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
       _filename(filename),
       _file_num_bytes(file_num_bytes),
       _file_offset(file_offset),
-      _num_threads(num_threads),
-      _num_bytes_per_thread( static_cast<long long int>(buffer.nbytes())/ num_threads),
+      _intra_op_parallelism(intra_op_parallelism),
+      _num_bytes_per_thread( static_cast<long long int>(buffer.nbytes())/ intra_op_parallelism),
       _validate(validate)
 {
 }
