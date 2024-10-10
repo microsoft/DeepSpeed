@@ -19,7 +19,7 @@ cpu_op_desc_t::cpu_op_desc_t(
     const int intra_op_parallelism,
     const bool validate)
     : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, intra_op_parallelism, validate),
-      _cpu_buffer(buffer)
+      _cpu_buffer(buffer),
       _pinned_tensor_mgr(pinned_tensor_mgr),
       _is_managed_bounce_buffer(false)
 {
