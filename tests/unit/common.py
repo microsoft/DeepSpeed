@@ -292,7 +292,7 @@ class DistributedExec(ABC):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                 info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 name = pynvml.nvmlDeviceGetName(handle)
-                print(f"[MEM_DEBUG] GPU {i}: {name.decode('utf-8')} Total memory: {info.total} Used memory: {info.used} Free memory: {info.free}")
+                print(f"[MEM_DEBUG] GPU {i}: {name} Total memory: {info.total} Used memory: {info.used} Free memory: {info.free}")
             
         def print_cpu_memory_usage():
             import psutil
