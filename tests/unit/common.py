@@ -11,6 +11,7 @@ import socket
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+import fcntl
 
 import torch
 import torch.multiprocessing as mp
@@ -38,24 +39,77 @@ def get_xdist_worker_id():
     return None
 
 
-def get_master_port(base_port=29500, port_range_size=1000):
-    xdist_worker_id = get_xdist_worker_id()
-    if xdist_worker_id is not None:
-        # Make xdist workers use different port ranges to avoid race conditions
-        base_port += port_range_size * xdist_worker_id
+# def get_master_port(base_port=29500, port_range_size=1000):
+#     xdist_worker_id = get_xdist_worker_id()
+#     if xdist_worker_id is not None:
+#         # Make xdist workers use different port ranges to avoid race conditions
+#         base_port += port_range_size * xdist_worker_id
 
-    # Select first open port in range
-    port = base_port
-    max_port = base_port + port_range_size
-    sock = socket.socket()
-    while port < max_port:
+#     # Select first open port in range
+#     port = base_port
+#     max_port = base_port + port_range_size
+#     sock = socket.socket()
+#     while port < max_port:
+#         try:
+#             sock.bind(('', port))
+#             sock.close()
+#             return str(port)
+#         except OSError:
+#             port += 1
+#     raise IOError('no free ports')
+
+PORT_FILE_PATH = "/tmp/port_lock_file.txt"
+
+
+def get_master_port(base_port=29500, port_range_size=1000):
+    available_ports = list(range(base_port, base_port + port_range_size))
+
+    with open(PORT_FILE_PATH, 'a+') as port_file:
         try:
-            sock.bind(('', port))
-            sock.close()
-            return str(port)
-        except OSError:
-            port += 1
-    raise IOError('no free ports')
+            fcntl.flock(port_file, fcntl.LOCK_EX)
+            port_file.seek(0)
+            used_ports = {int(line.strip()) for line in port_file if line.strip().isdigit()}
+
+            sock = socket.socket()
+            for port in available_ports:
+                if port not in used_ports:
+                    try:
+                        sock.bind(('', port))
+                        sock.close()
+
+                        port_file.write(f"{port}\n")
+                        port_file.flush()
+                        print(f"Allocated port: {port}")
+                        return str(port)
+                    except OSError:
+                        pass
+            raise IOError('no free ports')
+
+        finally:
+            fcntl.flock(port_file, fcntl.LOCK_UN)
+
+
+def release_port_with_lock(port):
+    if not os.path.exists(PORT_FILE_PATH):
+        raise FileNotFoundError(f"Port file not found: {PORT_FILE_PATH}")
+
+    with open(PORT_FILE_PATH, 'r+') as port_file:
+        try:
+            fcntl.flock(port_file, fcntl.LOCK_EX)
+            lines = port_file.readlines()
+            port_file.seek(0)
+            port_file.truncate(0)
+
+            for line in lines:
+                if int(line.strip()) != port:
+                    port_file.write(line)
+
+            port_file.seek(0)
+            if port_file.read().strip() == "":
+                os.remove(PORT_FILE_PATH)
+
+        finally:
+            fcntl.flock(port_file, fcntl.LOCK_UN)
 
 
 def _get_cpu_socket_count():
@@ -181,9 +235,9 @@ class DistributedExec(ABC):
 
         if self.reuse_dist_env:
             if num_procs not in self._pool_cache:
-                self._pool_cache[num_procs] = mp.Pool(processes=num_procs)
                 master_port = get_master_port()
-            pool = self._pool_cache[num_procs]
+                self._pool_cache[num_procs] = (mp.Pool(processes=num_procs), master_port)
+            pool, _ = self._pool_cache[num_procs]
         else:
             pool = mp.Pool(processes=num_procs)
             master_port = get_master_port()
@@ -203,6 +257,8 @@ class DistributedExec(ABC):
             # Regardless of the outcome, ensure proper teardown
             # Tear down distributed environment and close process pools
             self._close_pool(pool, num_procs)
+            if not self.reuse_dist_env:
+                release_port_with_lock(int(master_port))
 
         # If we skipped a test, propagate that to this process
         if any(skip_msgs):
@@ -212,53 +268,56 @@ class DistributedExec(ABC):
     def _launch_non_daemonic_procs(self, num_procs):
         assert not self.reuse_dist_env, "Cannot reuse distributed environment with non-daemonic processes"
 
-        master_port = get_master_port()
-        skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
-        processes = []
-        prev_start_method = mp.get_start_method()
-        mp.set_start_method('spawn', force=True)
-        for local_rank in range(num_procs):
-            p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, skip_msg))
-            p.start()
-            processes.append(p)
-        mp.set_start_method(prev_start_method, force=True)
+        try:
+            master_port = get_master_port()
+            skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
+            processes = []
+            prev_start_method = mp.get_start_method()
+            mp.set_start_method('spawn', force=True)
+            for local_rank in range(num_procs):
+                p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, skip_msg))
+                p.start()
+                processes.append(p)
+            mp.set_start_method(prev_start_method, force=True)
 
-        # Now loop and wait for a test to complete. The spin-wait here isn't a big
-        # deal because the number of processes will be O(#GPUs) << O(#CPUs).
-        any_done = False
-        start = time.time()
-        while (not any_done) and ((time.time() - start) < self.exec_timeout):
+            # Now loop and wait for a test to complete. The spin-wait here isn't a big
+            # deal because the number of processes will be O(#GPUs) << O(#CPUs).
+            any_done = False
+            start = time.time()
+            while (not any_done) and ((time.time() - start) < self.exec_timeout):
+                for p in processes:
+                    if not p.is_alive():
+                        any_done = True
+                        break
+                time.sleep(.1)  # So we don't hog CPU
+
+            # If we hit the timeout, then presume a test is hanged
+            if not any_done:
+                for p in processes:
+                    p.terminate()
+                pytest.exit("Test hanged, exiting", returncode=1)
+
+            # Wait for all other processes to complete
             for p in processes:
-                if not p.is_alive():
-                    any_done = True
-                    break
-            time.sleep(.1)  # So we don't hog CPU
+                p.join(self.exec_timeout)
 
-        # If we hit the timeout, then presume a test is hanged
-        if not any_done:
-            for p in processes:
-                p.terminate()
-            pytest.exit("Test hanged, exiting", returncode=1)
+            failed = [(rank, p) for rank, p in enumerate(processes) if p.exitcode != 0]
+            for rank, p in failed:
+                # If it still hasn't terminated, kill it because it hung.
+                if p.exitcode is None:
+                    p.terminate()
+                    pytest.fail(f'Worker {rank} hung.', pytrace=False)
+                if p.exitcode < 0:
+                    pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}', pytrace=False)
+                if p.exitcode > 0:
+                    pytest.fail(f'Worker {rank} exited with code {p.exitcode}', pytrace=False)
 
-        # Wait for all other processes to complete
-        for p in processes:
-            p.join(self.exec_timeout)
-
-        failed = [(rank, p) for rank, p in enumerate(processes) if p.exitcode != 0]
-        for rank, p in failed:
-            # If it still hasn't terminated, kill it because it hung.
-            if p.exitcode is None:
-                p.terminate()
-                pytest.fail(f'Worker {rank} hung.', pytrace=False)
-            if p.exitcode < 0:
-                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}', pytrace=False)
-            if p.exitcode > 0:
-                pytest.fail(f'Worker {rank} exited with code {p.exitcode}', pytrace=False)
-
-        if not skip_msg.empty():
-            # This assumed all skip messages are the same, it may be useful to
-            # add a check here to assert all exit messages are equal
-            pytest.skip(skip_msg.get())
+            if not skip_msg.empty():
+                # This assumed all skip messages are the same, it may be useful to
+                # add a check here to assert all exit messages are equal
+                pytest.skip(skip_msg.get())
+        finally:
+            release_port_with_lock(int(master_port))
 
     def _launch_procs(self, num_procs):
         # Verify we have enough accelerator devices to run this test
