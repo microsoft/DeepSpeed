@@ -46,7 +46,6 @@ jobs:
         run: |
           pip install .[dev,1bit,autotuning]
           ds_report
-          pip install pynvml psutil
 
       - name: Python environment
         run: |

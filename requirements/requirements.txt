@@ -8,3 +8,4 @@ py-cpuinfo
 pydantic>=2.0.0
 torch
 tqdm
+pynvml
