@@ -279,7 +279,11 @@ class DistributedExec(ABC):
         # Set start method to `forkserver` (or `fork`)
         mp.set_start_method('forkserver', force=True)
 
-        import pynvml
+        try:
+            import pynvml
+        except ImportError:
+            pynvml = None
+
         def print_gpu_memory_usage():
             # Initialize NVML
             pynvml.nvmlInit()
@@ -301,8 +305,15 @@ class DistributedExec(ABC):
             print(f"[MEM_DEBUG] CPU Memory Usage: {used}")
 
         print(f"[MEM_DEBUG] Running test with {num_procs} processes")
-        print_gpu_memory_usage()
+        if pynvml is not None:
+            print_gpu_memory_usage()
         print_cpu_memory_usage()
+
+        import getpass
+        current_user = getpass.getuser()
+        import psutil
+        user_process_count = sum(1 for proc in psutil.process_iter(['username']) if proc.info['username'] == current_user)
+        print(f"[MEM_DEBUG] User process count: {user_process_count}")
 
         if self.non_daemonic_procs:
             self._launch_non_daemonic_procs(num_procs)
@@ -325,6 +336,8 @@ class DistributedExec(ABC):
 
             # turn off NCCL logging if set
             os.environ.pop('NCCL_DEBUG', None)
+
+            print(f"[MEM_DEBUG] [r{{os.environ['RANK']}}] MASTER_ADDR: {os.environ['MASTER_ADDR']}, MASTER_PORT: {os.environ['MASTER_PORT']}, LOCAL_RANK: {os.environ['LOCAL_RANK']}, RANK: {os.environ['RANK']}, LOCAL_SIZE: {os.environ['LOCAL_SIZE']}, WORLD_SIZE: {os.environ['WORLD_SIZE']}")
 
             if get_accelerator().is_available():
                 set_accelerator_visible()
