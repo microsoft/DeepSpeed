@@ -279,6 +279,31 @@ class DistributedExec(ABC):
         # Set start method to `forkserver` (or `fork`)
         mp.set_start_method('forkserver', force=True)
 
+        import pynvml
+        def print_gpu_memory_usage():
+            # Initialize NVML
+            pynvml.nvmlInit()
+
+            # Get the number of GPUs
+            device_count = pynvml.nvmlDeviceGetCount()
+            
+            # Iterate over each GPU and print memory usage
+            for i in range(device_count):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                name = pynvml.nvmlDeviceGetName(handle)
+                print(f"[MEM_DEBUG] GPU {i}: {name.decode('utf-8')} Total memory: {info.total} Used memory: {info.used} Free memory: {info.free}")
+            
+        def print_cpu_memory_usage():
+            import psutil
+            vm_stats = psutil.virtual_memory()
+            used = vm_stats.total - vm_stats.available
+            print(f"[MEM_DEBUG] CPU Memory Usage: {used}")
+
+        print(f"[MEM_DEBUG] Running test with {num_procs} processes")
+        print_gpu_memory_usage()
+        print_cpu_memory_usage()
+
         if self.non_daemonic_procs:
             self._launch_non_daemonic_procs(num_procs)
         else:
