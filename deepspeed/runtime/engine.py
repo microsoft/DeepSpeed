@@ -2145,8 +2145,6 @@ class DeepSpeedEngine(Module):
         else:
             self.zero_grad()
 
-        report_progress = self.global_rank == 0 if self.global_rank else True
-
         # Check overflow here since in DS fp16 optimizer, the overflow is updated in above step() function.
         overflow = False
         if hasattr(self.optimizer, "overflow"):
@@ -2166,8 +2164,10 @@ class DeepSpeedEngine(Module):
                     # pipe_engine.train_batch()
                     self.lr_scheduler.step(self.train_batch_size())
 
-        if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
-            self._report_progress(self.global_steps + 1)
+        if self.steps_per_print() is not None:
+            report_progress = self.global_rank == 0 if self.global_rank else True
+            if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
+                self._report_progress(self.global_steps + 1)
 
         self.losses = None
         self.global_steps += 1
@@ -3675,7 +3675,11 @@ class DeepSpeedEngine(Module):
         if self.is_compiled:
             return
 
-        self.module.compile(backend=backend, **compile_kwargs)
+        if 'backend' in compile_kwargs:
+            logger.warning("The `backend` in `compile_kwargs` will be overridden. Use the `backend` argument instead.")
+
+        # create new dict to avoid modifying original dict
+        self.module.compile(**{**compile_kwargs, 'backend': backend})
         self._is_compiled = True
 
     @property
