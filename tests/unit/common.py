@@ -332,7 +332,7 @@ class DistributedExec(ABC):
             os.environ.pop('NCCL_DEBUG', None)
 
             if "MASTER_ADDR" in os.environ:
-                print(f"[MEM_DEBUG] [r{{os.environ['RANK']}}] MASTER_ADDR: {os.environ['MASTER_ADDR']}, MASTER_PORT: {os.environ['MASTER_PORT']}, LOCAL_RANK: {os.environ['LOCAL_RANK']}, RANK: {os.environ['RANK']}, LOCAL_SIZE: {os.environ['LOCAL_SIZE']}, WORLD_SIZE: {os.environ['WORLD_SIZE']}")
+                print(f"[MEM_DEBUG] [r{os.environ['RANK']}] MASTER_ADDR: {os.environ['MASTER_ADDR']}, MASTER_PORT: {os.environ['MASTER_PORT']}, LOCAL_RANK: {os.environ['LOCAL_RANK']}, RANK: {os.environ['RANK']}, LOCAL_SIZE: {os.environ['LOCAL_SIZE']}, WORLD_SIZE: {os.environ['WORLD_SIZE']}")
 
             if get_accelerator().is_available():
                 set_accelerator_visible()
