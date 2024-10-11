@@ -279,14 +279,8 @@ class DistributedExec(ABC):
         # Set start method to `forkserver` (or `fork`)
         mp.set_start_method('forkserver', force=True)
 
-        try:
+        def print_device_memory_usage():
             import pynvml
-        except ImportError:
-            pynvml = None
-
-        def print_gpu_memory_usage():
-            # Initialize NVML
-            pynvml.nvmlInit()
 
             # Get the number of GPUs
             device_count = pynvml.nvmlDeviceGetCount()
@@ -305,8 +299,8 @@ class DistributedExec(ABC):
             print(f"[MEM_DEBUG] CPU Memory Usage: {used}")
 
         print(f"[MEM_DEBUG] Running test with {num_procs} processes")
-        if pynvml is not None:
-            print_gpu_memory_usage()
+        if get_accelerator()._name == 'cuda':
+            print_device_memory_usage()
         print_cpu_memory_usage()
 
         import getpass
