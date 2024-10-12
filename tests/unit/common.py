@@ -186,6 +186,7 @@ class DistributedExec(ABC):
             # Currently we see memory leak for tests that reuse distributed environment
             print("Ignoring reuse_dist_env and forcibly setting it to False")
             warn_reuse_dist_env = True
+        self.reuse_dist_env = False
 
         if self.reuse_dist_env:
             if num_procs not in self._pool_cache:
