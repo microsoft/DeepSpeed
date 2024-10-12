@@ -12,6 +12,7 @@ import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 import fcntl
+import tempfile
 
 import torch
 import torch.multiprocessing as mp
@@ -25,6 +26,7 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
+DEEPSPEED_MASTER_PORT_LOCK_FILE = os.environ.get('DS_UNITTEST_MASTER_PORT_LOCK_FILE', None)
 
 
 def is_rocm_pytorch():
@@ -39,32 +41,17 @@ def get_xdist_worker_id():
     return None
 
 
-# def get_master_port(base_port=29500, port_range_size=1000):
-#     xdist_worker_id = get_xdist_worker_id()
-#     if xdist_worker_id is not None:
-#         # Make xdist workers use different port ranges to avoid race conditions
-#         base_port += port_range_size * xdist_worker_id
-
-#     # Select first open port in range
-#     port = base_port
-#     max_port = base_port + port_range_size
-#     sock = socket.socket()
-#     while port < max_port:
-#         try:
-#             sock.bind(('', port))
-#             sock.close()
-#             return str(port)
-#         except OSError:
-#             port += 1
-#     raise IOError('no free ports')
-
-PORT_FILE_PATH = "/tmp/port_lock_file.txt"
-
-
 def get_master_port(base_port=29500, port_range_size=1000):
+    global DEEPSPEED_MASTER_PORT_LOCK_FILE
+
+    if DEEPSPEED_MASTER_PORT_LOCK_FILE is None:
+        # Generate file name only
+        fd, DEEPSPEED_MASTER_PORT_LOCK_FILE = tempfile.mkstemp()
+        os.close(fd)
+
     available_ports = list(range(base_port, base_port + port_range_size))
 
-    with open(PORT_FILE_PATH, 'a+') as port_file:
+    with open(DEEPSPEED_MASTER_PORT_LOCK_FILE, 'a+') as port_file:
         try:
             fcntl.flock(port_file, fcntl.LOCK_EX)
             port_file.seek(0)
@@ -79,7 +66,6 @@ def get_master_port(base_port=29500, port_range_size=1000):
 
                         port_file.write(f"{port}\n")
                         port_file.flush()
-                        print(f"Allocated port: {port}")
                         return str(port)
                     except OSError:
                         pass
@@ -90,10 +76,10 @@ def get_master_port(base_port=29500, port_range_size=1000):
 
 
 def release_port_with_lock(port):
-    if not os.path.exists(PORT_FILE_PATH):
-        raise FileNotFoundError(f"Port file not found: {PORT_FILE_PATH}")
+    if not os.path.exists(DEEPSPEED_MASTER_PORT_LOCK_FILE):
+        raise FileNotFoundError(f"Port file not found: {DEEPSPEED_MASTER_PORT_LOCK_FILE}")
 
-    with open(PORT_FILE_PATH, 'r+') as port_file:
+    with open(DEEPSPEED_MASTER_PORT_LOCK_FILE, 'r+') as port_file:
         try:
             fcntl.flock(port_file, fcntl.LOCK_EX)
             lines = port_file.readlines()
@@ -106,7 +92,7 @@ def release_port_with_lock(port):
 
             port_file.seek(0)
             if port_file.read().strip() == "":
-                os.remove(PORT_FILE_PATH)
+                os.remove(DEEPSPEED_MASTER_PORT_LOCK_FILE)
 
         finally:
             fcntl.flock(port_file, fcntl.LOCK_UN)
