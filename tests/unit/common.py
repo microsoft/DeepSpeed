@@ -284,14 +284,16 @@ class DistributedExec(ABC):
 
             # Get the number of GPUs
             device_count = pynvml.nvmlDeviceGetCount()
-            
+
             # Iterate over each GPU and print memory usage
             for i in range(device_count):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                 info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 name = pynvml.nvmlDeviceGetName(handle)
-                print(f"[MEM_DEBUG] GPU {i}: {name} Total memory: {info.total} Used memory: {info.used} Free memory: {info.free}")
-            
+                print(
+                    f"[MEM_DEBUG] GPU {i}: {name} Total memory: {info.total} Used memory: {info.used} Free memory: {info.free}"
+                )
+
         def print_cpu_memory_usage():
             import psutil
             vm_stats = psutil.virtual_memory()
@@ -306,7 +308,8 @@ class DistributedExec(ABC):
         import getpass
         current_user = getpass.getuser()
         import psutil
-        user_process_count = sum(1 for proc in psutil.process_iter(['username']) if proc.info['username'] == current_user)
+        user_process_count = sum(1 for proc in psutil.process_iter(['username'])
+                                 if proc.info['username'] == current_user)
         print(f"[MEM_DEBUG] User process count: {user_process_count}")
 
         if self.non_daemonic_procs:
@@ -332,7 +335,9 @@ class DistributedExec(ABC):
             os.environ.pop('NCCL_DEBUG', None)
 
             if "MASTER_ADDR" in os.environ:
-                print(f"[MEM_DEBUG] [r{os.environ['RANK']}] MASTER_ADDR: {os.environ['MASTER_ADDR']}, MASTER_PORT: {os.environ['MASTER_PORT']}, LOCAL_RANK: {os.environ['LOCAL_RANK']}, RANK: {os.environ['RANK']}, LOCAL_SIZE: {os.environ['LOCAL_SIZE']}, WORLD_SIZE: {os.environ['WORLD_SIZE']}")
+                print(
+                    f"[MEM_DEBUG] [r{os.environ['RANK']}] MASTER_ADDR: {os.environ['MASTER_ADDR']}, MASTER_PORT: {os.environ['MASTER_PORT']}, LOCAL_RANK: {os.environ['LOCAL_RANK']}, RANK: {os.environ['RANK']}, LOCAL_SIZE: {os.environ['LOCAL_SIZE']}, WORLD_SIZE: {os.environ['WORLD_SIZE']}"
+                )
 
             if get_accelerator().is_available():
                 set_accelerator_visible()
