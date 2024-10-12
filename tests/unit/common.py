@@ -219,10 +219,13 @@ class DistributedExec(ABC):
         # Create process pool or use cached one
         master_port = None
 
-        if get_accelerator().device_name() == 'hpu':
-            if self.reuse_dist_env:
-                print("Ignoring reuse_dist_env for hpu")
-                self.reuse_dist_env = False
+        # if get_accelerator().device_name() == 'hpu':
+        #     if self.reuse_dist_env:
+        #         print("Ignoring reuse_dist_env for hpu")
+        #         self.reuse_dist_env = False
+
+        print("[MEM_DEBUG] Ignoring reuse_dist_env and forcibly setting it to False")
+        self.reuse_dist_env = False
 
         if self.reuse_dist_env:
             if num_procs not in self._pool_cache:
