@@ -55,5 +55,5 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          DS_UNITTEST_MASTER_PORT_LOCK_FILE=/tmp/master_ports.lock pytest $PYTEST_OPTS -s unit/ --torch_ver="2.4" --cuda_ver="12.1" 2>/dev/null | grep MEM_DEBUG
-          DS_UNITTEST_MASTER_PORT_LOCK_FILE=/tmp/master_ports.lock pytest $PYTEST_OPTS -s -m 'sequential' unit/ --torch_ver="2.4" --cuda_ver="12.1" 2>/dev/null | grep MEM_DEBUG
+          DS_UNITTEST_MASTER_PORT_LOCK_FILE=/tmp/master_ports.lock pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="2.4" --cuda_ver="12.1"
+          DS_UNITTEST_MASTER_PORT_LOCK_FILE=/tmp/master_ports.lock pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="2.4" --cuda_ver="12.1"
