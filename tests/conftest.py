@@ -12,6 +12,8 @@ from os.path import abspath, dirname, join
 import torch
 import warnings
 
+from unit.common import release_port_with_lock
+
 # Set this environment variable for the T5 inference unittest(s) (e.g. google/t5-v1_1-small)
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
@@ -76,7 +78,8 @@ def pytest_runtest_call(item):
 def pytest_runtest_teardown(item, nextitem):
     if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
         dist_test_class = item.cls()
-        for num_procs, pool in dist_test_class._pool_cache.items():
+        for num_procs, (pool, master_port) in dist_test_class._pool_cache.items():
+            release_port_with_lock(int(master_port))
             dist_test_class._close_pool(pool, num_procs, force=True)
 
 
