@@ -296,7 +296,7 @@ class DistributedExec(ABC):
             import psutil
             vm_stats = psutil.virtual_memory()
             used = vm_stats.total - vm_stats.available
-            print(f"[MEM_DEBUG] CPU Memory Usage: {used}")
+            print(f"[MEM_DEBUG] CPU Memory Usage: {used} Available: {vm_stats.available}")
 
         print(f"[MEM_DEBUG] Running test with {num_procs} processes")
         if get_accelerator()._name == 'cuda':
