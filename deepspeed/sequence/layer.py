@@ -104,7 +104,7 @@ def uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group):
         #chunk_num_heads_small=floor(7/4)=1
         #chunk_num_heads_large=ceil(7/4)=2
         #num_chunk_heads_large=len([2,2,2])=3, all2all_buffer_counts
-        #num_chunk_heads_large=len([1])=1, all2all_buffer_counts
+        #num_chunk_heads_small=len([1])=1, all2all_buffer_counts
         #total_num_large_heads=sum([2,2,2])=7
         #total_num_small_heads=sum([1])=1
 
