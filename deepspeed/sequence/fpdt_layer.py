@@ -11,7 +11,12 @@ from torch import Tensor
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 
-from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
+try:
+    from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
+except ImportError:
+    _flash_attn_forward = None
+    _flash_attn_backward = None
+
 from einops import rearrange
 from .layer import single_all_to_all, apply_rotary_pos_emb
 
@@ -894,6 +899,9 @@ class FPDT_Attention(torch.nn.Module):
                  enable_offloading=True) -> None:
 
         super(FPDT_Attention, self).__init__()
+        if _flash_attn_forward is None or _flash_attn_backward is None:
+            raise ImportError("DeepSpeed FPDT requires flash-attn 2.6.3. Please install it with `pip install flash-attn --no-build-isolation`.")
+    
         self.spg = sequence_process_group
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
