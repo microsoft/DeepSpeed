@@ -11,6 +11,7 @@ import socket
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+import fcntl
 
 import torch
 import torch.multiprocessing as mp
@@ -24,6 +25,7 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
+RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
 
 warn_reuse_dist_env = False
 
@@ -126,6 +128,42 @@ def set_accelerator_visible():
     dev_id_list = cuda_visible.split(",")
     dev_id_list = dev_id_list[xdist_worker_id:] + dev_id_list[:xdist_worker_id]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
+
+
+class LogTestRun:
+
+    def __init__(self, running_test_log_file, test_class_name, test_name, num_procs):
+        self.running_test_log_file = running_test_log_file
+        self.num_procs = num_procs
+        self.header = f"[xdist_worker={get_xdist_worker_id()}][{test_class_name}][{test_name}]"
+
+    def write_to_log_with_lock(self, msg: str):
+        with open(self.running_test_log_file, 'a+') as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.write(f"{self.header} {msg}\n")
+                f.flush()
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+
+    def __enter__(self):
+        if self.running_test_log_file is None:
+            return
+
+        self.write_to_log_with_lock(f"Running with {self.num_procs} processes")
+        self.start_time = time.time()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.running_test_log_file is None:
+            return
+
+        elapsed_time = time.time() - self.start_time
+        if exc_type is not None:
+            self.write_to_log_with_lock(
+                f"Failed with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {exc_tb}"
+            )
+            return False
+        self.write_to_log_with_lock(f"Finished with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s")
 
 
 class DistributedExec(ABC):
@@ -475,8 +513,12 @@ class DistributedTest(DistributedExec):
 
         if isinstance(world_size, int):
             world_size = [world_size]
+
+        class_name = request.cls.__name__ if request.cls else "NO_CLASS"
+        test_name = request.node.name
         for procs in world_size:
-            self._launch_procs(procs)
+            with LogTestRun(RUNNING_TEST_LOG_FILE, class_name, test_name, procs):
+                self._launch_procs(procs)
             time.sleep(0.5)
 
     def _get_current_test_func(self, request):
