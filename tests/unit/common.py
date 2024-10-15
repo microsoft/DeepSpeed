@@ -12,6 +12,7 @@ import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 import fcntl
+import traceback
 
 import torch
 import torch.multiprocessing as mp
@@ -159,9 +160,15 @@ class LogTestRun:
 
         elapsed_time = time.time() - self.start_time
         if exc_type is not None:
-            self.write_to_log_with_lock(
-                f"Failed with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {exc_tb}"
-            )
+            tb_str = ''.join(traceback.format_tb(exc_tb))
+            if exc_type == Skipped:
+                self.write_to_log_with_lock(
+                    f"Skipping with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {tb_str}"
+                )
+            else:
+                self.write_to_log_with_lock(
+                    f"Failed with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {tb_str}"
+                )
             return False
         self.write_to_log_with_lock(f"Finished with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s")
 
