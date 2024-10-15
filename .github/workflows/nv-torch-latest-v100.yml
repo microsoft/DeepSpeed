@@ -55,5 +55,10 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="2.4" --cuda_ver="12.1"
-          pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="2.4" --cuda_ver="12.1"
+          TEST_LOG_FILE="/tmp/test_log_${GITHUB_RUN_ID}.log"
+          echo "Running tests and logging to ${TEST_LOG_FILE}"
+          RUNNING_TEST_LOG_FILE=${TEST_LOG_FILE} pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="2.4" --cuda_ver="12.1"
+          grep -q "Failed" ${TEST_LOG_FILE} && exit 1 || exit 0
+          RUNNING_TEST_LOG_FILE=${TEST_LOG_FILE} pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="2.4" --cuda_ver="12.1"
+          grep -q "Failed" ${TEST_LOG_FILE} && exit 1 || exit 0
+          rm -f ${TEST_LOG_FILE}
