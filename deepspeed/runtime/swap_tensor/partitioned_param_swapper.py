@@ -123,11 +123,10 @@ class AsyncPartitionedParameterSwapper(object):
                                        requires_grad=False)
             self.aio_read_handle.pin_device_tensor(self.buffers)
         else:
-            self.buffers = get_accelerator().pin_memory(torch.empty(int(self.aligned_elements_per_buffer *
-                                                                        self.param_buffer_count),
-                                                                    dtype=self.dtype,
-                                                                    requires_grad=False),
-                                                        align_bytes=0)
+            temp = torch.empty(int(self.aligned_elements_per_buffer * self.param_buffer_count),
+                               dtype=self.dtype,
+                               requires_grad=False)
+            self.buffers = self.aio_read_handle.new_cpu_locked_tensor(temp.numel(), temp)
 
         self.swap_out_params = []
 
