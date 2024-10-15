@@ -33,6 +33,8 @@ import logging
 logger = mp.log_to_stderr()
 logger.setLevel(logging.INFO)
 
+warn_reuse_dist_env = False
+
 
 def is_rocm_pytorch():
     return hasattr(torch.version, 'hip') and torch.version.hip is not None
@@ -225,6 +227,13 @@ class DistributedExec(ABC):
         #         self.reuse_dist_env = False
 
         print("[MEM_DEBUG] Ignoring reuse_dist_env and forcibly setting it to False")
+        self.reuse_dist_env = False
+
+        global warn_reuse_dist_env
+        if self.reuse_dist_env and not warn_reuse_dist_env:
+            # Currently we see memory leak for tests that reuse distributed environment
+            print("Ignoring reuse_dist_env and forcibly setting it to False")
+            warn_reuse_dist_env = True
         self.reuse_dist_env = False
 
         if self.reuse_dist_env:
