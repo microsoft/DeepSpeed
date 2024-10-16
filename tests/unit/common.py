@@ -131,46 +131,75 @@ def set_accelerator_visible():
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
-class LogTestRun:
+def write_to_log_with_lock(log_file_path: str, header: str, msg: str):
+    with open(log_file_path, 'a+') as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.write(f"{header} {msg}\n")
+            f.flush()
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
-    def __init__(self, running_test_log_file, test_class_name, test_name, num_procs):
-        self.running_test_log_file = running_test_log_file
+
+def make_test_tag(request):
+    class_name = request.cls.__name__ if request.cls else "NO_CLASS"
+    test_name = request.node.name
+    return f"[xdist_worker={get_xdist_worker_id()}][{class_name}][{test_name}]"
+
+
+class LogTestRun(ABC):
+
+    def __init__(self, log_file, tag, num_procs):
+        self.log_file = log_file
         self.num_procs = num_procs
-        self.header = f"[xdist_worker={get_xdist_worker_id()}][{test_class_name}][{test_name}]"
+        self.header = tag
 
-    def write_to_log_with_lock(self, msg: str):
-        with open(self.running_test_log_file, 'a+') as f:
-            try:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                f.write(f"{self.header} {msg}\n")
-                f.flush()
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+    def write(self, msg):
+        write_to_log_with_lock(self.log_file, self.header, msg)
 
     def __enter__(self):
-        if self.running_test_log_file is None:
+        if self.log_file is None:
             return
-
-        self.write_to_log_with_lock(f"Running with {self.num_procs} processes")
+        self._enter()
         self.start_time = time.time()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.running_test_log_file is None:
+        if self.log_file is None:
             return
 
-        elapsed_time = time.time() - self.start_time
+        self.elapsed_time = time.time() - self.start_time
+        self._exit(exc_type, exc_val, exc_tb)
+
+    @abstractmethod
+    def _enter(self):
+        ...
+
+    @abstractmethod
+    def _exit(self, exc_type, exc_val, exc_tb):
+        ...
+
+
+class LogTestRunBaseProcess(LogTestRun):
+
+    def __init__(self, log_file, tag, num_procs):
+        super().__init__(log_file, tag, num_procs)
+
+    def _enter(self):
+        self.write(f"Running with {self.num_procs} processes")
+
+    def _exit(self, exc_type, exc_val, exc_tb):
         if exc_type is not None:
             tb_str = ''.join(traceback.format_tb(exc_tb))
             if exc_type == Skipped:
-                self.write_to_log_with_lock(
-                    f"Skipping with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {tb_str}"
+                self.write(
+                    f"Skipping with {self.num_procs} processes. elapsed_time={self.elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val}"
                 )
             else:
-                self.write_to_log_with_lock(
-                    f"Failed with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {tb_str}"
+                self.write(
+                    f"Failed with {self.num_procs} processes. elapsed_time={self.elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {tb_str}"
                 )
             return False
-        self.write_to_log_with_lock(f"Finished with {self.num_procs} processes. elapsed_time={elapsed_time:.2f}s")
+        self.write(f"Finished with {self.num_procs} processes. elapsed_time={self.elapsed_time:.2f}s")
 
 
 class DistributedExec(ABC):
@@ -217,7 +246,7 @@ class DistributedExec(ABC):
                 pass  # test methods can have kwargs that are not fixtures
         return fixture_kwargs
 
-    def _launch_daemonic_procs(self, num_procs):
+    def _launch_daemonic_procs(self, num_procs, tag):
         # Create process pool or use cached one
         master_port = None
 
@@ -243,7 +272,7 @@ class DistributedExec(ABC):
             master_port = get_master_port()
 
         # Run the test
-        args = [(local_rank, num_procs, master_port) for local_rank in range(num_procs)]
+        args = [(local_rank, num_procs, master_port, tag) for local_rank in range(num_procs)]
         skip_msgs_async = pool.starmap_async(self._dist_run, args)
 
         try:
@@ -263,7 +292,7 @@ class DistributedExec(ABC):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
 
-    def _launch_non_daemonic_procs(self, num_procs):
+    def _launch_non_daemonic_procs(self, num_procs, tag):
         assert not self.reuse_dist_env, "Cannot reuse distributed environment with non-daemonic processes"
 
         master_port = get_master_port()
@@ -272,7 +301,7 @@ class DistributedExec(ABC):
         prev_start_method = mp.get_start_method()
         mp.set_start_method('spawn', force=True)
         for local_rank in range(num_procs):
-            p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, skip_msg))
+            p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, tag, skip_msg))
             p.start()
             processes.append(p)
         mp.set_start_method(prev_start_method, force=True)
@@ -314,7 +343,7 @@ class DistributedExec(ABC):
             # add a check here to assert all exit messages are equal
             pytest.skip(skip_msg.get())
 
-    def _launch_procs(self, num_procs):
+    def _launch_procs(self, num_procs, tag):
         # Verify we have enough accelerator devices to run this test
         if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
             pytest.skip(
@@ -329,47 +358,53 @@ class DistributedExec(ABC):
         mp.set_start_method('forkserver', force=True)
 
         if self.non_daemonic_procs:
-            self._launch_non_daemonic_procs(num_procs)
+            self._launch_non_daemonic_procs(num_procs, tag)
         else:
-            self._launch_daemonic_procs(num_procs)
+            self._launch_daemonic_procs(num_procs, tag)
 
-    def _dist_run(self, local_rank, num_procs, master_port, skip_msg=""):
-        if not dist.is_initialized():
-            """ Initialize deepspeed.comm and execute the user function. """
-            if self.set_dist_env:
-                os.environ['MASTER_ADDR'] = '127.0.0.1'
-                os.environ['MASTER_PORT'] = str(master_port)
-                os.environ['LOCAL_RANK'] = str(local_rank)
-                # NOTE: unit tests don't support multi-node so local_rank == global rank
-                os.environ['RANK'] = str(local_rank)
-                # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
-                # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
-                os.environ['LOCAL_SIZE'] = str(num_procs)
-                os.environ['WORLD_SIZE'] = str(num_procs)
+    def _dist_run(self, local_rank, num_procs, master_port, tag, skip_msg=""):
 
-            # turn off NCCL logging if set
-            os.environ.pop('NCCL_DEBUG', None)
+        tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}"
+        with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [setup _dist_run]", num_procs):
+            if not dist.is_initialized():
+                """ Initialize deepspeed.comm and execute the user function. """
+                if self.set_dist_env:
+                    os.environ['MASTER_ADDR'] = '127.0.0.1'
+                    os.environ['MASTER_PORT'] = str(master_port)
+                    os.environ['LOCAL_RANK'] = str(local_rank)
+                    # NOTE: unit tests don't support multi-node so local_rank == global rank
+                    os.environ['RANK'] = str(local_rank)
+                    # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
+                    # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
+                    os.environ['LOCAL_SIZE'] = str(num_procs)
+                    os.environ['WORLD_SIZE'] = str(num_procs)
 
-            if get_accelerator().is_available():
-                set_accelerator_visible()
+                # turn off NCCL logging if set
+                os.environ.pop('NCCL_DEBUG', None)
 
-            if get_accelerator().is_available():
-                get_accelerator().set_device(local_rank)
+                if get_accelerator().is_available():
+                    set_accelerator_visible()
 
-            if self.init_distributed:
-                deepspeed.init_distributed(dist_backend=self.backend)
-                dist.barrier()
+                if get_accelerator().is_available():
+                    get_accelerator().set_device(local_rank)
+
+                if self.init_distributed:
+                    deepspeed.init_distributed(dist_backend=self.backend)
+                    dist.barrier()
 
         try:
-            self.run(**self._fixture_kwargs)
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exec _dist_run]", num_procs):
+                self.run(**self._fixture_kwargs)
         except BaseException as e:
-            if isinstance(e, Skipped):
-                if self.non_daemonic_procs:
-                    skip_msg.put(e.msg)
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exception _dist_run] {e.__class__} msg={e.msg}",
+                                       num_procs):
+                if isinstance(e, Skipped):
+                    if self.non_daemonic_procs:
+                        skip_msg.put(e.msg)
+                    else:
+                        skip_msg = e.msg
                 else:
-                    skip_msg = e.msg
-            else:
-                raise e
+                    raise e
 
         return skip_msg
 
@@ -521,11 +556,10 @@ class DistributedTest(DistributedExec):
         if isinstance(world_size, int):
             world_size = [world_size]
 
-        class_name = request.cls.__name__ if request.cls else "NO_CLASS"
-        test_name = request.node.name
         for procs in world_size:
-            with LogTestRun(RUNNING_TEST_LOG_FILE, class_name, test_name, procs):
-                self._launch_procs(procs)
+            tag = make_test_tag(request)
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, tag, procs):
+                self._launch_procs(procs, tag)
             time.sleep(0.5)
 
     def _get_current_test_func(self, request):
