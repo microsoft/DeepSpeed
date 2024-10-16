@@ -27,6 +27,7 @@ deepspeed_io_handle_t::deepspeed_io_handle_t(const int block_size,
       _num_pending_ops(0),
       _pinned_tensor_mgr(new deepspeed_pin_tensor_t())
 {
+
     for (auto i = 0; i < intra_op_parallelism; ++i) {
         _thread_contexts.push_back(std::make_shared<deepspeed_aio_thread_t>(i, _aio_config));
     }
@@ -208,6 +209,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const int64_t file_num_bytes,
     const bool validate)
 {
+
     return std::make_shared<cpu_op_desc_t>(read_op,
                                            buffer,
                                            _pinned_tensor_mgr,

@@ -94,7 +94,7 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const torch::Tensor& buffer,
                              const int fd,
                              const char* filename,
-                             const long long int file_num_bytes,
+                             const int64_t file_num_bytes,
                              const int intra_op_parallelism,
                              const bool validate)
     : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, intra_op_parallelism, validate)
