@@ -142,6 +142,9 @@ def write_to_log_with_lock(log_file_path: str, header: str, msg: str):
 
 
 def make_test_tag(request):
+    if request is None:
+        return "[xdist_worker={get_xdist_worker_id()}][NO_REQUEST]"
+
     class_name = request.cls.__name__ if request.cls else "NO_CLASS"
     test_name = request.node.name
     return f"[xdist_worker={get_xdist_worker_id()}][{class_name}][{test_name}]"
@@ -229,8 +232,10 @@ class DistributedExec(ABC):
 
         if isinstance(world_size, int):
             world_size = [world_size]
+
+        tag = make_test_tag(request)
         for procs in world_size:
-            self._launch_procs(procs)
+            self._launch_procs(procs, tag)
 
     def _get_fixture_kwargs(self, request, func):
         if not request:
