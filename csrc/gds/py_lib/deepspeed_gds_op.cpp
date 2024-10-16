@@ -58,7 +58,6 @@ void gds_op_desc_t::add_buffer_to_registry(const torch::Tensor& buffer)
     const int64_t device = buffer.get_device();
     void* reg_ptr = buffer.data_ptr();
 
-    // std::cout << "REG PTR " <<  reg_ptr << std::endl;
     // TODO: add checking to make sure pointer isn't already in set
     const auto it = base_ptr_registry.find(device);
     if (it == base_ptr_registry.end()) {
