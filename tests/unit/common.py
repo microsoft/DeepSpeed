@@ -147,16 +147,13 @@ class DistributedExec(ABC):
     def run(self):
         ...
 
-    def __call__(self, request=None):
+    def __call__(self, request):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
         if self.requires_cuda_env and not get_accelerator().is_available():
             pytest.skip("only supported in accelerator environments.")
 
-        if isinstance(world_size, int):
-            world_size = [world_size]
-        for procs in world_size:
-            self._launch_procs(procs)
+        self._launch_with_file_store(request, world_size)
 
     def _get_fixture_kwargs(self, request, func):
         if not request:
@@ -331,6 +328,22 @@ class DistributedExec(ABC):
 
         return skip_msg
 
+    def _launch_with_file_store(self, request, world_size):
+        tmpdir = request.getfixturevalue("tmpdir")
+        dist_file_store = tmpdir.join("dist_file_store")
+        assert not os.path.exists(dist_file_store)
+        init_method = f"file://{dist_file_store}"
+
+        if isinstance(world_size, int):
+            world_size = [world_size]
+        for procs in world_size:
+            try:
+                self._launch_procs(procs, init_method)
+            finally:
+                if os.path.exists(dist_file_store):
+                    os.remove(dist_file_store)
+            time.sleep(0.5)
+
     def _dist_destroy(self):
         if (dist is not None) and dist.is_initialized():
             dist.barrier()
@@ -476,20 +489,7 @@ class DistributedTest(DistributedExec):
         else:
             world_size = self._fixture_kwargs.get("world_size", self.world_size)
 
-        tmpdir = request.getfixturevalue("tmpdir")
-        dist_file_store = tmpdir.join("dist_file_store")
-        assert not os.path.exists(dist_file_store)
-        init_method = f"file://{dist_file_store}"
-
-        if isinstance(world_size, int):
-            world_size = [world_size]
-        for procs in world_size:
-            try:
-                self._launch_procs(procs, init_method)
-            finally:
-                if os.path.exists(dist_file_store):
-                    os.remove(dist_file_store)
-            time.sleep(0.5)
+        self._launch_with_file_store(request, world_size)
 
     def _get_current_test_func(self, request):
         # DistributedTest subclasses may have multiple test methods
