@@ -58,7 +58,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
         if not self.enable_nebula_load and first_load_flag:
             self.tag_flag = tag
             logger.info(f"[Nebula] Disable nebula load. Loading checkpoint from {path} ...")
-            partition = torch.load(path, map_location=map_location)
+            partition = torch.load(path, weights_only=True, map_location=map_location)
             logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path} .")
             return partition
 

@@ -466,7 +466,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
             optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
             ...
-            checkpoint = torch.load("saved.pth")
+            checkpoint = torch.load("saved.pth", weights_only=True)
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
         """
