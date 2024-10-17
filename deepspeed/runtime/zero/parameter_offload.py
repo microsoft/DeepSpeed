@@ -226,7 +226,7 @@ class DeepSpeedZeRoOffload(object):
         def _end_of_forward_hook(module, *args):
 
             if not torch._C.is_grad_enabled():
-                self.get_param_coordinator(training=False).reset_step()
+                self.get_param_coordinator(training=module.training).reset_step()
 
         #likely one of them should be enough but just to be safe
         self._register_hooks_recursively(self.module)
