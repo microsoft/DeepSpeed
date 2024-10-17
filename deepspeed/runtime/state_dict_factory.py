@@ -335,10 +335,26 @@ class MegatronSDLoader(SDLoaderBase):
                         new_client_sd[key] = torch.cat(value_list, axis=0)
                     else:
                         new_client_sd[key] = self.merge_query_key_value(value_list, ckpt_ver)
-            elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key:
-                if quantize and "mlp.dense_h_to_4h.weight" in key:
-                    value_list = quantizer.Quantize(value_list, quantize_bits, groups, key=key)
+            elif "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key or "lm_head.weight" in key:
                 new_client_sd[key] = torch.cat(value_list, axis=0)
+            elif "mlp.dense_h_to_4h.weight" in key:
+                if quantize:
+                    value_list = quantizer.Quantize(value_list, quantize_bits, groups, key=key)
+                # HACK:
+                # Following code checks if h_to_4h is swiglu. This is required in order to merge correctly.
+                # The correct way is to add metadata to state_dict that provides info on how to merge/split each tensor.
+                size_h_to_4h = sd_list[0]["mlp.dense_h_to_4h.weight"].numel()
+                size_4h_to_h = sd_list[0]["mlp.dense_4h_to_h.weight"].numel()
+                if size_h_to_4h == size_4h_to_h:
+                    new_client_sd[key] = torch.cat(value_list, axis=0)
+                elif size_h_to_4h == 2 * size_4h_to_h:
+                    chunked_slices = [torch.chunk(v, 2, dim=0) for v in value_list]
+                    merged_chunks_0 = torch.cat([s[0] for s in chunked_slices], dim=0)
+                    merged_chunks_1 = torch.cat([s[1] for s in chunked_slices], dim=0)
+                    new_client_sd[key] = torch.cat([merged_chunks_0, merged_chunks_1], dim=0)
+                else:
+                    assert False, f"Unsupported slices size of mlp.dense_h_to_4h.weight={size_h_to_4h} " \
+                                  f"mlp.dense_4h_to_h.weight={size_4h_to_h}"
             else:
                 new_client_sd[key] = value_list[0]
         if quantize:
@@ -383,12 +399,27 @@ class MegatronSDLoader(SDLoaderBase):
                     q_vals = quantizer.Quantize([value], quantize_bits, groups, key)
                     value = q_vals[0]
                 new_client_sd[key] = self.split_query_key_value(value, num_to_split, ckpt_offset, ckpt_ver)
-            elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key or "final_linear.weight" in key:
+            elif "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key or "final_linear.weight" in key \
+                    or "lm_head.weight" in key:
                 assert value.shape[0] % num_to_split == 0
                 split_size = value.shape[0] // num_to_split
-                if quantize and "mlp.dense_h_to_4h.weight" in key:
+                new_client_sd[key] = torch.split(value, split_size, dim=0)[ckpt_offset]
+            elif "mlp.dense_h_to_4h.weight" in key:
+                assert value.shape[0] % num_to_split == 0
+                split_size = value.shape[0] // num_to_split
+                if quantize:
                     q_vals = quantizer.Quantize([value], quantize_bits, groups, key)
                     value = q_vals[0]
+                # HACK:
+                # Following code checks if h_to_4h is swiglu.
+                # The correct way to check is to add metadata to state_dict that provides info on
+                # how to merge/split each tensor.
+                # Currently, swiglu split is NOT supported as it requires handling of all chunks.
+                size_h_to_4h = value.numel()
+                size_4h_to_h = client_sd["mlp.dense_4h_to_h.weight"].numel()
+                assert size_h_to_4h == size_4h_to_h, \
+                    f"Split not supported dense_h_to_4h.weight size={size_h_to_4h} " \
+                    f"and dense_4h_to_h.weight size={size_4h_to_h}"
                 new_client_sd[key] = torch.split(value, split_size, dim=0)[ckpt_offset]
             else:
                 new_client_sd[key] = value
