@@ -22,7 +22,7 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
       _file_num_bytes(file_num_bytes),
       _file_offset(file_offset),
       _intra_op_parallelism(intra_op_parallelism),
-      _num_bytes_per_thread( static_cast<int64_t>(buffer.nbytes())/ intra_op_parallelism),
+      _num_bytes_per_thread(static_cast<int64_t>(buffer.nbytes()) / intra_op_parallelism),
       _validate(validate)
 {
 }

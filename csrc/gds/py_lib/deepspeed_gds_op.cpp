@@ -97,7 +97,14 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const int64_t file_offset,
                              const int intra_op_parallelism,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, intra_op_parallelism, validate)
+    : io_op_desc_t(read_op,
+                   buffer,
+                   fd,
+                   filename,
+                   file_num_bytes,
+                   file_offset,
+                   intra_op_parallelism,
+                   validate)
 {
     _contiguous_buffer = _buffer.contiguous();
     const int64_t device = _buffer.get_device();

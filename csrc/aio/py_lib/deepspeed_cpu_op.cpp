@@ -18,7 +18,14 @@ cpu_op_desc_t::cpu_op_desc_t(
     const int64_t file_offset,
     const int intra_op_parallelism,
     const bool validate)
-    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, intra_op_parallelism, validate),
+    : io_op_desc_t(read_op,
+                   buffer,
+                   fd,
+                   filename,
+                   file_num_bytes,
+                   file_offset,
+                   intra_op_parallelism,
+                   validate),
       _cpu_buffer(buffer),
       _pinned_tensor_mgr(pinned_tensor_mgr),
       _is_managed_bounce_buffer(false)
@@ -70,8 +77,8 @@ void cpu_op_desc_t::run(const int tid,
     const auto buffer_base_offset = _num_bytes_per_thread * tid;
     const auto file_base_offset = _file_offset + (_num_bytes_per_thread * tid);
 
-    std::unique_ptr<io_xfer_ctxt> xfer_ctxt(
-        new io_xfer_ctxt(_fd, file_base_offset, buffer_base_offset, _num_bytes_per_thread, data_ptr()));
+    std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(
+        _fd, file_base_offset, buffer_base_offset, _num_bytes_per_thread, data_ptr()));
 
     if (aio_config->_overlap_events) {
         do_aio_operation_overlap(_read_op, aio_ctxt, xfer_ctxt, aio_config, nullptr);
