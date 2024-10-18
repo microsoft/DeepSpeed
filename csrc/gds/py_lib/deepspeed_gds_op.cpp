@@ -58,7 +58,6 @@ void gds_op_desc_t::add_buffer_to_registry(const torch::Tensor& buffer)
     const int64_t device = buffer.get_device();
     void* reg_ptr = buffer.data_ptr();
 
-    // std::cout << "REG PTR " <<  reg_ptr << std::endl;
     // TODO: add checking to make sure pointer isn't already in set
     const auto it = base_ptr_registry.find(device);
     if (it == base_ptr_registry.end()) {
@@ -94,8 +93,8 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const torch::Tensor& buffer,
                              const int fd,
                              const char* filename,
-                             const long long int file_num_bytes,
-                             const long long int file_offset,
+                             const int64_t file_num_bytes,
+                             const int64_t file_offset,
                              const int intra_op_parallelism,
                              const bool validate)
     : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, file_offset, intra_op_parallelism, validate)

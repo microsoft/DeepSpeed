@@ -22,8 +22,8 @@ struct gds_op_desc_t : io_op_desc_t {
                   const torch::Tensor& buffer,
                   const int fd,
                   const char* filename,
-                  const long long int file_num_bytes,
-                  const long long int file_offset,
+                  const int64_t file_num_bytes,
+                  const int64_t file_offset,
                   const int intra_op_parallelism,
                   const bool validate);
 
