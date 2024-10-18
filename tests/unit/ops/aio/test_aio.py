@@ -103,7 +103,7 @@ class TestRead(DistributedTest):
         _validate_handle_state(h, single_submit, overlap_events)
 
         ref_file, _ = _do_ref_write(tmpdir)
-        read_status = h.sync_pread(aio_buffer, ref_file)
+        read_status = h.sync_pread(aio_buffer, ref_file, 0)
         assert read_status == 1
 
         with open(ref_file, 'rb') as f:
@@ -131,7 +131,7 @@ class TestRead(DistributedTest):
         _validate_handle_state(h, single_submit, overlap_events)
 
         ref_file, _ = _do_ref_write(tmpdir)
-        read_status = h.async_pread(aio_buffer, ref_file)
+        read_status = h.async_pread(aio_buffer, ref_file, 0)
         assert read_status == 0
 
         wait_status = h.wait()
@@ -172,7 +172,7 @@ class TestWrite(DistributedTest):
 
         _validate_handle_state(h, single_submit, overlap_events)
 
-        write_status = h.sync_pwrite(aio_buffer, aio_file)
+        write_status = h.sync_pwrite(aio_buffer, aio_file, 0)
         assert write_status == 1
 
         if not use_cuda_pinned_tensor:
@@ -201,7 +201,7 @@ class TestWrite(DistributedTest):
 
         _validate_handle_state(h, single_submit, overlap_events)
 
-        write_status = h.async_pwrite(aio_buffer, aio_file)
+        write_status = h.async_pwrite(aio_buffer, aio_file, 0)
         assert write_status == 0
 
         wait_status = h.wait()
@@ -258,7 +258,7 @@ class TestAsyncQueue(DistributedTest):
         _validate_handle_state(h, single_submit, overlap_events)
 
         for i in range(async_queue):
-            read_status = h.async_pread(aio_buffers[i], ref_files[i])
+            read_status = h.async_pread(aio_buffers[i], ref_files[i], 0)
             assert read_status == 0
 
         wait_status = h.wait()
@@ -305,7 +305,7 @@ class TestAsyncQueue(DistributedTest):
         _validate_handle_state(h, single_submit, overlap_events)
 
         for i in range(async_queue):
-            read_status = h.async_pwrite(aio_buffers[i], aio_files[i])
+            read_status = h.async_pwrite(aio_buffers[i], aio_files[i], 0)
             assert read_status == 0
 
         wait_status = h.wait()

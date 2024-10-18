@@ -15,6 +15,7 @@ struct io_op_desc_t {
     int _fd;
     const std::string _filename;
     const int64_t _file_num_bytes;
+    const int64_t _file_offset;
     const int _intra_op_parallelism;
     const int64_t _num_bytes_per_thread;
     torch::Tensor _contiguous_buffer;
@@ -25,6 +26,7 @@ struct io_op_desc_t {
                  const int fd,
                  const char* filename,
                  const int64_t file_num_bytes,
+                 const int64_t file_offset,
                  const int intra_op_parallelism,
                  const bool validate);
 
