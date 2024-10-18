@@ -23,7 +23,7 @@ def swap_in_tensors(swap_handle, tensor_buffers, swap_paths):
 
 def swap_out_tensors(swap_handle, tensor_buffers, swap_paths):
     for buffer, path in zip(tensor_buffers, swap_paths):
-        assert (swap_handle.async_pwrite(buffer, path) == 0)
+        assert (swap_handle.async_pwrite(buffer, path, 0) == 0)
 
 
 def print_object(obj, name, exclude_list=[]):
