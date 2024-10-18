@@ -58,7 +58,6 @@ void gds_op_desc_t::add_buffer_to_registry(const torch::Tensor& buffer)
     const int64_t device = buffer.get_device();
     void* reg_ptr = buffer.data_ptr();
 
-    // std::cout << "REG PTR " <<  reg_ptr << std::endl;
     // TODO: add checking to make sure pointer isn't already in set
     const auto it = base_ptr_registry.find(device);
     if (it == base_ptr_registry.end()) {
@@ -94,10 +93,10 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const torch::Tensor& buffer,
                              const int fd,
                              const char* filename,
-                             const long long int file_num_bytes,
-                             const int num_threads,
+                             const int64_t file_num_bytes,
+                             const int intra_op_parallelism,
                              const bool validate)
-    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, num_threads, validate)
+    : io_op_desc_t(read_op, buffer, fd, filename, file_num_bytes, intra_op_parallelism, validate)
 {
     _contiguous_buffer = _buffer.contiguous();
     const int64_t device = _buffer.get_device();
@@ -123,7 +122,7 @@ void gds_op_desc_t::run(const int tid,
                         std::unique_ptr<aio_context>& aio_ctxt,
                         deepspeed_aio_config_t* aio_config)
 {
-    assert(tid < _num_threads);
+    assert(tid < _intra_op_parallelism);
     check_cudaruntimecall(cudaSetDevice(_buffer.get_device()));
     int64_t buf_offset = data_ptr() + (_num_bytes_per_thread * tid) - (char*)_base_ptr;
     const auto file_offset = _num_bytes_per_thread * tid;
