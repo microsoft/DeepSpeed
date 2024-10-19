@@ -35,7 +35,7 @@ def _get_local_rank():
     return 0
 
 
-def _do_ref_write(tmpdir, index=0, file_size = IO_SIZE):
+def _do_ref_write(tmpdir, index=0, file_size=IO_SIZE):
     file_suffix = f'{_get_local_rank()}_{index}'
     ref_file = os.path.join(tmpdir, f'_py_random_{file_suffix}.pt')
     ref_buffer = os.urandom(file_size)
@@ -326,6 +326,7 @@ class TestAsyncQueue(DistributedTest):
             filecmp.clear_cache()
             assert filecmp.cmp(ref_files[i], aio_files[i], shallow=False)
 
+
 @pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False])
 @pytest.mark.parametrize('file_partitions', [[1, 1, 1], [1, 1, 2], [1, 2, 1], [2, 1, 1]])
 class TestAsyncFileOffset(DistributedTest):
@@ -333,24 +334,17 @@ class TestAsyncFileOffset(DistributedTest):
 
     def test_offset_write(self, tmpdir, file_partitions, use_cuda_pinned_tensor):
 
-
         ref_file = _get_file_path(tmpdir, '_py_random')
         aio_file = _get_file_path(tmpdir, '_aio_random')
         partition_unit_size = BLOCK_SIZE
         file_size = sum(file_partitions) * partition_unit_size
 
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               True,
-                                               True,
-                                               IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, True, True, IO_PARALLEL)
 
         if use_cuda_pinned_tensor:
             data_buffer = torch.ByteTensor(list(os.urandom(file_size))).pin_memory()
         else:
-            data_buffer = h.new_cpu_locked_tensor(file_size,
-                                                  torch.empty(0,
-                                                              dtype=torch.uint8))
+            data_buffer = h.new_cpu_locked_tensor(file_size, torch.empty(0, dtype=torch.uint8))
 
         file_offsets = []
         next_offset = 0
@@ -360,17 +354,12 @@ class TestAsyncFileOffset(DistributedTest):
 
         ref_fd = open(ref_file, 'wb')
         for i in range(len(file_partitions)):
-            src_buffer = torch.narrow(data_buffer,
-                                      0,
-                                      file_offsets[i],
-                                      file_partitions[i] * partition_unit_size)
+            src_buffer = torch.narrow(data_buffer, 0, file_offsets[i], file_partitions[i] * partition_unit_size)
 
             ref_fd.write(src_buffer.numpy().tobytes())
             ref_fd.flush()
 
-            assert 1 == h.sync_pwrite(buffer=src_buffer,
-                                      filename=aio_file,
-                                      file_offset=file_offsets[i])
+            assert 1 == h.sync_pwrite(buffer=src_buffer, filename=aio_file, file_offset=file_offsets[i])
 
             filecmp.clear_cache()
             assert filecmp.cmp(ref_file, aio_file, shallow=False)
@@ -385,20 +374,12 @@ class TestAsyncFileOffset(DistributedTest):
         partition_unit_size = BLOCK_SIZE
         file_size = sum(file_partitions) * partition_unit_size
         ref_file, _ = _do_ref_write(tmpdir, 0, file_size)
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               True,
-                                               True,
-                                               IO_PARALLEL)
+        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE, QUEUE_DEPTH, True, True, IO_PARALLEL)
 
         if use_cuda_pinned_tensor:
-            data_buffer = torch.zeros(file_size,
-                                      dtype=torch.uint8,
-                                      device='cpu').pin_memory()
+            data_buffer = torch.zeros(file_size, dtype=torch.uint8, device='cpu').pin_memory()
         else:
-            data_buffer = h.new_cpu_locked_tensor(file_size,
-                                                  torch.empty(0,
-                                                              dtype=torch.uint8))
+            data_buffer = h.new_cpu_locked_tensor(file_size, torch.empty(0, dtype=torch.uint8))
 
         file_offsets = []
         next_offset = 0

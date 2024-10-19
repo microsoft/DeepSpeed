@@ -29,7 +29,7 @@ def _get_local_rank():
     return 0
 
 
-def _do_ref_write(tmpdir, index=0, file_size = IO_SIZE):
+def _do_ref_write(tmpdir, index=0, file_size=IO_SIZE):
     file_suffix = f'{_get_local_rank()}_{index}'
     ref_file = os.path.join(tmpdir, f'_py_random_{file_suffix}.pt')
     ref_buffer = os.urandom(file_size)
@@ -37,6 +37,7 @@ def _do_ref_write(tmpdir, index=0, file_size = IO_SIZE):
         f.write(ref_buffer)
 
     return ref_file, ref_buffer
+
 
 def _get_file_path(tmpdir, file_prefix, index=0):
     file_suffix = f'{_get_local_rank()}_{index}'
@@ -273,6 +274,7 @@ class TestLockDeviceTensor(DistributedTest):
         else:
             h.unpin_device_tensor(pinned_buffer)
 
+
 @pytest.mark.parametrize('file_partitions', [[1, 1, 1], [1, 1, 2], [1, 2, 1], [2, 1, 1]])
 class TestAsyncFileOffset(DistributedTest):
     world_size = 1
@@ -283,11 +285,7 @@ class TestAsyncFileOffset(DistributedTest):
         partition_unit_size = IO_SIZE
         file_size = sum(file_partitions) * partition_unit_size
 
-        h = GDSBuilder().load().gds_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               True,
-                                               True,
-                                               IO_PARALLEL)
+        h = GDSBuilder().load().gds_handle(BLOCK_SIZE, QUEUE_DEPTH, True, True, IO_PARALLEL)
 
         gds_buffer = torch.empty(file_size, dtype=torch.uint8, device=get_accelerator().device_name())
         h.pin_device_tensor(gds_buffer)
@@ -300,17 +298,13 @@ class TestAsyncFileOffset(DistributedTest):
 
         ref_fd = open(ref_file, 'wb')
         for i in range(len(file_partitions)):
-            src_buffer = torch.narrow(gds_buffer,
-                                      0,
-                                      file_offsets[i],
+            src_buffer = torch.narrow(gds_buffer, 0, file_offsets[i],
                                       file_partitions[i] * partition_unit_size).to(device='cpu')
 
             ref_fd.write(src_buffer.numpy().tobytes())
             ref_fd.flush()
 
-            assert 1 == h.sync_pwrite(buffer=src_buffer,
-                                      filename=aio_file,
-                                      file_offset=file_offsets[i])
+            assert 1 == h.sync_pwrite(buffer=src_buffer, filename=aio_file, file_offset=file_offsets[i])
 
             filecmp.clear_cache()
             assert filecmp.cmp(ref_file, aio_file, shallow=False)
@@ -323,11 +317,7 @@ class TestAsyncFileOffset(DistributedTest):
         partition_unit_size = BLOCK_SIZE
         file_size = sum(file_partitions) * partition_unit_size
         ref_file, _ = _do_ref_write(tmpdir, 0, file_size)
-        h = GDSBuilder().load().gds_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               True,
-                                               True,
-                                               IO_PARALLEL)
+        h = GDSBuilder().load().gds_handle(BLOCK_SIZE, QUEUE_DEPTH, True, True, IO_PARALLEL)
 
         gds_buffer = torch.empty(file_size, dtype=torch.uint8, device=get_accelerator().device_name())
         h.pin_device_tensor(gds_buffer)
