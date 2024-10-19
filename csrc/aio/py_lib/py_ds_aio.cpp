@@ -40,7 +40,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "Synchronous and non-parallel file read. Returns count of completed read ops",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a,
+             "file_offset"_a = 0,
              "validate"_a)
 
         .def("write",
@@ -48,7 +48,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "Synchronous and non-parallel file write. Returns count of completed write ops",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a,
+             "file_offset"_a = 0,
              "validate"_a)
 
         .def("pread",
@@ -57,7 +57,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "buffer"_a,
              "filename"_a,
              "validate"_a,
-             "file_offset"_a,
+             "file_offset"_a = 0,
              "async"_a)
 
         .def("pwrite",
@@ -66,7 +66,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "buffer"_a,
              "filename"_a,
              "validate"_a,
-             "file_offset"_a,
+             "file_offset"_a = 0,
              "async"_a)
 
         .def("sync_pread",
@@ -74,14 +74,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "Synchrononous parallel file read. Returns count of completed read ops",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a)
+             "file_offset"_a = 0)
 
         .def("sync_pwrite",
              &deepspeed_aio_handle_t::sync_pwrite,
              "Synchronous parallel file write. Returns count of completed write ops",
              "buffer"_a,
              "filename"_a, 
-             "file_offset"_a)
+             "file_offset"_a = 0)
 
         .def("async_pread",
              &deepspeed_aio_handle_t::async_pread,
@@ -89,7 +89,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "following wait() returns count of completed ops.",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a)
+             "file_offset"_a = 0)
 
         .def("async_pwrite",
              &deepspeed_aio_handle_t::async_pwrite,
@@ -97,7 +97,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "count of completed ops.",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a)
+             "file_offset"_a = 0)
 
         .def("new_cpu_locked_tensor",
              &deepspeed_aio_handle_t::new_cpu_locked_tensor,
