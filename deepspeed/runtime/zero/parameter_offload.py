@@ -6,7 +6,7 @@
 import sys
 import torch
 from collections import OrderedDict
-from deepspeed.utils import z3_leaf_module
+from deepspeed.utils import z3_leaf_module, set_z3_leaf_modules
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.utils import apply_to_tensors_only, is_zero_param
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
@@ -96,6 +96,7 @@ class DeepSpeedZeRoOffload(object):
         zero_param_parallel_group=None,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
+        zero_force_coalesced_fetch_layers=None,
     ):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
@@ -144,6 +145,9 @@ class DeepSpeedZeRoOffload(object):
 
         self.forward_hooks = []
         self.backward_hooks = []
+        if zero_force_coalesced_fetch_layers is not None and len(zero_force_coalesced_fetch_layers)>0:
+            set_z3_leaf_modules(module, zero_force_coalesced_fetch_layers) 
+                
         self.setup_zero_stage3_hooks()
         print_rank_0(
             f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',

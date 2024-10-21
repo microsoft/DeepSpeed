@@ -811,6 +811,9 @@ class DeepSpeedEngine(Module):
     def zero_prefetch_bucket_size(self):
         return self._config.zero_config.prefetch_bucket_size
 
+    def zero_force_coalesced_fetch_layers(self):
+        return self._config.zero_config.force_coalesced_fetch_layers
+    
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
@@ -1611,6 +1614,7 @@ class DeepSpeedEngine(Module):
                     zero_param_parallel_group=zero_param_parallel_group,
                     zero_quantized_weights=self.zero_quantized_weights(),
                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
+                    force_coalesced_fetch_layers=self.zero_force_coalesced_fetch_layers(),
                 )
             else:
                 log_dist(
@@ -1657,7 +1661,8 @@ class DeepSpeedEngine(Module):
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
                     zero_quantized_weights=self.zero_quantized_weights(),
                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
-                )
+                    zero_force_coalesced_fetch_layers=self.zero_force_coalesced_fetch_layers()
+                    )
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
