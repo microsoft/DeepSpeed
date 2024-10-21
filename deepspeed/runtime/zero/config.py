@@ -246,7 +246,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     this option is enabled and then saves the fp16 model weights.
     """
 
-    force_coalesced_fetch_layers: list[str] = Field(None, alias="stage3_force_coalesced_fetch_layers")
+    force_coalesced_fetch_layers: list[str] = Field([], alias="stage3_force_coalesced_fetch_layers")
     """
     Treat the layer as an integral unit (to avoid recursion) when fetching at stage3.
     This will reduce the host overhead and separated allgather overhead in fetching
