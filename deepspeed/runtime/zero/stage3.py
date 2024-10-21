@@ -157,7 +157,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
-        zero_force_coalesced_fetch_layers=False,
+        zero_force_coalesced_fetch_layers=None,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
