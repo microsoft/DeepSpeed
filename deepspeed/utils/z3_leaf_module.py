@@ -63,7 +63,8 @@ def _do_set_z3_leaf_modules(model: torch.nn.Module, leaf_module_classes: Union[L
     return leaf_modules
 
 
-def set_z3_leaf_modules(model: torch.nn.Module, leaf_module_classes: Union[List[Type], List[str]]) -> List[torch.nn.Module]:
+def set_z3_leaf_modules(model: torch.nn.Module, leaf_module_classes: Union[List[Type],
+                                                                           List[str]]) -> List[torch.nn.Module]:
     """Sets a flag within a module in `model` to instruct ZeRO3 to stop setting hooks recursively when it encounters a module class listed in `leaf_module_classes`.
        This is particularly useful in the context of Mixture of Experts (MoE) models. In MoE models, the computation order of experts varies across forward passes. This variability can disrupt ZeRO3's functionality, as ZeRO3 relies on tracking the computation order of modules to prefetch parameters efficiently. By designating a module as a 'leaf' node, ZeRO3 will prefetch parameters for all child modules upon entering the module.
        Another scenario where this functionality is beneficial is in models with excessively fine-grained nested modules, where it helps to avoid the overhead associated with hooks.

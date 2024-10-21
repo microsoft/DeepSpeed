@@ -145,9 +145,9 @@ class DeepSpeedZeRoOffload(object):
 
         self.forward_hooks = []
         self.backward_hooks = []
-        if zero_force_coalesced_fetch_layers is not None and len(zero_force_coalesced_fetch_layers)>0:
-            set_z3_leaf_modules(module, zero_force_coalesced_fetch_layers) 
-                
+        if zero_force_coalesced_fetch_layers is not None and len(zero_force_coalesced_fetch_layers) > 0:
+            set_z3_leaf_modules(module, zero_force_coalesced_fetch_layers)
+
         self.setup_zero_stage3_hooks()
         print_rank_0(
             f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',
