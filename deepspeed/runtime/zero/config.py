@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import sys
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 from pydantic import Field, model_validator
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
@@ -246,7 +246,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     this option is enabled and then saves the fp16 model weights.
     """
 
-    force_coalesced_fetch_layers: list[str] = Field([], alias="stage3_force_coalesced_fetch_layers")
+    force_coalesced_fetch_layers: List[str] = Field([], alias="stage3_force_coalesced_fetch_layers")
     """
     Treat the layer as an integral unit (to avoid recursion) when fetching at stage3.
     This will reduce the host overhead and separated allgather overhead in fetching

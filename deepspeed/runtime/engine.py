@@ -1614,7 +1614,7 @@ class DeepSpeedEngine(Module):
                     zero_param_parallel_group=zero_param_parallel_group,
                     zero_quantized_weights=self.zero_quantized_weights(),
                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
-                    force_coalesced_fetch_layers=self.zero_force_coalesced_fetch_layers(),
+                    zero_force_coalesced_fetch_layers=self.zero_force_coalesced_fetch_layers(),
                 )
             else:
                 log_dist(
