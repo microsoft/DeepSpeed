@@ -2249,8 +2249,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
-        self._get_param_coordinator(training=True).reset_step()
-
         if self.swap_optimizer:
             self.optimizer_swapper.post_backward()
 

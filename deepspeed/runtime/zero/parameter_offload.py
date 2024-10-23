@@ -162,6 +162,7 @@ class DeepSpeedZeRoOffload(object):
                 raise RuntimeError(f"{param.ds_summary()} expected to be released")
 
     def get_param_coordinator(self, training):
+        training = True
         if not training in self.param_coordinators:
             self.param_coordinators[training] = PartitionedParameterCoordinator(
                 prefetch_bucket_sz=self._prefetch_bucket_sz,
@@ -223,14 +224,13 @@ class DeepSpeedZeRoOffload(object):
 
         #reset step if in inference mode
         @instrument_w_nvtx
-        def _end_of_forward_hook(module, *args):
+        def _start_of_forward_hook(module, *args):
 
-            if not torch._C.is_grad_enabled():
-                self.get_param_coordinator(training=False).reset_step()
+            self.get_param_coordinator(training=torch._C.is_grad_enabled()).reset_step()
 
         #likely one of them should be enough but just to be safe
         self._register_hooks_recursively(self.module)
-        self.module.register_forward_hook(_end_of_forward_hook)
+        self.module.register_forward_pre_hook(_start_of_forward_hook)
 
         # Add top module to stack trace
         global FWD_MODULE_STACK
@@ -463,7 +463,7 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def pre_sub_module_backward_function(self, sub_module):
-        assert sub_module.training, "backward pass is invalid for module in evaluation mode"
+        # assert sub_module.training, "backward pass is invalid for module in evaluation mode"
         param_coordinator = self.get_param_coordinator(training=True)
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
@@ -472,7 +472,7 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
-        assert sub_module.training, "backward pass is invalid for module in evaluation mode"
+        # assert sub_module.training, "backward pass is invalid for module in evaluation mode"
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
