@@ -92,7 +92,7 @@ class PartitionedParameterCoordinator:
         # keeps track of the number of submodules invoked so far.
         self.__step_id: int = 0
         # network tracing mode
-        self.__trace_mode: ZeRoTraceMode = ZeRoTraceMode.RECORD
+        self.__trace_mode: ZeRoTraceMode = ZeRoTraceMode.INVALID
         # sequence of submodules/parameters in forward pass + backward pass
         self.__submodule_order: Iterable[Module] = []
         self.__param_order: Iterable[__class__.__ParamInTrace] = []
