@@ -188,6 +188,9 @@ class PartitionedParameterCoordinator:
     @compiler.disable
     def record_module(self, sub_module: Module) -> None:
         """adds sub module to trace"""
+        if torch.compiler.is_compiling():
+            return
+
         if not self.is_record_trace():
             raise RuntimeError(f"attempted to record trace when status = {self.__trace_mode}")
 
@@ -195,6 +198,8 @@ class PartitionedParameterCoordinator:
         self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
 
     def record_parameters(self, sub_module: Module) -> None:
+        if torch.compiler.is_compiling():
+            return
         """adds sub module to trace"""
         if not self.is_record_trace():
             raise RuntimeError(f"attempted to record trace when status = {self.__trace_mode}")
@@ -209,8 +214,12 @@ class PartitionedParameterCoordinator:
         for sub_module in self.__submodule_order:
             self.record_parameters(sub_module)
 
+    @compiler.disable
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
+        if torch.compiler.is_compiling():
+            return
+
         self._clean_inflight_param_registry()
 
         if not self.is_complete_trace():  # not self.trace_complete:

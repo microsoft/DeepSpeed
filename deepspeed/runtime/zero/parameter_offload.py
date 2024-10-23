@@ -228,9 +228,10 @@ class DeepSpeedZeRoOffload(object):
 
             self.get_param_coordinator(training=torch._C.is_grad_enabled()).reset_step()
 
+        self.module.register_forward_pre_hook(_start_of_forward_hook)
+
         #likely one of them should be enough but just to be safe
         self._register_hooks_recursively(self.module)
-        self.module.register_forward_pre_hook(_start_of_forward_hook)
 
         # Add top module to stack trace
         global FWD_MODULE_STACK
