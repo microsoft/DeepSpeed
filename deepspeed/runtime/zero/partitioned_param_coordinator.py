@@ -153,11 +153,18 @@ class PartitionedParameterCoordinator:
     def is_record_trace(self) -> bool:
         return self.__trace_mode == ZeRoTraceMode.RECORD
 
+    def _clean_inflight_param_registry(self) -> None:
+        for param, handle in self.__inflight_param_registry.items():
+            handle.wait()
+            self.__release_param(param)
+        self.__inflight_param_registry.clear()
+
     def _invalidate_trace(self) -> None:
         if self.is_invalid_trace():
             raise RuntimeError("attempted to invalidate already invalid trace")
         self.__trace_mode = ZeRoTraceMode.INVALID
         self._clear_trace_structures()
+        self._clean_inflight_param_registry()
 
     def trace_prologue(self, sub_module: Module) -> None:
         if self.is_complete_trace():
@@ -204,11 +211,7 @@ class PartitionedParameterCoordinator:
 
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
-        if self.__inflight_param_registry:
-            for param, handle in self.__inflight_param_registry.items():
-                handle.wait()
-                self.__release_param(param)
-            self.__inflight_param_registry.clear()
+        self._clean_inflight_param_registry()
 
         if not self.is_complete_trace():  # not self.trace_complete:
             # Make sure that recorded submodule orders are identical across ranks
