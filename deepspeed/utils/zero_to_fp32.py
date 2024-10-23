@@ -202,7 +202,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
     return zero_stage, world_size, fp32_flat_groups
 
 
-def _get_param_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_parameters):
+def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_parameters):
     """
     Returns fp32 state_dict reconstructed from ds checkpoint
 
@@ -217,10 +217,10 @@ def _get_param_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen
     print(f'Parsing checkpoint created by deepspeed=={zero_model_states[0].ds_version}')
 
     if zero_stage <= 2:
-        return _get_param_state_dict_from_zero2_checkpoint(ds_checkpoint_dir, zero_model_states,
+        return _get_fp32_state_dict_from_zero2_checkpoint(ds_checkpoint_dir, zero_model_states,
                                                            exclude_frozen_parameters)
     elif zero_stage == 3:
-        return _get_param_state_dict_from_zero3_checkpoint(ds_checkpoint_dir, zero_model_states,
+        return _get_fp32_state_dict_from_zero3_checkpoint(ds_checkpoint_dir, zero_model_states,
                                                            exclude_frozen_parameters)
 
 
@@ -343,7 +343,7 @@ def _consolidate_ucp_checkpoints(args, state_dict, slice_shapes):
         state_dict[param] = weight['param']
 
 
-def _get_param_state_dict_from_zero2_checkpoint(ds_checkpoint_dir, zero_model_states, exclude_frozen_parameters):
+def _get_fp32_state_dict_from_zero2_checkpoint(ds_checkpoint_dir, zero_model_states, exclude_frozen_parameters):
 
     state_dict = OrderedDict()
 
@@ -477,7 +477,7 @@ def _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
     print(f"Reconstructed Trainable fp32 state dict with {total_params} params {total_numel} elements")
 
 
-def _get_param_state_dict_from_zero3_checkpoint(ds_checkpoint_dir, zero_model_states, exclude_frozen_parameters):
+def _get_fp32_state_dict_from_zero3_checkpoint(ds_checkpoint_dir, zero_model_states, exclude_frozen_parameters):
     state_dict = OrderedDict()
 
     model_files = _get_model_state_files(ds_checkpoint_dir)
@@ -520,7 +520,7 @@ def _get_param_state_dict_from_zero3_checkpoint(ds_checkpoint_dir, zero_model_st
     return state_dict
 
 
-def get_param_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_frozen_parameters=False):
+def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_frozen_parameters=False):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32/fp16/bf16 consolidated state_dict that can be loaded with
     ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example
@@ -567,7 +567,7 @@ def get_param_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_
     if not os.path.isdir(ds_checkpoint_dir):
         raise FileNotFoundError(f"Directory '{ds_checkpoint_dir}' doesn't exist")
 
-    return _get_param_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_parameters)
+    return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_parameters)
 
 
 def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
@@ -602,7 +602,7 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
             print('If you want to use `max_shard_size`, please `pip install huggingface_hub`')
             raise
 
-    state_dict = get_param_state_dict_from_zero_checkpoint(checkpoint_dir, tag, exclude_frozen_parameters)
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag, exclude_frozen_parameters)
 
     # Shard the model if it is too big.
     weights_name = "model.safetensors" if safe_serialization else "pytorch_model.bin"
@@ -670,7 +670,7 @@ def load_state_dict_from_zero_checkpoint(model, checkpoint_dir, tag=None):
 
     """
     logger.info(f"Extracting fp32 weights")
-    state_dict = get_param_state_dict_from_zero_checkpoint(checkpoint_dir, tag)
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag)
 
     logger.info(f"Overwriting model with fp32 weights")
     model = model.cpu()
