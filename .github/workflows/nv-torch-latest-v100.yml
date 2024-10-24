@@ -59,7 +59,7 @@ jobs:
           echo "Running tests and logging to ${TEST_LOG_FILE}"
           # Let this line return true so that we can grep for "Failed" in the log file
           set +e
-          NCCL_SOCKET_IFNAME="" RUNNING_TEST_LOG_FILE=${TEST_LOG_FILE} pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="2.5" --cuda_ver="12.1"
+          DS_UNITTEST_FILE_STORE_DIR=/dev/shm RUNNING_TEST_LOG_FILE=${TEST_LOG_FILE} pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="2.5" --cuda_ver="12.1"
           PYTEST_EXIT_CODE=$?
           if [ $PYTEST_EXIT_CODE -ne 0 ]; then
             # We don't clean the file here for debugging
@@ -69,7 +69,7 @@ jobs:
           grep "Failed" ${TEST_LOG_FILE}
           rm -f ${TEST_LOG_FILE}
           # Do the same as above
-          RUNNING_TEST_LOG_FILE=${TEST_LOG_FILE} pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="2.5" --cuda_ver="12.1"
+          DS_UNITTEST_FILE_STORE_DIR=/dev/shm RUNNING_TEST_LOG_FILE=${TEST_LOG_FILE} pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="2.5" --cuda_ver="12.1"
           PYTEST_EXIT_CODE=$?
           grep "Failed" ${TEST_LOG_FILE}
           if [ $PYTEST_EXIT_CODE -ne 0 ]; then
