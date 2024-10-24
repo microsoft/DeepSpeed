@@ -45,8 +45,9 @@ jobs:
       - name: HF Accelerate tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          git clone https://github.com/huggingface/accelerate
+          git clone https://github.com/loadams/accelerate
           cd accelerate
+          git checkout fix-transformers-ds-references
           git rev-parse --short HEAD
           # installing dependencies
           pip install .[testing]
