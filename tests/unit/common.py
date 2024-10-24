@@ -11,6 +11,8 @@ import socket
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+import fcntl
+import traceback
 
 import torch
 import torch.multiprocessing as mp
@@ -24,6 +26,8 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
+RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
+DS_UNITTEST_FILE_STORE_DIR = os.environ.get("DS_UNITTEST_FILE_STORE_DIR", None)
 
 warn_reuse_dist_env = False
 
@@ -128,6 +132,80 @@ def set_accelerator_visible():
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
+def write_to_log_with_lock(log_file_path: str, header: str, msg: str):
+    with open(log_file_path, 'a+') as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.write(f"{header} {msg}\n")
+            f.flush()
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def make_test_tag(request):
+    if request is None:
+        return "[xdist_worker={get_xdist_worker_id()}][NO_REQUEST]"
+
+    class_name = request.cls.__name__ if request.cls else "NO_CLASS"
+    test_name = request.node.name
+    return f"[xdist_worker={get_xdist_worker_id()}][{class_name}][{test_name}]"
+
+
+class LogTestRun(ABC):
+
+    def __init__(self, log_file, tag, num_procs):
+        self.log_file = log_file
+        self.num_procs = num_procs
+        self.header = tag
+
+    def write(self, msg):
+        write_to_log_with_lock(self.log_file, self.header, msg)
+
+    def __enter__(self):
+        if self.log_file is None:
+            return
+        self._enter()
+        self.start_time = time.time()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.log_file is None:
+            return
+
+        self.elapsed_time = time.time() - self.start_time
+        self._exit(exc_type, exc_val, exc_tb)
+
+    @abstractmethod
+    def _enter(self):
+        ...
+
+    @abstractmethod
+    def _exit(self, exc_type, exc_val, exc_tb):
+        ...
+
+
+class LogTestRunBaseProcess(LogTestRun):
+
+    def __init__(self, log_file, tag, num_procs):
+        super().__init__(log_file, tag, num_procs)
+
+    def _enter(self):
+        self.write(f"Running with {self.num_procs} processes")
+
+    def _exit(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            tb_str = ''.join(traceback.format_tb(exc_tb))
+            if exc_type == Skipped:
+                self.write(
+                    f"Skipping with {self.num_procs} processes. elapsed_time={self.elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val}"
+                )
+            else:
+                self.write(
+                    f"Failed with {self.num_procs} processes. elapsed_time={self.elapsed_time:.2f}s exc_type={exc_type} exc_val={exc_val} {tb_str}"
+                )
+            return False
+        self.write(f"Finished with {self.num_procs} processes. elapsed_time={self.elapsed_time:.2f}s")
+
+
 class DistributedExec(ABC):
     """
     Base class for distributed execution of functions/methods. Contains common
@@ -153,7 +231,8 @@ class DistributedExec(ABC):
         if self.requires_cuda_env and not get_accelerator().is_available():
             pytest.skip("only supported in accelerator environments.")
 
-        self._launch_with_file_store(request, world_size)
+        tag = make_test_tag(request)
+        self._launch_with_file_store(request, world_size, tag)
 
     def _get_fixture_kwargs(self, request, func):
         if not request:
@@ -169,7 +248,7 @@ class DistributedExec(ABC):
                 pass  # test methods can have kwargs that are not fixtures
         return fixture_kwargs
 
-    def _launch_daemonic_procs(self, num_procs, init_method):
+    def _launch_daemonic_procs(self, num_procs, init_method, tag):
         # Create process pool or use cached one
         master_port = None
 
@@ -195,7 +274,7 @@ class DistributedExec(ABC):
             master_port = get_master_port()
 
         # Run the test
-        args = [(local_rank, num_procs, master_port, init_method) for local_rank in range(num_procs)]
+        args = [(local_rank, num_procs, master_port, init_method, tag) for local_rank in range(num_procs)]
         skip_msgs_async = pool.starmap_async(self._dist_run, args)
 
         try:
@@ -215,7 +294,7 @@ class DistributedExec(ABC):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
 
-    def _launch_non_daemonic_procs(self, num_procs, init_method):
+    def _launch_non_daemonic_procs(self, num_procs, init_method, tag):
         assert not self.reuse_dist_env, "Cannot reuse distributed environment with non-daemonic processes"
 
         master_port = get_master_port()
@@ -224,7 +303,8 @@ class DistributedExec(ABC):
         prev_start_method = mp.get_start_method()
         mp.set_start_method('spawn', force=True)
         for local_rank in range(num_procs):
-            p = mp.Process(target=self._dist_run, args=(local_rank, num_procs, master_port, init_method, skip_msg))
+            p = mp.Process(target=self._dist_run,
+                           args=(local_rank, num_procs, master_port, init_method, tag, skip_msg))
             p.start()
             processes.append(p)
         mp.set_start_method(prev_start_method, force=True)
@@ -266,7 +346,7 @@ class DistributedExec(ABC):
             # add a check here to assert all exit messages are equal
             pytest.skip(skip_msg.get())
 
-    def _launch_procs(self, num_procs, init_method):
+    def _launch_procs(self, num_procs, init_method, tag):
         # Verify we have enough accelerator devices to run this test
         if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
             pytest.skip(
@@ -281,11 +361,11 @@ class DistributedExec(ABC):
         mp.set_start_method('forkserver', force=True)
 
         if self.non_daemonic_procs:
-            self._launch_non_daemonic_procs(num_procs, init_method)
+            self._launch_non_daemonic_procs(num_procs, init_method, tag)
         else:
-            self._launch_daemonic_procs(num_procs, init_method)
+            self._launch_daemonic_procs(num_procs, init_method, tag)
 
-    def _dist_run(self, local_rank, num_procs, master_port, init_method, skip_msg=""):
+    def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
         if not dist.is_initialized():
             """ Initialize deepspeed.comm and execute the user function. """
             if self.set_dist_env:
@@ -299,14 +379,26 @@ class DistributedExec(ABC):
                 os.environ['LOCAL_SIZE'] = str(num_procs)
                 os.environ['WORLD_SIZE'] = str(num_procs)
 
-            # turn off NCCL logging if set
-            os.environ.pop('NCCL_DEBUG', None)
+        tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}"
+        with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [setup _dist_run]", num_procs):
+            if not dist.is_initialized():
+                """ Initialize deepspeed.comm and execute the user function. """
+                if self.set_dist_env:
+                    os.environ['MASTER_ADDR'] = '127.0.0.1'
+                    os.environ['MASTER_PORT'] = str(master_port)
+                    os.environ['LOCAL_RANK'] = str(local_rank)
+                    # NOTE: unit tests don't support multi-node so local_rank == global rank
+                    os.environ['RANK'] = str(local_rank)
+                    # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
+                    # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
+                    os.environ['LOCAL_SIZE'] = str(num_procs)
+                    os.environ['WORLD_SIZE'] = str(num_procs)
 
-            if get_accelerator().is_available():
-                set_accelerator_visible()
+                # turn off NCCL logging if set
+                os.environ.pop('NCCL_DEBUG', None)
 
-            if get_accelerator().is_available():
-                get_accelerator().set_device(local_rank)
+                if get_accelerator().is_available():
+                    set_accelerator_visible()
 
             if self.init_distributed:
                 deepspeed.init_distributed(dist_backend=self.backend,
@@ -316,21 +408,33 @@ class DistributedExec(ABC):
                 dist.barrier()
 
         try:
-            self.run(**self._fixture_kwargs)
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exec _dist_run]", num_procs):
+                self.run(**self._fixture_kwargs)
         except BaseException as e:
-            if isinstance(e, Skipped):
-                if self.non_daemonic_procs:
-                    skip_msg.put(e.msg)
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exception _dist_run] {e.__class__} msg={e.msg}",
+                                       num_procs):
+                if isinstance(e, Skipped):
+                    if self.non_daemonic_procs:
+                        skip_msg.put(e.msg)
+                    else:
+                        skip_msg = e.msg
                 else:
-                    skip_msg = e.msg
-            else:
-                raise e
+                    raise e
 
         return skip_msg
 
-    def _launch_with_file_store(self, request, world_size):
-        tmpdir = request.getfixturevalue("tmpdir")
-        dist_file_store = tmpdir.join("dist_file_store")
+    def _launch_with_file_store(self, request, world_size, tag):
+        import tempfile
+
+        use_custom_file_store_dir = DS_UNITTEST_FILE_STORE_DIR is not None
+        if use_custom_file_store_dir:
+            shm_dir = tempfile.mkdtemp(prefix="ds_test_", dir="/dev/shm")
+            tmpdir = Path(shm_dir)
+            dist_file_store = tmpdir / "dist_file_store"
+        else:
+            tmpdir = request.getfixturevalue("tmpdir")
+            dist_file_store = tmpdir.join("dist_file_store")
+
         assert not os.path.exists(dist_file_store)
         init_method = f"file://{dist_file_store}"
 
@@ -338,10 +442,12 @@ class DistributedExec(ABC):
             world_size = [world_size]
         for procs in world_size:
             try:
-                self._launch_procs(procs, init_method)
+                self._launch_procs(procs, init_method, tag)
             finally:
                 if os.path.exists(dist_file_store):
                     os.remove(dist_file_store)
+                if use_custom_file_store_dir and os.path.exists(tmpdir):
+                    os.rmdir(shm_dir)
             time.sleep(0.5)
 
     def _dist_destroy(self):
@@ -489,7 +595,8 @@ class DistributedTest(DistributedExec):
         else:
             world_size = self._fixture_kwargs.get("world_size", self.world_size)
 
-        self._launch_with_file_store(request, world_size)
+        tag = make_test_tag(request)
+        self._launch_with_file_store(request, world_size, tag)
 
     def _get_current_test_func(self, request):
         # DistributedTest subclasses may have multiple test methods
