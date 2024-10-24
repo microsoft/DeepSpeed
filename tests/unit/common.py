@@ -27,6 +27,7 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
 RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
+DS_UNITTEST_FILE_STORE_DIR = os.environ.get("DS_UNITTEST_FILE_STORE_DIR", None)
 
 warn_reuse_dist_env = False
 
@@ -423,8 +424,17 @@ class DistributedExec(ABC):
         return skip_msg
 
     def _launch_with_file_store(self, request, world_size, tag):
-        tmpdir = request.getfixturevalue("tmpdir")
-        dist_file_store = tmpdir.join("dist_file_store")
+        import tempfile
+
+        use_custom_file_store_dir = DS_UNITTEST_FILE_STORE_DIR is not None
+        if use_custom_file_store_dir:
+            shm_dir = tempfile.mkdtemp(prefix="ds_test_", dir="/dev/shm")
+            tmpdir = Path(shm_dir)
+            dist_file_store = tmpdir / "dist_file_store"
+        else:
+            tmpdir = request.getfixturevalue("tmpdir")
+            dist_file_store = tmpdir.join("dist_file_store")
+
         assert not os.path.exists(dist_file_store)
         init_method = f"file://{dist_file_store}"
 
@@ -436,6 +446,8 @@ class DistributedExec(ABC):
             finally:
                 if os.path.exists(dist_file_store):
                     os.remove(dist_file_store)
+                if use_custom_file_store_dir and os.path.exists(tmpdir):
+                    os.rmdir(shm_dir)
             time.sleep(0.5)
 
     def _dist_destroy(self):
