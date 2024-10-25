@@ -392,10 +392,13 @@ class DistributedExec(ABC):
                     set_accelerator_visible()
 
             if self.init_distributed:
+                from datetime import timedelta
+                timeout = timedelta(seconds=10)
                 deepspeed.init_distributed(dist_backend=self.backend,
                                            init_method=init_method,
                                            rank=local_rank,
-                                           world_size=num_procs)
+                                           world_size=num_procs,
+                                           timeout=timeout)
                 dist.barrier()
 
             current_device = torch.cuda.current_device()
