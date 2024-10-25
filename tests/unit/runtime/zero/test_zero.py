@@ -1633,19 +1633,19 @@ class TestEmptyParameterGroup(DistributedTest):
 class TestZero3SwitchModes(DistributedTest):
     world_size = 2
 
-    @pytest.mark.parametrize("prefetching", [True, False])
-    def test(self, prefetching, zero_stage=3):
+    @pytest.mark.parametrize("prefetch_ratio", [0.0, 0.5, 1.0])
+    def test(self, prefetch_ratio, zero_stage=3):
 
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
-        prefetch_bucket_size = sum([p.numel() for p in model.parameters(recurse=True)])
+        prefetch_bucket_size = int(sum([p.numel() for p in model.parameters(recurse=True)]) * prefetch_ratio)
         config_dict = {
             "train_micro_batch_size_per_gpu": 2,
             "gradient_accumulation_steps": 2,
             "zero_optimization": {
                 "stage": zero_stage,
-                "stage3_prefetch_bucket_size": prefetch_bucket_size if prefetching else 0,
+                "stage3_prefetch_bucket_size": prefetch_bucket_size
             },
             "optimizer": {
                 "type": "Adam",
