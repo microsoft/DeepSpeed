@@ -366,21 +366,12 @@ class DistributedExec(ABC):
             self._launch_daemonic_procs(num_procs, init_method, tag)
 
     def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
-        if not dist.is_initialized():
-            """ Initialize deepspeed.comm and execute the user function. """
-            if self.set_dist_env:
-                os.environ['MASTER_ADDR'] = '127.0.0.1'
-                os.environ['MASTER_PORT'] = str(master_port)
-                os.environ['LOCAL_RANK'] = str(local_rank)
-                # NOTE: unit tests don't support multi-node so local_rank == global rank
-                os.environ['RANK'] = str(local_rank)
-                # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
-                # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
-                os.environ['LOCAL_SIZE'] = str(num_procs)
-                os.environ['WORLD_SIZE'] = str(num_procs)
 
-        tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}"
-        with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [setup _dist_run]", num_procs):
+        tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}]"
+        # Not using accelerator for debugging
+        prev_current_device = torch.cuda.current_device()
+        current_device = -0
+        with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [setup _dist_run][dist_initialized={dist.is_initialized()},set_dist_env={self.set_dist_env},init_distributed={self.init_distributed},backend={self.backend},init_method={init_method}]", num_procs):
             if not dist.is_initialized():
                 """ Initialize deepspeed.comm and execute the user function. """
                 if self.set_dist_env:
@@ -407,8 +398,12 @@ class DistributedExec(ABC):
                                            world_size=num_procs)
                 dist.barrier()
 
+            current_device = torch.cuda.current_device()
+
+        visible_devs = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+
         try:
-            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exec _dist_run]", num_procs):
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exec _dist_run][prev_dev={prev_current_device},dev={current_device},visible_devs=[{visible_devs}]]", num_procs):
                 self.run(**self._fixture_kwargs)
         except BaseException as e:
             with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exception _dist_run] {e.__class__} msg={e.msg}",
