@@ -218,10 +218,10 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_
 
     if zero_stage <= 2:
         return _get_fp32_state_dict_from_zero2_checkpoint(ds_checkpoint_dir, zero_model_states,
-                                                           exclude_frozen_parameters)
+                                                          exclude_frozen_parameters)
     elif zero_stage == 3:
         return _get_fp32_state_dict_from_zero3_checkpoint(ds_checkpoint_dir, zero_model_states,
-                                                           exclude_frozen_parameters)
+                                                          exclude_frozen_parameters)
 
 
 def _zero2_merge_frozen_params(state_dict, zero_model_states):
