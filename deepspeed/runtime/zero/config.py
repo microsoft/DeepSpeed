@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import sys
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 from pydantic import Field, model_validator
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
@@ -21,6 +21,7 @@ ZeRO optimization should be enabled as:
     "stage3_max_live_parameters" : 1000000000,
     "stage3_max_reuse_distance" : 1000000000,
     "stage3_use_all_reduce_for_fetch_params": [true|false],
+    "stage3_force_coalesced_fetch_layers": list[str],
     "allgather_partitions": [true|false],
     "use_multi_rank_bucket_allreduce": [true|false],
     "allgather_bucket_size": 500000000,
@@ -243,6 +244,13 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     Since the weights are partitioned across GPUs, they aren’t part of
     ``state_dict``, so this function automatically gathers the weights when
     this option is enabled and then saves the fp16 model weights.
+    """
+
+    force_coalesced_fetch_layers: List[str] = Field([], alias="stage3_force_coalesced_fetch_layers")
+    """
+    Treat the layer as an integral unit (to avoid recursion) when fetching at stage3.
+    This will reduce the host overhead and separated allgather overhead in fetching
+    parameters introduced by hooks for fine-grained layers.
     """
 
     use_all_reduce_for_fetch_params: bool = Field(False, alias="stage3_use_all_reduce_for_fetch_params")

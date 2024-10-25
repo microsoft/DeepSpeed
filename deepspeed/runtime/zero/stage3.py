@@ -157,6 +157,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
+        zero_force_coalesced_fetch_layers=None,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -227,7 +228,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             mpu=mpu,
             zero_param_parallel_group=zero_param_parallel_group,
             zero_quantized_weights=zero_quantized_weights,
-            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
+            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
+            zero_force_coalesced_fetch_layers=zero_force_coalesced_fetch_layers)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -458,22 +460,26 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_param_parallel_group,
         zero_quantized_weights,
         zero_quantized_nontrainable_weights,
+        zero_force_coalesced_fetch_layers,
     ):
-        return DeepSpeedZeRoOffload(module=module,
-                                    timers=timers,
-                                    ds_config=ds_config,
-                                    overlap_comm=overlap_comm,
-                                    prefetch_bucket_size=prefetch_bucket_size,
-                                    max_reuse_distance=max_reuse_distance,
-                                    max_live_parameters=max_live_parameters,
-                                    param_persistence_threshold=param_persistence_threshold,
-                                    model_persistence_threshold=model_persistence_threshold,
-                                    dp_process_group=dp_process_group,
-                                    offload_param_config=offload_param_config,
-                                    mpu=mpu,
-                                    zero_param_parallel_group=zero_param_parallel_group,
-                                    zero_quantized_weights=zero_quantized_weights,
-                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
+        return DeepSpeedZeRoOffload(
+            module=module,
+            timers=timers,
+            ds_config=ds_config,
+            overlap_comm=overlap_comm,
+            prefetch_bucket_size=prefetch_bucket_size,
+            max_reuse_distance=max_reuse_distance,
+            max_live_parameters=max_live_parameters,
+            param_persistence_threshold=param_persistence_threshold,
+            model_persistence_threshold=model_persistence_threshold,
+            dp_process_group=dp_process_group,
+            offload_param_config=offload_param_config,
+            mpu=mpu,
+            zero_param_parallel_group=zero_param_parallel_group,
+            zero_quantized_weights=zero_quantized_weights,
+            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
+            zero_force_coalesced_fetch_layers=zero_force_coalesced_fetch_layers,
+        )
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
