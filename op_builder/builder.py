@@ -76,7 +76,7 @@ def get_default_compute_capabilities():
 cuda_minor_mismatch_ok = {
     10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5"],
+    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6"],
 }
 
 
@@ -253,8 +253,7 @@ class OpBuilder(ABC):
             rocm_info = Path("rocminfo")
         rocm_gpu_arch_cmd = str(rocm_info) + " | grep -o -m 1 'gfx.*'"
         try:
-            safe_cmd = shlex.split(rocm_gpu_arch_cmd)
-            result = subprocess.check_output(safe_cmd)
+            result = subprocess.check_output(rocm_gpu_arch_cmd, shell=True)
             rocm_gpu_arch = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
             rocm_gpu_arch = ""
@@ -272,8 +271,7 @@ class OpBuilder(ABC):
         rocm_wavefront_size_cmd = str(
             rocm_info) + " | grep -Eo -m1 'Wavefront Size:[[:space:]]+[0-9]+' | grep -Eo '[0-9]+'"
         try:
-            safe_cmd = shlex.split(rocm_wavefront_size_cmd)
-            result = subprocess.check_output(rocm_wavefront_size_cmd)
+            result = subprocess.check_output(rocm_wavefront_size_cmd, shell=True)
             rocm_wavefront_size = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
             rocm_wavefront_size = "32"
