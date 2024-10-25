@@ -367,11 +367,14 @@ class DistributedExec(ABC):
 
     def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
 
+        get_accelerator().set_device(local_rank)
         tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}]"
-        # Not using accelerator for debugging
-        prev_current_device = torch.cuda.current_device()
+        prev_current_device = get_accelerator().current_device()
         current_device = -0
-        with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [setup _dist_run][dist_initialized={dist.is_initialized()},set_dist_env={self.set_dist_env},init_distributed={self.init_distributed},backend={self.backend},init_method={init_method}]", num_procs):
+        with LogTestRunBaseProcess(
+                RUNNING_TEST_LOG_FILE,
+                f"{tag} [setup _dist_run][dist_initialized={dist.is_initialized()},set_dist_env={self.set_dist_env},init_distributed={self.init_distributed},backend={self.backend},init_method={init_method}]",
+                num_procs):
             if not dist.is_initialized():
                 """ Initialize deepspeed.comm and execute the user function. """
                 if self.set_dist_env:
@@ -401,12 +404,15 @@ class DistributedExec(ABC):
                                            timeout=timeout)
                 dist.barrier()
 
-            current_device = torch.cuda.current_device()
+            current_device = get_accelerator().current_device()
 
         visible_devs = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
         try:
-            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exec _dist_run][prev_dev={prev_current_device},dev={current_device},visible_devs=[{visible_devs}]]", num_procs):
+            with LogTestRunBaseProcess(
+                    RUNNING_TEST_LOG_FILE,
+                    f"{tag} [exec _dist_run][prev_dev={prev_current_device},dev={current_device},visible_devs=[{visible_devs}]]",
+                    num_procs):
                 self.run(**self._fixture_kwargs)
         except BaseException as e:
             with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exception _dist_run] {e.__class__} msg={e.msg}",
