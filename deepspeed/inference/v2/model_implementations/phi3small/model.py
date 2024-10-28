@@ -112,7 +112,6 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
     def mup_embedding_multiplier(self) -> float:
         return 10.0
 
-
     """
     Forward implementations
     """
@@ -160,7 +159,10 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
         if self.tp_size > 1:
             dist.all_reduce(hidden_states, group=self._base_mp_group)
 
-        residual, hidden_states = self.norm(residual, hidden_states, cur_params.mlp_norm_gamma, beta=cur_params.mlp_norm_beta)
+        residual, hidden_states = self.norm(residual,
+                                            hidden_states,
+                                            cur_params.mlp_norm_gamma,
+                                            beta=cur_params.mlp_norm_beta)
 
         hidden_states = self.mlp_1(hidden_states, cur_params.mlp_1_w, b=None)
         hidden_states = self.mlp_2(hidden_states, cur_params.mlp_2_w, b=None)
@@ -170,7 +172,10 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
 
         if layer_idx != self.num_layers - 1:
             next_params = self._transformer[layer_idx + 1]
-            residual, hidden_states = self.norm(residual, hidden_states, next_params.attn_norm_gamma, beta=next_params.attn_norm_beta)
+            residual, hidden_states = self.norm(residual,
+                                                hidden_states,
+                                                next_params.attn_norm_gamma,
+                                                beta=next_params.attn_norm_beta)
         else:
             # On last layer, we just need to perform the residual add. Adding into the residual
             # here is safe.
@@ -205,7 +210,10 @@ class Phi3SmallInferenceModel(DSTransformerModelBase):
     def forward(self, wrapped_batch: RaggedBatchWrapper) -> torch.Tensor:
         residual = self._forward_embed(wrapped_batch)
 
-        residual, hidden_states = self.norm(residual, None, gamma=self._transformer[0].attn_norm_gamma, beta=self._transformer[0].attn_norm_beta)
+        residual, hidden_states = self.norm(residual,
+                                            None,
+                                            gamma=self._transformer[0].attn_norm_gamma,
+                                            beta=self._transformer[0].attn_norm_beta)
 
         for layer_idx in range(self.num_layers):
             residual, hidden_states = self._forward_transformer_layer(layer_idx, residual, hidden_states,
