@@ -26,7 +26,7 @@ from _pytest.outcomes import Skipped
 from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout for tests that hang
-DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
+DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '60'))
 RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
 DS_UNITTEST_FILE_STORE_DIR = os.environ.get("DS_UNITTEST_FILE_STORE_DIR", None)
 
@@ -294,7 +294,8 @@ class DistributedExec(ABC):
                 except mp.TimeoutError:
                     pytest.exit("Test hanged, exiting", returncode=1)
                 except Exception as e:
-                    print(f"Exception in _launch_daemonic_procs: {e} retrying")
+                    write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
+                                           f"Exception in _launch_daemonic_procs: {e} retrying")
         finally:
             # Regardless of the outcome, ensure proper teardown
             # Tear down distributed environment and close process pools
@@ -413,7 +414,7 @@ class DistributedExec(ABC):
 
             if self.init_distributed:
                 from datetime import timedelta
-                timeout = timedelta(seconds=10)
+                timeout = timedelta(seconds=60)
                 deepspeed.init_distributed(dist_backend=self.backend,
                                            init_method=init_method,
                                            rank=local_rank,
@@ -483,8 +484,12 @@ class DistributedExec(ABC):
 
     def _close_pool(self, pool, num_procs, force=False):
         if force or not self.reuse_dist_env:
-            msg = pool.starmap(self._dist_destroy, [() for _ in range(num_procs)])
-            pool.close()
+            ft_destroy = pool.starmap_async(self._dist_destroy, [() for _ in range(num_procs)])
+            try:
+                ft_destroy.get(self.exec_timeout)
+                pool.close()
+            except mp.TimeoutError:
+                pool.terminate()
             pool.join()
 
 
