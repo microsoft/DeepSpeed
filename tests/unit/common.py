@@ -286,22 +286,23 @@ class DistributedExec(ABC):
         args = [(local_rank, num_procs, master_port, init_method, tag) for local_rank in range(num_procs)]
 
         RETRY_COUNT = 3
-        test_result = TestResultType.UNSET
+        fork_process_result = TestResultType.UNSET
         try:
             for _ in range(RETRY_COUNT):
                 try:
                     skip_msgs_async = pool.starmap_async(self._dist_run, args)
                     test_results = skip_msgs_async.get(self.exec_timeout)
+                    fork_process_result = TestResultType.SUCCESS
                     break
                 except mp.TimeoutError as e:
                     write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
                                            f"Timeout in _launch_daemonic_procs: {e} retrying")
-                    test_result = TestResultType.TIMEOUT
+                    fork_process_result = TestResultType.TIMEOUT
                     # pytest.exit("Test hanged, exiting", returncode=1)
                 except Exception as e:
                     write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
                                            f"Exception in _launch_daemonic_procs: {e} retrying")
-                    test_result = TestResultType.ERROR
+                    fork_process_result = TestResultType.ERROR
                 self._close_pool(pool, num_procs)
                 write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag, f"Pool closed")
                 pool = mp.Pool(processes=num_procs)
@@ -311,9 +312,9 @@ class DistributedExec(ABC):
             self._close_pool(pool, num_procs)
 
         if RUNNING_TEST_LOG_FILE:
-            write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag, f"Child processes finished: {test_result}")
-        if test_result == TestResultType.TIMEOUT or test_result == TestResultType.ERROR:
-            pytest.fail(f"Test failed with error: {test_result}", pytrace=False)
+            write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag, f"Child processes finished: {fork_process_result}")
+        if fork_process_result == TestResultType.TIMEOUT or fork_process_result == TestResultType.ERROR:
+            pytest.fail(f"Test failed with error: {fork_process_result}", pytrace=False)
 
         # If we skipped a test, propagate that to this process
 
