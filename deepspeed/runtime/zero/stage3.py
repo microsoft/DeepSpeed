@@ -157,6 +157,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
+        no_mixed_precision=False,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -327,6 +328,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         #that this process will update
         self.fp32_partitioned_groups_flat = []
         self.next_swappable_fp32_partitioned_groups = []
+        self.no_mixed_precision = no_mixed_precision
 
         # number of elements per partition in each group
         self.partition_size = []
@@ -889,8 +891,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
                             self.subgroup_to_device[i]).clone().float().detach())
                     else:
-                        self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
-                            self.device).clone().float().detach())
+                        if self.no_mixed_precision:
+                            self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
+                                self.device).detach())
+                        else:
+                            self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
+                                self.device).clone().float().detach())
                 self.fp32_partitioned_groups_flat[i].ds_id = ds_id
 
             self.fp32_partitioned_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
@@ -2034,11 +2040,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     def _reassign_or_swap_out_partitioned_parameters(self, sub_group_id):
         if self.fp16_partitioned_groups_flat[sub_group_id] is not None:
-            self.fp16_partitioned_groups_flat[sub_group_id].data.copy_(
-                self.fp32_partitioned_groups_flat[sub_group_id].data)
+            if not self.no_mixed_precision:
+                self.fp16_partitioned_groups_flat[sub_group_id].data.copy_(
+                    self.fp32_partitioned_groups_flat[sub_group_id].data)
 
-            #unflatten fp16 parameter subgroup
-            self._unflatten_partitioned_parameters(sub_group_id)
+                #unflatten fp16 parameter subgroup
+                self._unflatten_partitioned_parameters(sub_group_id)
         else:
             self._partitioned_params_swap_out(sub_group_id)
 
