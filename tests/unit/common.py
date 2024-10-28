@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 import fcntl
 import traceback
+from enum import Enum
 
 import torch
 import torch.multiprocessing as mp
@@ -30,6 +31,13 @@ RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
 DS_UNITTEST_FILE_STORE_DIR = os.environ.get("DS_UNITTEST_FILE_STORE_DIR", None)
 
 warn_reuse_dist_env = False
+
+
+class TestResultType(Enum):
+    SUCCESS = 0
+    ERROR = 1
+    SKIP = 2
+    UNSET = 3
 
 
 def is_rocm_pytorch():
@@ -275,24 +283,33 @@ class DistributedExec(ABC):
 
         # Run the test
         args = [(local_rank, num_procs, master_port, init_method, tag) for local_rank in range(num_procs)]
-        skip_msgs_async = pool.starmap_async(self._dist_run, args)
 
+        RETRY_COUNT = 3
         try:
-            skip_msgs = skip_msgs_async.get(self.exec_timeout)
-        except mp.TimeoutError:
-            # Shortcut to exit pytest in the case of a hanged test. This
-            # usually means an environment error and the rest of tests will
-            # hang (causing super long unit test runtimes)
-            pytest.exit("Test hanged, exiting", returncode=1)
+            for _ in range(RETRY_COUNT):
+                try:
+                    skip_msgs_async = pool.starmap_async(self._dist_run, args)
+                    test_results = skip_msgs_async.get(self.exec_timeout)
+                    break
+                except mp.TimeoutError:
+                    pytest.exit("Test hanged, exiting", returncode=1)
+                except Exception as e:
+                    print(f"Exception in _launch_daemonic_procs: {e} retrying")
         finally:
             # Regardless of the outcome, ensure proper teardown
             # Tear down distributed environment and close process pools
             self._close_pool(pool, num_procs)
 
         # If we skipped a test, propagate that to this process
+
+        skip_msgs = [msg for result_type, msg in test_results if result_type == TestResultType.SKIP]
         if any(skip_msgs):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
+
+        err_msgs = [msg for result_type, msg in test_results if result_type == TestResultType.ERROR]
+        if any(err_msgs):
+            pytest.fail(f"Test failed with error: {err_msgs[0]}", pytrace=False)
 
     def _launch_non_daemonic_procs(self, num_procs, init_method, tag):
         assert not self.reuse_dist_env, "Cannot reuse distributed environment with non-daemonic processes"
@@ -408,24 +425,29 @@ class DistributedExec(ABC):
 
         visible_devs = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
+        test_result = TestResultType.UNSET
         try:
             with LogTestRunBaseProcess(
                     RUNNING_TEST_LOG_FILE,
                     f"{tag} [exec _dist_run][prev_dev={prev_current_device},dev={current_device},visible_devs=[{visible_devs}]]",
                     num_procs):
                 self.run(**self._fixture_kwargs)
+                test_result = TestResultType.SUCCESS
         except BaseException as e:
-            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exception _dist_run] {e.__class__} msg={e.msg}",
+            msg = e.msg if "msg" in dir(e) else str(e)
+            with LogTestRunBaseProcess(RUNNING_TEST_LOG_FILE, f"{tag} [exception _dist_run] {e.__class__} msg={msg}",
                                        num_procs):
                 if isinstance(e, Skipped):
-                    if self.non_daemonic_procs:
-                        skip_msg.put(e.msg)
-                    else:
-                        skip_msg = e.msg
+                    test_result = TestResultType.SKIP
                 else:
-                    raise e
+                    test_result = TestResultType.ERROR
 
-        return skip_msg
+                if self.non_daemonic_procs:
+                    skip_msg.put(e.msg)
+                else:
+                    skip_msg = msg
+
+        return test_result, skip_msg
 
     def _launch_with_file_store(self, request, world_size, tag):
         import tempfile
