@@ -19,10 +19,12 @@ DS_COMM_BROADCAST_OFF = False
 DS_COMM_ALL_REDUCE_OFF = False
 DS_COMM_REDUCE_OFF = False
 
+
 def disable_compiler_collective(func):
     if required_torch_version(min_version=2.3):
         return func
     return compiler.disable(func)
+
 
 def build_shm_op():
     builder = get_accelerator().create_op_builder("ShareMemCommBuilder")
