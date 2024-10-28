@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import os
-from typing import List
+from typing import List, Tuple
 
 import torch
 from deepspeed import comm as dist
@@ -15,6 +15,9 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.lion import DeepSpeedCPULion, FusedLion
 from deepspeed.utils.nvtx import instrument_w_nvtx
 from deepspeed.accelerator import get_accelerator
+
+# ensure we only warn once, otherwise every iteration will trigger a warning
+warned = False
 
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
@@ -65,7 +68,6 @@ def get_lst_from_rank0(lst: List[int]) -> None:
     lst_tensor = torch.tensor(
         lst if dist.get_rank() == 0 else [-1] * len(lst),
         dtype=int,
-        # device=get_accelerator().current_device_name(),
         device=torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"])),
         requires_grad=False,
     )
@@ -158,3 +160,16 @@ def apply_to_tensors_only(function, value, warning_msg_fn=None):
                 logger.warning(warning_msg_fn(value))
                 warned = True
         return value
+
+
+def get_mapping_to_flat_buffer(tensors: List[torch.Tensor]) -> List[Tuple[torch.Tensor, int, int]]:
+    tensor_infos: List[Tuple[torch.Tensor, int, int]] = []
+
+    offset = 0
+    for tensor in tensors:
+        tensor_numel = tensor.numel()
+        # record some data so we can restore the device tensor later
+        tensor_infos.append((tensor, offset, tensor_numel))
+        offset += tensor_numel
+
+    return tensor_infos

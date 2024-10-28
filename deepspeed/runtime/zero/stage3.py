@@ -6,21 +6,25 @@
 import sys
 import gc
 import collections
-from typing import Deque, Dict, Tuple
+import itertools
+from typing import Deque, Dict, Set, Tuple, Container
+from contextlib import contextmanager
+
 from deepspeed import comm as dist
-from deepspeed.utils import groups
+from deepspeed.utils import groups, z3_leaf_parameter
 
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced, all_to_all_quant_reduce
-from deepspeed.runtime.utils import inf, get_global_norm, is_model_parallel_parameter, get_only_unique_item
+from deepspeed.runtime.utils import inf, is_model_parallel_parameter, get_only_unique_item
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.config import ZeroStageEnum
-from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
-from deepspeed.runtime.zero.utils import apply_to_tensors_only
+from deepspeed.runtime.zero.utils import apply_to_tensors_only, get_mapping_to_flat_buffer
+from deepspeed.runtime.zero.offload_states import offload_adam_states, reload_adam_states
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.optimizer_utils import OptimizerSwapper
@@ -28,7 +32,6 @@ from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import Partitio
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE, LOSS_SCALER
 from deepspeed.accelerator import get_accelerator
-from deepspeed.utils import z3_leaf_parameter
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -67,6 +70,39 @@ def lcm(x, y):
 def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
+
+
+@contextmanager
+def unwrap_model_for_generation(model):
+    """
+    For ZeRO-3 models, we gather the weights once to speed up generation.
+    """
+    with GatheredParameters(model.parameters()):
+        # Removes the optimizer hooks from a DeepSpeed ZeRO-3 model.
+
+        # Remove hooks
+        if model.optimizer is not None and hasattr(model.optimizer, "parameter_offload"):
+            optimizer_offload = model.optimizer.parameter_offload
+        elif model.optimizer is not None:
+            optimizer_offload = model.optimizer
+
+        for hook in optimizer_offload.forward_hooks:
+            hook.remove()
+        for hook in optimizer_offload.backward_hooks:
+            hook.remove()
+
+        optimizer_offload.forward_hooks = []
+        optimizer_offload.backward_hooks = []
+
+        yield model
+
+        # Adds the optimizer hooks from a DeepSpeed ZeRO-3 model.
+        if model.optimizer is not None and hasattr(model.optimizer, "parameter_offload"):
+            optimizer_offload = model.optimizer.parameter_offload
+        elif model.optimizer is not None:
+            optimizer_offload = model.optimizer
+        optimizer_offload._register_hooks_recursively(optimizer_offload.module)
+    return
 
 
 INITIAL_MICRO_STEP_ID = -1
@@ -215,14 +251,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.module = module
         self.elastic_checkpoint = elastic_checkpoint
 
-        self.inf_or_nan_tracker: Tensor = torch.zeros(1,
-                                                      dtype=torch.bool,
-                                                      device=get_accelerator().current_device_name(),
-                                                      requires_grad=False)
+        self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
+
+        self.inf_or_nan_tracker: Tensor = torch.zeros(1, dtype=torch.bool, device=self.device, requires_grad=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer and type(init_optimizer) == DeepSpeedCPUAdam)
 
-        self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
         self.reduce_and_partition_stream = None if get_accelerator().is_synchronized_device() else get_accelerator(
         ).Stream() if overlap_comm else get_accelerator().default_stream()
@@ -393,6 +427,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self._link_all_hp_params()
 
+        self.offloaded_states: Set(OffloadDeviceEnum) = set()
+
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
@@ -531,20 +567,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         cpu_buffer = torch.empty(sum(p.numel() for p in tensors),
                                  dtype=get_only_unique_item(t.dtype for t in tensors),
                                  device="cpu")
-        tensor_infos: List[Tuple[Tensor, int, int]] = []
+        tensor_infos: List[Tuple[Tensor, int, int]] = get_mapping_to_flat_buffer(tensors)
         orig_device = get_only_unique_item(t.device for t in tensors)
 
         offset = 0
-        for tensor in tensors:
-            tensor_numel = tensor.numel()
+        for tensor, offset, tensor_numel in tensor_infos:
             # move the tensor from device memory to host memory
             cpu_buffer.narrow(0, offset, tensor_numel).copy_(tensor)
             tensor.data = torch.empty(0, dtype=tensor.dtype, device=tensor.device)
-
-            # record some data so we can restore the device tensor later
-            tensor_infos.append((tensor, offset, tensor_numel))
-
-            offset += tensor_numel
 
         gc.collect()
         get_accelerator().empty_cache()
@@ -693,15 +723,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             for sub_group in self.fp16_groups:
                 for param in sub_group:
                     parameter_partitions.append(param.ds_tensor)
-            device_buffer = __class__.defragment(parameter_partitions)
 
-            # setup flat buffers per subgroup, these are each just sections of the
-            # contiguous flat buffer for all parameters that we created earlier
-            offset = 0
-            for sub_group in self.fp16_groups:
-                sub_group_numel = sum(param.partition_numel() for param in sub_group)
-                self.fp16_partitioned_groups_flat.append(device_buffer.narrow(0, offset, sub_group_numel))
-                offset += sub_group_numel
+            # We need to keep the reference to this buffer to make sure you can free it in `offload_states`
+            self.lp_param_buffer = __class__.defragment(parameter_partitions)
+            self._set_fp16_partitioned_groups_flat()
+
         else:  # partitioned params offloaded to CPU when not in use
             # create a flat CPU memory allocation for each param group
             self._create_param_groups_fp16_flat_cpu_memory()
@@ -821,10 +847,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         for i, tensor in enumerate(self.fp16_partitioned_groups_flat):
             num_elements = self.fp16_partitioned_groups_flat_numel[i]
+            ds_id_begin = str(self.fp16_partitioned_groups_flat_id[i][0])
+            ds_id_end = str(self.fp16_partitioned_groups_flat_id[i][-1])
+            ds_id = ds_id_begin + '_' + ds_id_end
 
             # a partition of the fp32 master weights that will be updated by this process
             if self._swappable_optimizer_subgroup(i):
                 self.fp32_partitioned_groups_flat.append(torch.Tensor())
+                self.fp32_partitioned_groups_flat[i].ds_id = ds_id
                 nvme_memory_usage += (fp32_element_size * num_elements)
                 num_swappable_partitions += 1
 
@@ -861,11 +891,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     else:
                         self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
                             self.device).clone().float().detach())
+                self.fp32_partitioned_groups_flat[i].ds_id = ds_id
 
             self.fp32_partitioned_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
-            ds_id_begin = str(self.fp16_partitioned_groups_flat_id[i][0])
-            ds_id_end = str(self.fp16_partitioned_groups_flat_id[i][-1])
-            self.fp32_partitioned_groups_flat[i].ds_id = ds_id_begin + '_' + ds_id_end
 
         if len(swappable_fp32_tensors) > 0:
             self.optimizer_swapper.initialize_parameters(parameters=swappable_fp32_tensors,
@@ -973,6 +1001,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if len(swap_fp16_params):
             swap_fp16_params[0].nvme_swapper.swap_out_partitioned_params(dst_fp16_params=swap_fp16_params,
                                                                          src_fp32_params=swap_fp32_params)
+
+    def _set_fp16_partitioned_groups_flat(self):
+        # setup flat buffers per subgroup, these are each just sections of the
+        # contiguous flat buffer for all parameters that we created earlier
+        offset = 0
+        for sub_group in self.fp16_groups:
+            sub_group_numel = sum(param.partition_numel() for param in sub_group)
+            self.fp16_partitioned_groups_flat.append(self.lp_param_buffer.narrow(0, offset, sub_group_numel))
+            offset += sub_group_numel
 
     def initialize_optimizer_states(self):
         num_subgroups = len(self.fp16_groups)
@@ -1411,7 +1448,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         err = torch.tensor(-1.0, device=inf_or_nan.device, dtype=torch.float)
         total_norm = inf_or_nan * err + inf_or_nan.logical_not() * total_norm
 
-        return total_norm
+        return total_norm.cpu()
 
     @instrument_w_nvtx
     def partition_grads(self, params_to_release: List[Parameter], grad_partitions: List[Tensor]) -> None:
@@ -2026,7 +2063,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             return
 
         norm_groups = self._get_norm_groups()
-        scaled_global_grad_norm = get_global_norm(norm_list=norm_groups)
+        scaled_global_grad_norm = torch.linalg.norm(torch.stack(norm_groups))
 
         # Stash unscaled gradient norm
         self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
@@ -2110,8 +2147,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
-            if clip > 1:
-                combined_scale = clip * self.loss_scale
+            clip = torch.clamp(clip, min=1.0)
+            combined_scale = clip * self.loss_scale
 
         self.fp32_partitioned_groups_flat[sub_group_id].grad.mul_(1. / combined_scale)
 
@@ -2146,7 +2183,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     self.inf_or_nan_tracker += torch.isnan(self.grad_partitions_flat_buffer).any()
                     self.inf_or_nan_tracker = self.inf_or_nan_tracker > 0
 
-                overflow_gpu = self.inf_or_nan_tracker.clone().to(torch.uint8)
+                overflow_gpu = self.inf_or_nan_tracker.clone().to(get_accelerator().current_device_name()).to(
+                    torch.uint8)
                 self.inf_or_nan_tracker.zero_()
 
             if not get_accelerator().resolves_data_dependency():
@@ -2237,7 +2275,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return grad_dict
 
     def _fp32_state_allgather(self, param, fp32_state_partition):
-        reduce_buffer = torch.zeros(self.partition_count * fp32_state_partition.numel(),
+        reduce_buffer = torch.empty(self.partition_count * fp32_state_partition.numel(),
                                     dtype=torch.float32,
                                     device=param.device)
         my_rank = dist.get_rank(group=self.dp_process_group)
@@ -2260,6 +2298,24 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             fp32_grad = self.__param_id_to_grad_partition[param.ds_id].float()
 
         return self._fp32_state_allgather(param, fp32_grad)
+
+    def set_fp32_grad_for_param(self, value, param):
+        if not param.requires_grad:
+            return
+
+        if not get_accelerator().resolves_data_dependency():
+            self.reduce_and_partition_stream.synchronize()
+
+        if self.offload_optimizer:
+            group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
+            fp32_grad = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(0, dest_offset, num_elements)
+        else:
+            fp32_grad = self.__param_id_to_grad_partition[param.ds_id]
+
+        my_rank = dist.get_rank(group=self.dp_process_group)
+        value_partition = value.flatten().narrow(0, fp32_grad.numel() * my_rank, fp32_grad.numel())
+
+        fp32_grad.data.copy_(value_partition.data)
 
     def _get_fp32_opt_state_partition(self, param, optim_state_key=None):
         if not get_accelerator().resolves_data_dependency():
@@ -2309,12 +2365,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     ### Local API START ###
 
-    def get_local_fp32_param(self, param, optim_state_key=None) -> Tensor:
-        if not param.requires_grad:
-            return None
-        fp32_opt_state, group_idx = self._get_fp32_opt_state_partition(param, optim_state_key)
-        return fp32_opt_state
-
     def get_local_fp32_grad_for_param(self, param) -> Tensor:
         if not param.requires_grad:
             return None
@@ -2328,6 +2378,30 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         else:
             fp32_grad = self.__param_id_to_grad_partition[param.ds_id].float()
         return fp32_grad
+
+    def set_local_grad_for_param(self, value, param):
+        if not param.requires_grad:
+            return
+
+        assert value.numel() == param.ds_tensor.numel(
+        ), f" Number of elements do not match: {value.numel()} != {param.ds_tensor.ds_numel}"
+
+        if not get_accelerator().resolves_data_dependency():
+            self.reduce_and_partition_stream.synchronize()
+
+        if self.offload_optimizer:
+            group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
+            fp32_grad = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(0, dest_offset, num_elements)
+        else:
+            fp32_grad = self.__param_id_to_grad_partition[param.ds_id]
+
+        fp32_grad.data.copy_(value.flatten().data)
+
+    def get_local_fp32_param(self, param, optim_state_key=None) -> Tensor:
+        if not param.requires_grad:
+            return None
+        fp32_opt_state, group_idx = self._get_fp32_opt_state_partition(param, optim_state_key)
+        return fp32_opt_state
 
     def set_local_hp_param(self, value, param, optim_state_key=None):
         if not param.requires_grad:
@@ -2343,7 +2417,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self._swappable_optimizer_subgroup(group_idx):
             self._optimizer_states_and_gradient_swap_out(group_idx)
-        logger.info(f"[set_local_hp_param][update the params' value successfully]")
+        # logger.info(f"[set_local_hp_param][update the params' value successfully]")
 
     ### Local API END ###
 
@@ -2746,6 +2820,149 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def empty_partition_cache(self):
         self.parameter_offload.empty_partition_cache()
+
+    def offload_states(self,
+                       include: Container[OffloadStateTypeEnum] = None,
+                       device: OffloadDeviceEnum = OffloadDeviceEnum.cpu,
+                       pin_memory: bool = True,
+                       non_blocking: bool = False):
+        device = device.value
+
+        self.empty_partition_cache()
+
+        assert self.optimizer.__class__ == deepspeed.ops.adam.fused_adam.FusedAdam, f"Offloading is supported only for DeepSpeed FusedAdam."
+
+        def needs_offload(target):
+            # return True
+            return target not in self.offloaded_states and (include == None or target in include)
+
+        # HP param
+        if needs_offload(OffloadStateTypeEnum.hp_params):
+            if pin_memory:
+                if not hasattr(self, "hp_params_pin_buffers"):
+                    self.hp_params_pin_buffers = [
+                        get_accelerator().pin_memory(torch.empty_like(t, device=device))
+                        for t in self.fp32_partitioned_groups_flat
+                    ]
+
+                for src_tensor, dest_buf in zip(self.fp32_partitioned_groups_flat, self.hp_params_pin_buffers):
+                    dest_buf.copy_(src_tensor, non_blocking=non_blocking)
+                    src_tensor.data = dest_buf
+            else:
+                for buf in self.fp32_partitioned_groups_flat:
+                    buf.data = buf.data.to(device, non_blocking=non_blocking)
+            self.offloaded_states.add(OffloadStateTypeEnum.hp_params)
+
+        # LP param
+        if needs_offload(OffloadStateTypeEnum.lp_params):
+            if pin_memory:
+                if not hasattr(self, "lp_param_contiguous_pin_buffer"):
+                    self.lp_param_contiguous_pin_buffer = get_accelerator().pin_memory(
+                        torch.empty_like(self.lp_param_buffer, device=device))
+                self.lp_param_contiguous_pin_buffer.copy_(self.lp_param_buffer, non_blocking=non_blocking)
+                cpu_buffer = self.lp_param_contiguous_pin_buffer
+            else:
+                cpu_buffer = self.lp_param_buffer.to(device, non_blocking=non_blocking)
+
+            self.lp_param_buffer.data = cpu_buffer
+            for tensor, offset, tensor_numel in get_mapping_to_flat_buffer(
+                [p.ds_tensor for p in self.module.parameters()]):
+                tensor.data = cpu_buffer.narrow(0, offset, tensor_numel)
+
+            self.fp16_partitioned_groups_flat.clear()
+            self.offloaded_states.add(OffloadStateTypeEnum.lp_params)
+
+        # LP grad
+        if needs_offload(OffloadStateTypeEnum.lp_grads):
+            if pin_memory:
+                if not hasattr(self, "lp_grad_partitions_flat_pin_buffers"):
+                    self.lp_grad_partitions_flat_pin_buffers = get_accelerator().pin_memory(
+                        torch.empty_like(self.grad_partitions_flat_buffer, device=device))
+                self.lp_grad_partitions_flat_pin_buffers.copy_(self.grad_partitions_flat_buffer,
+                                                               non_blocking=non_blocking)
+                self.grad_partitions_flat_buffer.data = self.lp_grad_partitions_flat_pin_buffers
+            else:
+                self.grad_partitions_flat_buffer.data = self.grad_partitions_flat_buffer.data.to(device)
+            self.averaged_gradients = {}
+
+            self.__param_id_to_grad_partition = {}
+
+            self.offloaded_states.add(OffloadStateTypeEnum.lp_grads)
+
+        # contiguous bucket
+        if needs_offload(OffloadStateTypeEnum.contiguous_grad_buffer):
+            if hasattr(self, "_DeepSpeedZeroOptimizer_Stage3__ipg_bucket_flat_buffer"):
+                # Record properties like shape, strides, etc. as a meta tensor
+                self.grad_buffer_meta = self.__ipg_bucket_flat_buffer.to("meta")
+                self.__ipg_bucket_flat_buffer = None
+                self.offloaded_states.add(OffloadStateTypeEnum.contiguous_grad_buffer)
+
+        # Adam
+        if needs_offload(OffloadStateTypeEnum.optim_states):
+            offload_adam_states(self.optimizer, device, pin_memory=pin_memory, non_blocking=non_blocking)
+            self.offloaded_states.add(OffloadStateTypeEnum.optim_states)
+
+        gc.collect()
+        get_accelerator().empty_cache()
+
+    def reload_states(self, non_blocking: bool = False):
+
+        device = get_accelerator().current_device_name()
+
+        # HP param
+        if OffloadStateTypeEnum.hp_params in self.offloaded_states:
+            if hasattr(self, "hp_params_pin_buffers"):
+                for src, dest in zip(self.hp_params_pin_buffers, self.fp32_partitioned_groups_flat):
+                    dest.data = src.to(device, non_blocking=non_blocking)
+            else:
+                for buf in self.fp32_partitioned_groups_flat:
+                    buf.data = buf.data.to(device, non_blocking=non_blocking)
+            self.offloaded_states.remove(OffloadStateTypeEnum.hp_params)
+
+        # LP Param
+        if OffloadStateTypeEnum.lp_params in self.offloaded_states:
+            cpu_buffer = self.lp_param_contiguous_pin_buffer if hasattr(
+                self, "lp_param_contiguous_pin_buffer") else self.lp_param_buffer
+            self.lp_param_buffer.data = cpu_buffer.data.to(device, non_blocking=non_blocking)
+            self._set_fp16_partitioned_groups_flat()
+
+            for tensor, offset, tensor_numel in get_mapping_to_flat_buffer(
+                [p.ds_tensor for p in self.module.parameters()]):
+                tensor.data = self.lp_param_buffer.narrow(0, offset, tensor_numel)
+            self.offloaded_states.remove(OffloadStateTypeEnum.lp_params)
+
+        # LP grad
+        if OffloadStateTypeEnum.lp_grads in self.offloaded_states:
+            if hasattr(self, "lp_grad_partitions_flat_pin_buffers"):
+                self.grad_partitions_flat_buffer.data = self.lp_grad_partitions_flat_pin_buffers.to(
+                    device, non_blocking=non_blocking)
+            else:
+                self.grad_partitions_flat_buffer.data = self.grad_partitions_flat_buffer.data.to(
+                    device, non_blocking=non_blocking)
+            self.averaged_gradients = {}
+
+            offset = 0
+            all_params = list(itertools.chain.from_iterable(self.fp16_groups))
+            for param in all_params:
+                self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
+                    0, offset, param.partition_numel())
+                offset += param.partition_numel()
+
+            self.offloaded_states.remove(OffloadStateTypeEnum.lp_grads)
+
+        # contiguous bucket
+        if OffloadStateTypeEnum.contiguous_grad_buffer in self.offloaded_states:
+            self.__ipg_bucket_flat_buffer = torch.empty_like(self.grad_buffer_meta, device=device)
+            # self.__ipg_bucket_flat_buffer.data = self.__ipg_bucket_flat_buffer.data.to(device)
+            self.offloaded_states.remove(OffloadStateTypeEnum.contiguous_grad_buffer)
+
+        # Adam
+        if OffloadStateTypeEnum.optim_states in self.offloaded_states:
+            reload_adam_states(self.optimizer, device, non_blocking=non_blocking)
+            self.offloaded_states.remove(OffloadStateTypeEnum.optim_states)
+
+        if non_blocking:
+            get_accelerator().synchronize()
 
 
 def _handle_overflow(cpu_sum, x, i):

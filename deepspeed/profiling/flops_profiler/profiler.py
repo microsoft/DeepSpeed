@@ -15,6 +15,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.utils import logger
 from deepspeed.moe.layer import MoE
 from deepspeed.utils.timer import FORWARD_GLOBAL_TIMER, BACKWARD_GLOBAL_TIMER, STEP_GLOBAL_TIMER
+from deepspeed.utils.torch import required_torch_version
 
 Tensor = torch.Tensor
 
@@ -114,7 +115,7 @@ class FlopsProfiler(object):
                 get_accelerator().synchronize()
                 module.__start_time__ = time.time()
 
-            if not hasattr(module, "__start_time_hook_handle"):
+            if not hasattr(module, "__start_time_hook_handle__"):
                 module.__start_time_hook_handle__ = module.register_forward_pre_hook(start_time_hook)
 
             def end_time_hook(module, input, output):
@@ -908,8 +909,9 @@ def _patch_functionals():
     # embedding
     F.embedding = wrapFunc(F.embedding, _embedding_flops_compute)
 
-    # attn
-    F.scaled_dot_product_attention = wrapFunc(F.scaled_dot_product_attention, _attn_flops_compute)
+    # attn - scaled_dot_product_attention added in torch 2.0+
+    if required_torch_version(min_version=2.0):
+        F.scaled_dot_product_attention = wrapFunc(F.scaled_dot_product_attention, _attn_flops_compute)
 
 
 def _patch_tensor_methods():
