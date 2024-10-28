@@ -141,6 +141,17 @@ class OpenMPIRunner(MultiNodeRunner):
     def get_cmd(self, environment, active_resources):
         total_process_count = sum(self.resource_pool.values())
 
+        launcher_args = split(self.args.launcher_args)
+
+        # If btl_tcp_if_include option is provided through launcher_args, we use it. Otherwise, we add
+        # `--mca btl_tcp_if_include eth0` option as a default value for compatibility.
+        btl_tcp_opt = ['--mca', 'btl_tcp_if_include', 'eth0']
+        if len(launcher_args) >= 2:
+            for i in range(len(launcher_args) - 1):
+                if launcher_args[i] in ['-mca', '--mca'] and launcher_args[i + 1] == 'btl_tcp_if_include':
+                    btl_tcp_opt = []
+                    break
+
         mpirun_cmd = [
             'mpirun',
             '-n',
@@ -150,10 +161,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '--mca',
             'btl',
             '^openib',
-            '--mca',
-            'btl_tcp_if_include',
-            'eth0',
-        ] + split(self.args.launcher_args)
+        ] + btl_tcp_opt + launcher_args
 
         export_cmd = []
         for k, v in self.exports.items():
@@ -406,7 +414,7 @@ class MVAPICHRunner(MultiNodeRunner):
         if not mpiname_exists:
             warnings.warn("mpiname does not exist, mvapich is not installed properly")
         else:
-            results = subprocess.check_output('mpiname', shell=True)
+            results = subprocess.check_output(['mpiname'])
             mpiname_results = results.decode('utf-8').strip()
             if "MVAPICH2-GDR" in mpiname_results:
                 exists = True
