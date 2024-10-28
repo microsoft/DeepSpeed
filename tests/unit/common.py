@@ -291,11 +291,16 @@ class DistributedExec(ABC):
                     skip_msgs_async = pool.starmap_async(self._dist_run, args)
                     test_results = skip_msgs_async.get(self.exec_timeout)
                     break
-                except mp.TimeoutError:
+                except mp.TimeoutError as e:
+                    write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
+                                           f"Timeout in _launch_daemonic_procs: {e} retrying")
                     pytest.exit("Test hanged, exiting", returncode=1)
                 except Exception as e:
                     write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
                                            f"Exception in _launch_daemonic_procs: {e} retrying")
+                self._close_pool(pool, num_procs)
+                write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag, f"Pool closed")
+                pool = mp.Pool(processes=num_procs)
         finally:
             # Regardless of the outcome, ensure proper teardown
             # Tear down distributed environment and close process pools
