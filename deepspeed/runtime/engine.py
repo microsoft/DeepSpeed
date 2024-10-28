@@ -1987,6 +1987,8 @@ class DeepSpeedEngine(Module):
         assert not self.zero_optimization_partition_gradients(), \
         f"no_sync context manager is incompatible with gradient partitioning logic of ZeRO stage {self.zero_optimization_stage()}"
 
+        assert not self.inside_no_sync_ctxt, f"no_sync context manager reentry is unsupported"
+
         self.inside_no_sync_ctxt = True
         try:
             yield
