@@ -406,6 +406,52 @@ class DistributedExec(ABC):
         else:
             self._launch_daemonic_procs(num_procs, init_method, tag)
 
+    def init_process_group_exclusively(self, local_rank, num_procs, init_method):
+        xdist_worker_id = get_xdist_worker_id()
+        xdist_worker_id = xdist_worker_id if xdist_worker_id is not None else -1
+        RETRY_INTERVAL = 1
+        LOCK_FILE_NAME = "worker_dist_init.lock"
+
+        def get_lock_worker_id():
+            try:
+                with open(LOCK_FILE_NAME, "r") as f:
+                    lock_pgid = int(f.read().strip())
+                    return lock_pgid
+            except (FileNotFoundError, ValueError):
+                return None
+
+        lock_file = None
+        while True:
+            try:
+                if local_rank == 0:
+                    lock_file = open(LOCK_FILE_NAME, "w")
+                    fcntl.flock(lock_file, fcntl.LOCK_EX)
+                    lock_file.seek(0)
+                    lock_file.truncate()
+                    lock_file.write(str(xdist_worker_id))
+                    lock_file.flush()
+
+                current_worker_id = get_lock_worker_id()
+
+                if current_worker_id == xdist_worker_id:
+                    from datetime import timedelta
+                    timeout = timedelta(seconds=60)
+                    deepspeed.init_distributed(dist_backend=self.backend,
+                                               init_method=init_method,
+                                               rank=local_rank,
+                                               world_size=num_procs,
+                                               timeout=timeout)
+                    dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
+                    dist.barrier()
+
+                    return
+            finally:
+                if local_rank == 0 and lock_file is not None:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
+                    lock_file.close()
+
+            time.sleep(RETRY_INTERVAL)
+
     def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
 
         get_accelerator().set_device(local_rank)
@@ -436,14 +482,7 @@ class DistributedExec(ABC):
                     set_accelerator_visible()
 
             if self.init_distributed:
-                from datetime import timedelta
-                timeout = timedelta(seconds=60)
-                deepspeed.init_distributed(dist_backend=self.backend,
-                                           init_method=init_method,
-                                           rank=local_rank,
-                                           world_size=num_procs,
-                                           timeout=timeout)
-                dist.barrier()
+                self.init_process_group_exclusively(local_rank, num_procs, init_method)
 
             current_device = get_accelerator().current_device()
 
