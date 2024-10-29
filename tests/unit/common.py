@@ -285,6 +285,10 @@ class DistributedExec(ABC):
         # Run the test
         args = [(local_rank, num_procs, master_port, init_method, tag) for local_rank in range(num_procs)]
 
+        if RUNNING_TEST_LOG_FILE:
+            write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
+                                   f"Starting child processes: reuse_dist_env={self.reuse_dist_env}")
+
         RETRY_COUNT = 10
         fork_process_result = TestResultType.UNSET
         try:
@@ -401,7 +405,14 @@ class DistributedExec(ABC):
 
         if get_accelerator().device_name() == 'xpu':
             self.non_daemonic_procs = True
+
+        if self.non_daemonic_procs:
             self.reuse_dist_env = False
+
+        if RUNNING_TEST_LOG_FILE:
+            write_to_log_with_lock(
+                RUNNING_TEST_LOG_FILE, tag,
+                f"_launch_procs non_daemonic_procs={self.non_daemonic_procs} reuse_dist_env={self.reuse_dist_env}")
 
         # Set start method to `forkserver` (or `fork`)
         mp.set_start_method('forkserver', force=True)
