@@ -313,6 +313,7 @@ class DistributedExec(ABC):
                     fork_process_result = TestResultType.ERROR
                 self._close_pool(pool, num_procs)
                 write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag, f"Pool closed")
+                time.sleep(30 + 30 * torch.rand(1).item())
                 pool = mp.Pool(processes=num_procs)
         finally:
             # Regardless of the outcome, ensure proper teardown
