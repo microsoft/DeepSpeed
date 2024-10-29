@@ -81,11 +81,22 @@ def write_to_log_with_lock(log_file_path: str, header: str, msg: str):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
+pool_cache = None
+
+
+def pytest_runtest_teardown(item):
+    # Last test might not have .cls. So we record the pool_cache here
+    if item.cls is not None:
+        dist_test_class = item.cls()
+        global pool_cache
+        pool_cache = dist_test_class._pool_cache
+
+
 # We allow DistributedTest to reuse distributed environments. When the last
 # test for a class is run, we want to make sure those distributed environments
 # are destroyed.
 def pytest_runtest_teardown(item, nextitem):
-    RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
+    RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", "/tmp/running_test.log")
 
     def get_xdist_worker_id():
         xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
@@ -99,13 +110,13 @@ def pytest_runtest_teardown(item, nextitem):
         write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
                                f"reuse_dist_env={reuse_dist_env} nextitem={nextitem}")
 
-    if not nextitem:
-        dist_test_class = item.cls()
-        for num_procs, pool in dist_test_class._pool_cache.items():
-            write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
-                                   f"closing pool num_procs={num_procs} nextitem={nextitem}")
-
-            dist_test_class._close_pool(pool, num_procs, force=True)
+    if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
+        global pool_cache
+        if pool_cache:
+            for num_procs, pool in pool_cache.items():
+                write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
+                                       f"closing pool num_procs={num_procs} nextitem={nextitem}")
+                item.cls._close_pool(pool, num_procs, force=True)
 
 
 @pytest.hookimpl(tryfirst=True)
