@@ -84,19 +84,17 @@ def write_to_log_with_lock(log_file_path: str, header: str, msg: str):
 pool_cache = None
 
 
-def pytest_runtest_teardown(item):
-    # Last test might not have .cls. So we record the pool_cache here
-    if item.cls is not None:
-        dist_test_class = item.cls()
-        global pool_cache
-        pool_cache = dist_test_class._pool_cache
-
-
 # We allow DistributedTest to reuse distributed environments. When the last
 # test for a class is run, we want to make sure those distributed environments
 # are destroyed.
 def pytest_runtest_teardown(item, nextitem):
     RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", "/tmp/running_test.log")
+
+    global pool_cache
+    # Last test might not have .cls. So we record the pool_cache here
+    if item.cls is not None:
+        dist_test_class = item.cls()
+        pool_cache = dist_test_class._pool_cache
 
     def get_xdist_worker_id():
         xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
@@ -111,7 +109,6 @@ def pytest_runtest_teardown(item, nextitem):
                                f"reuse_dist_env={reuse_dist_env} nextitem={nextitem}")
 
     if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
-        global pool_cache
         if pool_cache:
             for num_procs, pool in pool_cache.items():
                 write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
