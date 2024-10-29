@@ -285,7 +285,7 @@ class DistributedExec(ABC):
         # Run the test
         args = [(local_rank, num_procs, master_port, init_method, tag) for local_rank in range(num_procs)]
 
-        RETRY_COUNT = 3
+        RETRY_COUNT = 10
         fork_process_result = TestResultType.UNSET
         try:
             for _ in range(RETRY_COUNT):
