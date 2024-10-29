@@ -478,7 +478,6 @@ class DistributedExec(ABC):
 
     def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
 
-        get_accelerator().set_device(local_rank)
         tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}]"
         prev_current_device = get_accelerator().current_device()
         current_device = -0
@@ -486,7 +485,12 @@ class DistributedExec(ABC):
                 RUNNING_TEST_LOG_FILE,
                 f"{tag} [setup _dist_run][dist_initialized={dist.is_initialized()},set_dist_env={self.set_dist_env},init_distributed={self.init_distributed},backend={self.backend},init_method={init_method}]",
                 num_procs):
-            if not dist.is_initialized():
+
+            if dist.is_initialized():
+                # local_rank might not be correct if you reuse dist env
+                get_accelerator().set_device(dist.get_rank())
+            else:
+                get_accelerator().set_device(local_rank)
                 """ Initialize deepspeed.comm and execute the user function. """
                 if self.set_dist_env:
                     os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -509,6 +513,7 @@ class DistributedExec(ABC):
             if self.init_distributed and not dist.is_initialized():
                 try:
                     from datetime import timedelta
+
                     deepspeed.init_distributed(dist_backend=self.backend,
                                                init_method=init_method,
                                                rank=local_rank,
