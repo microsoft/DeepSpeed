@@ -225,7 +225,7 @@ class DistributedExec(ABC):
     init_distributed = True
     set_dist_env = True
     requires_cuda_env = True
-    reuse_dist_env = False
+    reuse_dist_env = True
     non_daemonic_procs = False
     _pool_cache = {}
     exec_timeout = DEEPSPEED_TEST_TIMEOUT
@@ -316,6 +316,9 @@ class DistributedExec(ABC):
                 # Must be shorter enough than DEEPSPEED_TEST_TIMEOUT
                 time.sleep(10 + 10 * torch.rand(1).item())
                 pool = mp.Pool(processes=num_procs)
+
+                if self.reuse_dist_env:
+                    self._pool_cache[num_procs] = pool
         finally:
             # Regardless of the outcome, ensure proper teardown
             # Tear down distributed environment and close process pools
@@ -491,7 +494,8 @@ class DistributedExec(ABC):
                 if get_accelerator().is_available():
                     set_accelerator_visible()
 
-            if self.init_distributed:
+            print(f"self.init_distributed={self.init_distributed}, dist.is_initialized()={dist.is_initialized()}")
+            if self.init_distributed and not dist.is_initialized():
                 try:
                     from datetime import timedelta
                     deepspeed.init_distributed(dist_backend=self.backend,
