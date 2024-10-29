@@ -415,40 +415,44 @@ class DistributedExec(ABC):
         def get_lock_worker_id():
             try:
                 with open(LOCK_FILE_NAME, "r") as f:
-                    lock_pgid = int(f.read().strip())
-                    return lock_pgid
+                    try:
+                        fcntl.flock(f, fcntl.LOCK_SH)
+                        lock_pgid = int(f.read().strip())
+                        return lock_pgid
+                    finally:
+                        fcntl.flock(f, fcntl.LOCK_UN)
             except (FileNotFoundError, ValueError):
                 return None
 
         lock_file = None
         while True:
-            try:
-                if local_rank == 0:
-                    lock_file = open(LOCK_FILE_NAME, "w")
-                    fcntl.flock(lock_file, fcntl.LOCK_EX)
-                    lock_file.seek(0)
-                    lock_file.truncate()
-                    lock_file.write(str(xdist_worker_id))
-                    lock_file.flush()
+            current_worker_id = get_lock_worker_id()
 
-                current_worker_id = get_lock_worker_id()
+            if local_rank == 0 and current_worker_id is None:
+                with open(LOCK_FILE_NAME, "w") as lock_file:
+                    try:
+                        lock_file = open(LOCK_FILE_NAME, "w")
+                        fcntl.flock(lock_file, fcntl.LOCK_EX)
+                        lock_file.seek(0)
+                        lock_file.truncate()
+                        lock_file.write(str(xdist_worker_id))
+                        lock_file.flush()
+                    finally:
+                        fcntl.flock(lock_file, fcntl.LOCK_UN)
 
-                if current_worker_id == xdist_worker_id:
-                    from datetime import timedelta
-                    timeout = timedelta(seconds=60)
-                    deepspeed.init_distributed(dist_backend=self.backend,
-                                               init_method=init_method,
-                                               rank=local_rank,
-                                               world_size=num_procs,
-                                               timeout=timeout)
-                    dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
-                    dist.barrier()
+            if current_worker_id == xdist_worker_id:
+                from datetime import timedelta
+                timeout = timedelta(seconds=60)
+                deepspeed.init_distributed(dist_backend=self.backend,
+                                           init_method=init_method,
+                                           rank=local_rank,
+                                           world_size=num_procs,
+                                           timeout=timeout)
+                dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
+                dist.barrier()
 
-                    return
-            finally:
-                if local_rank == 0 and lock_file is not None:
-                    fcntl.flock(lock_file, fcntl.LOCK_UN)
-                    lock_file.close()
+                os.remove(LOCK_FILE_NAME)
+                return
 
             time.sleep(RETRY_INTERVAL)
 
