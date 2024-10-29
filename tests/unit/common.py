@@ -292,6 +292,14 @@ class DistributedExec(ABC):
                 try:
                     skip_msgs_async = pool.starmap_async(self._dist_run, args)
                     test_results = skip_msgs_async.get(self.exec_timeout)
+
+                    if any("NCCL error" in msg for result_type, msg in test_results
+                           if result_type == TestResultType.ERROR):
+                        write_to_log_with_lock(RUNNING_TEST_LOG_FILE, tag,
+                                               f"NCCL error in _launch_daemonic_procs, retrying")
+                        # will be caught by the except block below
+                        raise RuntimeError("NCCL error")
+
                     fork_process_result = TestResultType.SUCCESS
                     break
                 except mp.TimeoutError as e:
