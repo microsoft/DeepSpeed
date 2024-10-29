@@ -81,7 +81,7 @@ def write_to_log_with_lock(log_file_path: str, header: str, msg: str):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-pool_cache = None
+dist_test_class = None
 
 
 # We allow DistributedTest to reuse distributed environments. When the last
@@ -90,11 +90,10 @@ pool_cache = None
 def pytest_runtest_teardown(item, nextitem):
     RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", "/tmp/running_test.log")
 
-    global pool_cache
+    global dist_test_class
     # Last test might not have .cls. So we record the pool_cache here
     if item.cls is not None:
         dist_test_class = item.cls()
-        pool_cache = dist_test_class._pool_cache
 
     def get_xdist_worker_id():
         xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
@@ -108,11 +107,11 @@ def pytest_runtest_teardown(item, nextitem):
         write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
                                f"reuse_dist_env={reuse_dist_env} nextitem={nextitem}")
 
-    if not nextitem and pool_cache is not None:
-        for num_procs, pool in pool_cache.items():
+    if not nextitem and dist_test_class._pool_cache is not None:
+        for num_procs, pool in dist_test_class._pool_cache.items():
             write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
                                    f"closing pool num_procs={num_procs} nextitem={nextitem}")
-            item.cls._close_pool(pool, num_procs, force=True)
+            dist_test_class._close_pool(pool, num_procs, force=True)
 
 
 @pytest.hookimpl(tryfirst=True)
