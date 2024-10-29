@@ -413,26 +413,26 @@ class DistributedExec(ABC):
         LOCK_FILE_NAME = "worker_dist_init.lock"
 
         def acquire_lock_with_pgid(worker_id):
-            import errno
-            try:
-                fd = os.open(LOCK_FILE_NAME, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.write(fd, str(worker_id).encode())
-                os.close(fd)
-                # print(f"Lock acquired by process group {worker_id}.")
-                return True
-            except OSError as e:
-                if e.errno == errno.EEXIST:
+            if local_rank == 0:
+                import errno
+                try:
+                    fd = os.open(LOCK_FILE_NAME, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.write(fd, str(worker_id).encode())
+                    os.close(fd)
+                    # print(f"Lock acquired by process group {worker_id}.")
+                    return True
+                except OSError as e:
+                    if e.errno == errno.EEXIST:
+                        return False
+                    else:
+                        raise e
+            else:
+                try:
                     with open(LOCK_FILE_NAME, "r") as f:
                         existing_wid = int(f.read().strip())
-                    # print(f"Lock file exists. Process group {existing_wid} holds the lock.")
-                    if existing_wid == xdist_worker_id:
-                        # print("This process group already holds the lock.")
-                        return True
-                    else:
-                        # print("Another process group holds the lock. Waiting...")
-                        return False
-                else:
-                    raise
+                        return existing_wid == xdist_worker_id
+                except FileNotFoundError:
+                    return False
 
         def release_lock():
             try:
@@ -440,12 +440,10 @@ class DistributedExec(ABC):
             except FileNotFoundError:
                 print("Lock file already deleted.")
 
-        # ロックを取得できるまで待機
         while not acquire_lock_with_pgid(xdist_worker_id):
-            time.sleep(RETRY_INTERVAL)  # 待機して再試行
+            time.sleep(RETRY_INTERVAL)
 
         try:
-            # 排他的な処理を実行
             print("Processing with lock...")
             from datetime import timedelta
             timeout = timedelta(seconds=60)
@@ -459,7 +457,6 @@ class DistributedExec(ABC):
             print("Processing completed.")
 
         finally:
-            # 処理が完了したらロックを解放
             if local_rank == 0:
                 release_lock()
 
