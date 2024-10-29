@@ -108,12 +108,11 @@ def pytest_runtest_teardown(item, nextitem):
         write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
                                f"reuse_dist_env={reuse_dist_env} nextitem={nextitem}")
 
-    if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
-        if pool_cache:
-            for num_procs, pool in pool_cache.items():
-                write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
-                                       f"closing pool num_procs={num_procs} nextitem={nextitem}")
-                item.cls._close_pool(pool, num_procs, force=True)
+    if not nextitem and pool_cache is not None:
+        for num_procs, pool in pool_cache.items():
+            write_to_log_with_lock(RUNNING_TEST_LOG_FILE, f"pytest_runtest_teardown,xdist={get_xdist_worker_id()}",
+                                   f"closing pool num_procs={num_procs} nextitem={nextitem}")
+            item.cls._close_pool(pool, num_procs, force=True)
 
 
 @pytest.hookimpl(tryfirst=True)
