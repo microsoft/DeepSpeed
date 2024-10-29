@@ -412,50 +412,56 @@ class DistributedExec(ABC):
         RETRY_INTERVAL = 1
         LOCK_FILE_NAME = "worker_dist_init.lock"
 
-        def get_lock_worker_id():
+        def acquire_lock_with_pgid(worker_id):
+            import errno
             try:
-                with open(LOCK_FILE_NAME, "r") as f:
-                    try:
-                        fcntl.flock(f, fcntl.LOCK_SH)
-                        lock_pgid = int(f.read().strip())
-                        return lock_pgid
-                    finally:
-                        fcntl.flock(f, fcntl.LOCK_UN)
-            except (FileNotFoundError, ValueError):
-                return None
+                fd = os.open(LOCK_FILE_NAME, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(worker_id).encode())
+                os.close(fd)
+                # print(f"Lock acquired by process group {worker_id}.")
+                return True
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    with open(LOCK_FILE_NAME, "r") as f:
+                        existing_wid = int(f.read().strip())
+                    # print(f"Lock file exists. Process group {existing_wid} holds the lock.")
+                    if existing_wid == xdist_worker_id:
+                        # print("This process group already holds the lock.")
+                        return True
+                    else:
+                        # print("Another process group holds the lock. Waiting...")
+                        return False
+                else:
+                    raise
 
-        lock_file = None
-        while True:
-            current_worker_id = get_lock_worker_id()
+        def release_lock():
+            try:
+                os.remove(LOCK_FILE_NAME)
+            except FileNotFoundError:
+                print("Lock file already deleted.")
 
-            if local_rank == 0 and current_worker_id is None:
-                with open(LOCK_FILE_NAME, "w") as lock_file:
-                    try:
-                        lock_file = open(LOCK_FILE_NAME, "w")
-                        fcntl.flock(lock_file, fcntl.LOCK_EX)
-                        lock_file.seek(0)
-                        lock_file.truncate()
-                        lock_file.write(str(xdist_worker_id))
-                        lock_file.flush()
-                    finally:
-                        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        # ロックを取得できるまで待機
+        while not acquire_lock_with_pgid(xdist_worker_id):
+            time.sleep(RETRY_INTERVAL)  # 待機して再試行
 
-            if current_worker_id == xdist_worker_id:
-                from datetime import timedelta
-                timeout = timedelta(seconds=60)
-                deepspeed.init_distributed(dist_backend=self.backend,
-                                           init_method=init_method,
-                                           rank=local_rank,
-                                           world_size=num_procs,
-                                           timeout=timeout)
-                dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
-                dist.barrier()
+        try:
+            # 排他的な処理を実行
+            print("Processing with lock...")
+            from datetime import timedelta
+            timeout = timedelta(seconds=60)
+            deepspeed.init_distributed(dist_backend=self.backend,
+                                       init_method=init_method,
+                                       rank=local_rank,
+                                       world_size=num_procs,
+                                       timeout=timeout)
+            dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
+            dist.barrier()
+            print("Processing completed.")
 
-                if local_rank == 0:
-                    os.remove(LOCK_FILE_NAME)
-                return
-
-            time.sleep(RETRY_INTERVAL)
+        finally:
+            # 処理が完了したらロックを解放
+            if local_rank == 0:
+                release_lock()
 
     def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
 
