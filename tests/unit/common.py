@@ -451,7 +451,8 @@ class DistributedExec(ABC):
                 dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
                 dist.barrier()
 
-                os.remove(LOCK_FILE_NAME)
+                if local_rank == 0:
+                    os.remove(LOCK_FILE_NAME)
                 return
 
             time.sleep(RETRY_INTERVAL)
