@@ -491,15 +491,19 @@ class DistributedExec(ABC):
                     set_accelerator_visible()
 
             if self.init_distributed:
-                from datetime import timedelta
-                deepspeed.init_distributed(dist_backend=self.backend,
-                                           init_method=init_method,
-                                           rank=local_rank,
-                                           world_size=num_procs,
-                                           timeout=timedelta(seconds=60))
-                dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
-                dist.barrier()
-                self.init_process_group_exclusively(local_rank, num_procs, init_method)
+                try:
+                    from datetime import timedelta
+                    deepspeed.init_distributed(dist_backend=self.backend,
+                                               init_method=init_method,
+                                               rank=local_rank,
+                                               world_size=num_procs,
+                                               timeout=timedelta(seconds=60))
+                    dist.broadcast(torch.tensor([0], device=get_accelerator().current_device()), 0)
+                    dist.barrier()
+                    # self.init_process_group_exclusively(local_rank, num_procs, init_method)
+                except BaseException as e:
+                    msg = e.msg if "msg" in dir(e) else str(e)
+                    return TestResultType.ERROR, msg
 
             current_device = get_accelerator().current_device()
 
