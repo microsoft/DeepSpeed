@@ -490,7 +490,6 @@ class DistributedExec(ABC):
                 # local_rank might not be correct if you reuse dist env
                 get_accelerator().set_device(dist.get_rank())
             else:
-                get_accelerator().set_device(local_rank)
                 """ Initialize deepspeed.comm and execute the user function. """
                 if self.set_dist_env:
                     os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -508,6 +507,8 @@ class DistributedExec(ABC):
 
                 if get_accelerator().is_available():
                     set_accelerator_visible()
+
+                get_accelerator().set_device(local_rank)
 
             print(f"self.init_distributed={self.init_distributed}, dist.is_initialized()={dist.is_initialized()}")
             if self.init_distributed and not dist.is_initialized():
