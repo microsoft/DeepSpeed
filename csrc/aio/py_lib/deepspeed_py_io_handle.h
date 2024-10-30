@@ -40,25 +40,25 @@ struct deepspeed_io_handle_t {
 
     int read(torch::Tensor& buffer,
              const char* filename,
-             const int64_t file_offset,
-             const bool validate);
+             const bool validate,
+             const int64_t file_offset);
 
     int write(const torch::Tensor& buffer,
               const char* filename,
-              const int64_t file_offset,
-              const bool validate);
+              const bool validate,
+              const int64_t file_offset);
 
     int pread(const torch::Tensor& buffer,
               const char* filename,
               const bool validate,
-              const int64_t file_offset,
-              const bool async);
+              const bool async,
+              const int64_t file_offset);
 
     int pwrite(const torch::Tensor& buffer,
                const char* filename,
                const bool validate,
-               const int64_t file_offset,
-               const bool async);
+               const bool async,
+               const int64_t file_offset);
 
     int sync_pread(torch::Tensor& buffer, const char* filename, const int64_t file_offset);
 
@@ -89,6 +89,6 @@ struct deepspeed_io_handle_t {
                                                                     const int fd,
                                                                     const char* filename,
                                                                     const int64_t file_num_bytes,
-                                                                    const int64_t file_offset,
-                                                                    const bool validate);
+                                                                    const bool validate,
+                                                                    const int64_t file_offset);
 };

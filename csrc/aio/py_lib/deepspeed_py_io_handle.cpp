@@ -60,8 +60,8 @@ const int deepspeed_io_handle_t::get_intra_op_parallelism() const { return _intr
 
 int deepspeed_io_handle_t::read(torch::Tensor& buffer,
                                 const char* filename,
-                                const int64_t file_offset,
-                                const bool validate)
+                                const bool validate,
+                                const int64_t file_offset)
 {
     const auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -102,8 +102,8 @@ int deepspeed_io_handle_t::read(torch::Tensor& buffer,
 
 int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
                                  const char* filename,
-                                 const int64_t file_offset,
-                                 const bool validate)
+                                 const bool validate,
+                                 const int64_t file_offset)
 {
     assert(_aio_ctxt);
 
@@ -212,8 +212,8 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const int fd,
     const char* filename,
     const int64_t file_num_bytes,
-    const int64_t file_offset,
-    const bool validate)
+    const bool validate,
+    const int64_t file_offset)
 {
     return std::make_shared<cpu_op_desc_t>(read_op,
                                            buffer,
@@ -221,16 +221,16 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
                                            fd,
                                            filename,
                                            file_num_bytes,
-                                           file_offset,
                                            _intra_op_parallelism,
-                                           validate);
+                                           validate,
+                                           file_offset);
 }
 
 int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
                                  const char* filename,
                                  const bool validate,
-                                 const int64_t file_offset,
-                                 const bool async)
+                                 const bool async,
+                                 const int64_t file_offset)
 {
     int64_t num_file_bytes;
     if (-1 == get_file_size(filename, num_file_bytes)) {
@@ -249,7 +249,7 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
     if (fd == -1) { return -1; }
 
     auto scheduled_op =
-        _create_io_op_desc(true, buffer, fd, filename, num_file_bytes, file_offset, validate);
+        _create_io_op_desc(true, buffer, fd, filename, num_file_bytes, validate, file_offset);
 
     _schedule_aio_work(scheduled_op);
 
@@ -261,8 +261,8 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
 int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
                                   const char* filename,
                                   const bool validate,
-                                  const int64_t file_offset,
-                                  const bool async)
+                                  const bool async,
+                                  const int64_t file_offset)
 {
     const auto num_write_bytes = static_cast<int64_t>(buffer.nbytes());
     assert((num_write_bytes % _intra_op_parallelism) == 0);
@@ -273,7 +273,7 @@ int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
     if (fd == -1) { return -1; }
 
     auto scheduled_op =
-        _create_io_op_desc(false, buffer, fd, filename, num_write_bytes, file_offset, validate);
+        _create_io_op_desc(false, buffer, fd, filename, num_write_bytes, validate, file_offset);
 
     _schedule_aio_work(scheduled_op);
 
@@ -286,28 +286,28 @@ int deepspeed_io_handle_t::sync_pread(torch::Tensor& buffer,
                                       const char* filename,
                                       const int64_t file_offset)
 {
-    return pread(buffer, filename, false, file_offset, false);
+    return pread(buffer, filename, false, false, file_offset);
 }
 
 int deepspeed_io_handle_t::sync_pwrite(const torch::Tensor& buffer,
                                        const char* filename,
                                        const int64_t file_offset)
 {
-    return pwrite(buffer, filename, false, file_offset, false);
+    return pwrite(buffer, filename, false, false, file_offset);
 }
 
 int deepspeed_io_handle_t::async_pread(torch::Tensor& buffer,
                                        const char* filename,
                                        const int64_t file_offset)
 {
-    return pread(buffer, filename, false, file_offset, true);
+    return pread(buffer, filename, false, true, file_offset);
 }
 
 int deepspeed_io_handle_t::async_pwrite(const torch::Tensor& buffer,
                                         const char* filename,
                                         const int64_t file_offset)
 {
-    return pwrite(buffer, filename, false, file_offset, true);
+    return pwrite(buffer, filename, false, true, file_offset);
 }
 
 at::Tensor deepspeed_io_handle_t::new_cpu_locked_tensor(const int64_t num_elem,

@@ -12,9 +12,9 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
                            const int fd,
                            const char* filename,
                            const int64_t file_num_bytes,
-                           const int64_t file_offset,
                            const int intra_op_parallelism,
-                           const bool validate)
+                           const bool validate,
+                           const int64_t file_offset)
     : _read_op(read_op),
       _buffer(buffer),
       _fd(fd),

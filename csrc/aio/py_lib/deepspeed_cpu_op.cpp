@@ -15,17 +15,17 @@ cpu_op_desc_t::cpu_op_desc_t(
     const int fd,
     const char* filename,
     const int64_t file_num_bytes,
-    const int64_t file_offset,
     const int intra_op_parallelism,
-    const bool validate)
+    const bool validate,
+    const int64_t file_offset)
     : io_op_desc_t(read_op,
                    buffer,
                    fd,
                    filename,
                    file_num_bytes,
-                   file_offset,
                    intra_op_parallelism,
-                   validate),
+                   validate,
+                   file_offset),
       _cpu_buffer(buffer),
       _pinned_tensor_mgr(pinned_tensor_mgr),
       _is_managed_bounce_buffer(false)
