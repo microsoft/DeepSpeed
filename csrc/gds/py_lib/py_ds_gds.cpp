@@ -33,16 +33,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "Synchronous and non-parallel file read. Returns count of completed read ops",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a = 0,
-             "validate"_a)
+             "validate"_a,
+             "file_offset"_a = 0)
 
         .def("write",
              &deepspeed_gds_handle_t::write,
              "Synchronous and non-parallel file write. Returns count of completed write ops",
              "buffer"_a,
              "filename"_a,
-             "file_offset"_a = 0,
-             "validate"_a)
+             "validate"_a,
+             "file_offset"_a = 0)
 
         .def("pread",
              &deepspeed_gds_handle_t::pread,
@@ -50,8 +50,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "buffer"_a,
              "filename"_a,
              "validate"_a,
-             "file_offset"_a = 0,
-             "async"_a)
+             "async"_a,
+             "file_offset"_a = 0)
 
         .def("pwrite",
              &deepspeed_gds_handle_t::pwrite,
@@ -59,8 +59,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              "buffer"_a,
              "filename"_a,
              "validate"_a,
-             "file_offset"_a = 0,
-             "async"_a)
+             "async"_a,
+             "file_offset"_a = 0)
 
         .def("sync_pread",
              &deepspeed_gds_handle_t::sync_pread,
