@@ -30,8 +30,6 @@ DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
 RUNNING_TEST_LOG_FILE = os.environ.get("RUNNING_TEST_LOG_FILE", None)
 DS_UNITTEST_FILE_STORE_DIR = os.environ.get("DS_UNITTEST_FILE_STORE_DIR", None)
 
-warn_reuse_dist_env = False
-
 
 class TestResultType(Enum):
     SUCCESS = 0
@@ -265,13 +263,6 @@ class DistributedExec(ABC):
             if self.reuse_dist_env:
                 print("Ignoring reuse_dist_env for hpu")
                 self.reuse_dist_env = False
-
-        # global warn_reuse_dist_env
-        # if self.reuse_dist_env and not warn_reuse_dist_env:
-        #     # Currently we see memory leak for tests that reuse distributed environment
-        #     print("Ignoring reuse_dist_env and forcibly setting it to False")
-        #     warn_reuse_dist_env = True
-        # self.reuse_dist_env = False
 
         if self.reuse_dist_env:
             if num_procs not in self._pool_cache:
