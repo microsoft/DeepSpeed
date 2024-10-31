@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, nvidia, cu122, v100] # Modified to run on the test runner
+    runs-on: [self-hosted, nvidia, cu121, v100] # Modified to run on the test runner
 
     steps:
       - uses: actions/checkout@v4
