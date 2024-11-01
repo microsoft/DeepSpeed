@@ -12,6 +12,8 @@ from os.path import abspath, dirname, join
 import torch
 import warnings
 
+from deepspeed.utils.debug import debug_clear_module_and_param_names
+
 # Set this environment variable for the T5 inference unittest(s) (e.g. google/t5-v1_1-small)
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
@@ -70,12 +72,24 @@ def pytest_runtest_call(item):
         item.runtest = lambda: True  # Dummy function so test is not run twice
 
 
+dist_test_class = None
+
+
 # We allow DistributedTest to reuse distributed environments. When the last
 # test for a class is run, we want to make sure those distributed environments
 # are destroyed.
 def pytest_runtest_teardown(item, nextitem):
-    if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
+    debug_clear_module_and_param_names()
+
+    if hasattr(item, "cls") and item.cls is not None:
+        global dist_test_class
         dist_test_class = item.cls()
+
+
+@pytest.hookimpl
+def pytest_sessionfinish(session, exitstatus):
+    global dist_test_class
+    if dist_test_class:
         for num_procs, pool in dist_test_class._pool_cache.items():
             dist_test_class._close_pool(pool, num_procs, force=True)
 
