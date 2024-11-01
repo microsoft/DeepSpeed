@@ -467,7 +467,7 @@ class DistributedExec(ABC):
             if local_rank == 0:
                 release_lock()
 
-    def _dist_run(self, local_rank, num_procs, master_port, init_method, skip_msg=""):
+    def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
         tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}]"
         prev_current_device = get_accelerator().current_device()
         current_device = -0
