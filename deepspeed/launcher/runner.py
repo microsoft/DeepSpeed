@@ -376,7 +376,7 @@ def parse_inclusion_exclusion(resource_pool, inclusion, exclusion):
     node_configs = parse_node_config_list(inclusion)
 
     for hostname, slots in resource_pool.items():
-        active_resources[hostname] = node_configs[hostname] if hostname in node_configs else list(range(slots))
+        active_resources[hostname] = node_configs[hostname] if hostname in node_configs and node_config[hostname]!=[]  else list(range(slots))
 
     return parse_resource_filter(active_resources, include_str=inclusion, exclude_str=exclusion)
 
