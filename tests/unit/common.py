@@ -467,38 +467,31 @@ class DistributedExec(ABC):
             if local_rank == 0:
                 release_lock()
 
-    def _dist_run(self, local_rank, num_procs, master_port, init_method, tag, skip_msg=""):
-
-        tag = f"{tag} [pid={os.getpid()},master_port={master_port},local_rank={local_rank},num_procs={num_procs}]"
-        prev_current_device = get_accelerator().current_device()
-        current_device = -0
-        with LogTestRunBaseProcess(
-                RUNNING_TEST_LOG_FILE,
-                f"{tag} [setup _dist_run][dist_initialized={dist.is_initialized()},set_dist_env={self.set_dist_env},init_distributed={self.init_distributed},backend={self.backend},init_method={init_method}]",
-                num_procs):
-
-            if dist.is_initialized():
-                # local_rank might not be correct if you reuse dist env
+    def _dist_run(self, local_rank, num_procs, master_port, init_method, skip_msg=""):
+        if dist.is_initialized():
+            if get_accelerator().is_available():
+                # local_rank might not match the rank in the previous run if you are reusing the environment
                 get_accelerator().set_device(dist.get_rank())
-            else:
-                """ Initialize deepspeed.comm and execute the user function. """
-                if self.set_dist_env:
-                    os.environ['MASTER_ADDR'] = '127.0.0.1'
-                    os.environ['MASTER_PORT'] = str(master_port)
-                    os.environ['LOCAL_RANK'] = str(local_rank)
-                    # NOTE: unit tests don't support multi-node so local_rank == global rank
-                    os.environ['RANK'] = str(local_rank)
-                    # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
-                    # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
-                    os.environ['LOCAL_SIZE'] = str(num_procs)
-                    os.environ['WORLD_SIZE'] = str(num_procs)
+        else:
+            """ Initialize deepspeed.comm and execute the user function. """
+            if self.set_dist_env:
+                os.environ['MASTER_ADDR'] = '127.0.0.1'
+                os.environ['MASTER_PORT'] = str(master_port)
+                os.environ['LOCAL_RANK'] = str(local_rank)
+                # NOTE: unit tests don't support multi-node so local_rank == global rank
+                os.environ['RANK'] = str(local_rank)
+                # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
+                # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
+                os.environ['LOCAL_SIZE'] = str(num_procs)
+                os.environ['WORLD_SIZE'] = str(num_procs)
 
-                # turn off NCCL logging if set
-                os.environ.pop('NCCL_DEBUG', None)
+            # turn off NCCL logging if set
+            os.environ.pop('NCCL_DEBUG', None)
 
-                if get_accelerator().is_available():
-                    set_accelerator_visible()
+            if get_accelerator().is_available():
+                set_accelerator_visible()
 
+            if get_accelerator().is_available():
                 get_accelerator().set_device(local_rank)
 
             print(f"self.init_distributed={self.init_distributed}, dist.is_initialized()={dist.is_initialized()}")
