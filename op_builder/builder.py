@@ -67,7 +67,7 @@ def get_default_compute_capabilities():
             # Special treatment of CUDA 11.0 because compute_86 is not supported.
             compute_caps += ";8.0"
         else:
-            compute_caps += ";8.0;8.6"
+            compute_caps += ";8.0;8.6;9.0"
     return compute_caps
 
 
@@ -76,7 +76,7 @@ def get_default_compute_capabilities():
 cuda_minor_mismatch_ok = {
     10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5"],
+    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6"],
 }
 
 
@@ -296,7 +296,7 @@ class OpBuilder(ABC):
         '''
         return []
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         '''
         Check if all non-python dependencies are satisfied to build this op
         '''
@@ -305,7 +305,7 @@ class OpBuilder(ABC):
     def extra_ldflags(self):
         return []
 
-    def has_function(self, funcname, libraries, verbose=False):
+    def has_function(self, funcname, libraries, library_dirs=None, verbose=False):
         '''
         Test for existence of a function within a tuple of libraries.
 
@@ -361,7 +361,8 @@ class OpBuilder(ABC):
             compiler.link_executable(objs,
                                      os.path.join(tempdir, 'a.out'),
                                      extra_preargs=self.strip_empty_entries(ldflags),
-                                     libraries=libraries)
+                                     libraries=libraries,
+                                     library_dirs=library_dirs)
 
             # Compile and link succeeded
             return True
@@ -431,7 +432,7 @@ class OpBuilder(ABC):
                          "to detect the CPU architecture. 'lscpu' does not appear to exist on "
                          "your system, will fall back to use -march=native and non-vectorized execution.")
             return None
-        result = subprocess.check_output('lscpu', shell=True)
+        result = subprocess.check_output(['lscpu'])
         result = result.decode('utf-8').strip().lower()
 
         cpu_info = {}
@@ -481,7 +482,8 @@ class OpBuilder(ABC):
             cmds = [cmd]
         valid = False
         for cmd in cmds:
-            result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+            safe_cmd = ["bash", "-c", f"type {cmd}"]
+            result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
             valid = valid or result.wait() == 0
 
         if not valid and len(cmds) > 1:
@@ -677,7 +679,7 @@ class CUDAOpBuilder(OpBuilder):
             version_ge_1_5 = ['-DVERSION_GE_1_5']
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         return super().is_compatible(verbose)
 
     def builder(self):

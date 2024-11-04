@@ -18,13 +18,13 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from typing import Callable, Dict, Union, Iterable
+from typing import Callable, Dict, Union, Iterable, Container
 
 import deepspeed
 
 from deepspeed import comm as dist
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
-from .zero.offload_config import OffloadDeviceEnum
+from .zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
@@ -194,6 +194,7 @@ class DeepSpeedEngine(Module):
                  collate_fn=None,
                  config=None,
                  config_class=None,
+                 mesh_device=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -233,9 +234,13 @@ class DeepSpeedEngine(Module):
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
         self.losses = None
+        self.mesh_device = mesh_device
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
+
+        if self.mesh_device:
+            groups.mesh_device = self.mesh_device
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -306,7 +311,7 @@ class DeepSpeedEngine(Module):
 
         if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
-            self._configure_lr_scheduler(lr_scheduler)
+            self._configure_lr_scheduler()
             self._report_progress(0)
         elif self.zero_optimization():
             # no optim selected but zero is enabled
@@ -614,6 +619,9 @@ class DeepSpeedEngine(Module):
             assert self.client_lr_scheduler is None
             raise ValueError(f'not yet support')
             #self.lr_scheduler = lr_schedules.WarmupLayerTokenDecayLR(self.optimizer, self.random_ltd_scheduler)
+
+    def get_sequence_parallel_group(self):
+        return self.seq_parallel_group
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -943,19 +951,19 @@ class DeepSpeedEngine(Module):
     def _optimizer_has_ckpt_event_epilogue(self):
         return self.optimizer is not None and hasattr(self.optimizer, 'checkpoint_event_epilogue')
 
-    def _configure_lr_scheduler(self, client_lr_scheduler):
-        # First check for scheduler in json configuration
-        lr_scheduler = self._scheduler_from_config(self.optimizer)
-        if lr_scheduler:
-            log_dist(f"DeepSpeed using configured LR scheduler = {self.scheduler_name()}", ranks=[0])
-            self.lr_scheduler = lr_scheduler
-        else:
-            if isinstance(client_lr_scheduler, Callable):
+    def _configure_lr_scheduler(self):
+        if self.client_lr_scheduler:
+            if isinstance(self.client_lr_scheduler, Callable):
                 log_dist('DeepSpeed using client callable to create LR scheduler', ranks=[0])
-                self.lr_scheduler = client_lr_scheduler(self.basic_optimizer)
+                self.lr_scheduler = self.client_lr_scheduler(self.basic_optimizer)
             else:
                 log_dist('DeepSpeed using client LR scheduler', ranks=[0])
-                self.lr_scheduler = client_lr_scheduler
+                self.lr_scheduler = self.client_lr_scheduler
+        else:
+            # load lr scheduler from json configuration if lr scheduler is not defined and passed in
+            lr_scheduler = self._scheduler_from_config(self.optimizer)
+            log_dist(f"DeepSpeed using configured LR scheduler = {self.scheduler_name()}", ranks=[0])
+            self.lr_scheduler = lr_scheduler
 
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
@@ -1009,13 +1017,13 @@ class DeepSpeedEngine(Module):
         device_rank = args.device_rank if args is not None and hasattr(args, 'device_rank') else self.local_rank
         if device_rank >= 0:
             get_accelerator().set_device(device_rank)
-            self.device = torch.device(get_accelerator().device_name(), device_rank)
+            self.device = torch.device(get_accelerator().device_name(device_rank))
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device(get_accelerator().device_name())
+            self.device = get_accelerator().device()
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
@@ -1187,6 +1195,7 @@ class DeepSpeedEngine(Module):
         self.sequence_parallel_size = groups._get_sequence_parallel_world_size()
         if self.sequence_parallel_size > 1:
             self.communication_data_type = self._config.seq_parallel_communication_data_type
+            self.seq_parallel_group = groups._get_sequence_parallel_group()
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
@@ -1919,7 +1928,7 @@ class DeepSpeedEngine(Module):
             for k, v in inputs.items():
                 new_inputs[k] = self._cast_inputs_half(v)
             return new_inputs
-        elif hasattr(inputs, 'half'):
+        elif hasattr(inputs, 'half') and inputs.is_floating_point():
             return inputs.half()
         else:
             return inputs
@@ -2136,8 +2145,6 @@ class DeepSpeedEngine(Module):
         else:
             self.zero_grad()
 
-        report_progress = self.global_rank == 0 if self.global_rank else True
-
         # Check overflow here since in DS fp16 optimizer, the overflow is updated in above step() function.
         overflow = False
         if hasattr(self.optimizer, "overflow"):
@@ -2157,8 +2164,10 @@ class DeepSpeedEngine(Module):
                     # pipe_engine.train_batch()
                     self.lr_scheduler.step(self.train_batch_size())
 
-        if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
-            self._report_progress(self.global_steps + 1)
+        if self.steps_per_print() is not None:
+            report_progress = self.global_rank == 0 if self.global_rank else True
+            if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
+                self._report_progress(self.global_steps + 1)
 
         self.losses = None
         self.global_steps += 1
@@ -3666,9 +3675,50 @@ class DeepSpeedEngine(Module):
         if self.is_compiled:
             return
 
-        self.module.compile(backend=backend, **compile_kwargs)
+        if 'backend' in compile_kwargs:
+            logger.warning("The `backend` in `compile_kwargs` will be overridden. Use the `backend` argument instead.")
+
+        # create new dict to avoid modifying original dict
+        self.module.compile(**{**compile_kwargs, 'backend': backend})
         self._is_compiled = True
 
     @property
     def is_compiled(self) -> bool:
         return self._is_compiled
+
+    def offload_states(self,
+                       include: Container[OffloadStateTypeEnum] = None,
+                       device: OffloadDeviceEnum = OffloadDeviceEnum.cpu,
+                       pin_memory: bool = True,
+                       non_blocking: bool = False) -> None:
+        """Offload the engine's states to the specified device.
+
+        Arguments:
+            include: Optional. The set of states to offload. If not provided, all states are offloaded.
+            device: Optional. The device to move the ZeRO optimizer buffers to. Currently only `OffloadDeviceEnum.cpu` is supported.
+            pin_memory: Optional. Whether to pin the memory of the offloaded states.
+            non_blocking: Optional. Whether to offload the states asynchronously.
+        """
+        assert self.zero_optimization_stage(
+        ) == ZeroStageEnum.weights, "Moving buffers across devices is supported only for ZeRO stage 3."
+
+        assert not self.zero_offload_param(), "Moving states across devices is not supported for offloaded parameters."
+
+        if device == OffloadDeviceEnum.none:
+            logger.warning("No device specified for offloading states.")
+            return
+
+        if device == OffloadDeviceEnum.nvme:
+            raise ValueError("NVMe offload is not supported for offloading states.")
+
+        self.optimizer.offload_states(include=include, device=device, pin_memory=pin_memory, non_blocking=non_blocking)
+
+    def reload_states(self, non_blocking: bool = False) -> None:
+        """Reload the engine states to the original device.
+
+        Arguments:
+            non_blocking: Optional. Whether to offload the states asynchronously.
+        """
+        assert self.zero_optimization_stage(
+        ) == ZeroStageEnum.weights, "Moving buffers back is supported only for ZeRO stage 3."
+        self.optimizer.reload_states(non_blocking=non_blocking)
