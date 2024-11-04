@@ -18,6 +18,7 @@ from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedP
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 from deepspeed.accelerator import get_accelerator
 import deepspeed.runtime.compiler as compiler
+from deepspeed.runtime.compiler import is_compiling
 
 import logging
 
@@ -188,7 +189,7 @@ class PartitionedParameterCoordinator:
     @compiler.disable
     def record_module(self, sub_module: Module) -> None:
         """adds sub module to trace"""
-        if torch.compiler.is_compiling():
+        if is_compiling():
             return
 
         if not self.is_record_trace():
@@ -198,7 +199,7 @@ class PartitionedParameterCoordinator:
         self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
 
     def record_parameters(self, sub_module: Module) -> None:
-        if torch.compiler.is_compiling():
+        if is_compiling():
             return
         """adds sub module to trace"""
         if not self.is_record_trace():
@@ -217,7 +218,7 @@ class PartitionedParameterCoordinator:
     @compiler.disable
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
-        if torch.compiler.is_compiling():
+        if is_compiling():
             return
 
         self._clean_inflight_param_registry()
