@@ -524,7 +524,6 @@ class DeepSpeedZeRoOffload(object):
 
         num_layers += 1
 
-        # 将结果保存到模块的自定义属性中 TODO
         module.ds_sub_layers = num_layers
         module.ds_sub_params = num_params
 
