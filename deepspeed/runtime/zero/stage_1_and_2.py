@@ -39,6 +39,7 @@ OPTIMIZER_ALLGATHER_TIMER = 'optimizer_allgather'
 OPTIMIZER_GRADIENTS_TIMER = 'optimizer_gradients'
 OPTIMIZER_STEP_TIMER = 'optimizer_step'
 OPTIMIZER_TIMERS = [OPTIMIZER_ALLGATHER_TIMER, OPTIMIZER_GRADIENTS_TIMER, OPTIMIZER_STEP_TIMER]
+INITIAL_MICRO_STEP_ID = -1
 
 
 def input(msg):
@@ -224,7 +225,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.micro_step_id = 0
+        self.micro_step_id = INITIAL_MICRO_STEP_ID
         self.ignore_unused_parameters = ignore_unused_parameters
         self.round_robin_gradients = round_robin_gradients
 
@@ -390,11 +391,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # Note that the params in single_partition_of_fp32_groups is cloned and detached
             # from the origin params of the model.
             if not fp16_master_weights_and_gradients:
-                self.single_partition_of_fp32_groups.append(self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                    self.device).clone().float().detach())
+                weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
+                    self.device).clone().float().detach()
             else:
-                self.single_partition_of_fp32_groups.append(self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                    self.device).clone().half().detach())
+                weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
+                    self.device).clone().half().detach()
+
+            if self.cpu_offload:
+                weights_partition = get_accelerator().pin_memory(weights_partition)
+
+            self.single_partition_of_fp32_groups.append(weights_partition)
 
             # Set local optimizer to have flat params of its own partition.
             # After this, the local optimizer will only contain its own partition of params.
@@ -547,6 +553,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._param_slice_mappings = self._create_param_mapping()
 
     def destroy(self):
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for p in self.bit16_groups[i]:
+                if getattr(p, '_hp_mapping', None):
+                    p._hp_mapping = None
         for hook in self._grad_acc_hooks:
             hook.remove()
         self.print_rank_0("Removed grad acc hooks")
@@ -568,14 +578,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return param_mapping
 
     def _link_all_hp_params(self):
-        dp_world_size = dist.get_world_size(group=self.dp_process_group)
         if self.cpu_offload:
             self._get_offload_gradient_dict()
 
         for i, _ in enumerate(self.optimizer.param_groups):
             # Link bit16 and fp32 params in partition
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
-            partition_size = self.bit16_groups_flat[i].numel() // dp_world_size
+            partition_size = self.bit16_groups_flat[i].numel() // dist.get_world_size(
+                group=self.real_dp_process_group[i])
             flat_hp_partition = self.single_partition_of_fp32_groups[i]
             link_hp_params(lp_param_list=self.bit16_groups[i],
                            flat_hp_partition=flat_hp_partition,
@@ -716,8 +726,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def get_first_param_index(self, group_id, param_group, partition_id):
         for index, param in enumerate(param_group):
             param_id = self.get_param_id(param)
-            if partition_id in self.param_to_partition_ids[group_id][param_id]:
-                return index
+            if group_id in self.param_to_partition_ids and param_id in self.param_to_partition_ids[group_id]:
+                if partition_id in self.param_to_partition_ids[group_id][param_id]:
+                    return index
         return None
 
     def initialize_gradient_partitioning_data_structures(self):
@@ -963,6 +974,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             logger.info(message)
 
     def gradient_reduction_w_predivide(self, tensor):
+        if tensor.size().numel() == 0:
+            return tensor
 
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
 
@@ -1034,6 +1047,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             stream = self.reduction_stream
             if not get_accelerator().resolves_data_dependency():
                 stream.wait_stream(get_accelerator().current_stream())
+                get_accelerator().current_stream().wait_stream(stream)
         else:
             stream = get_accelerator().current_stream()
 
@@ -1056,14 +1070,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for i, param, param_id in self.params_in_ipg_bucket:
 
                 process_group = self.dp_process_group
-                grad_reduc = self.get_gradient_for_reduction(param)
-                #Averages gradients at parameter level if ipg has a moe param
-                #Otherwise averaging is done at the entire buffer level at the end of the loop
-                # MoE param have different groups
+
                 if self.ipg_bucket_has_moe_params:
                     process_group = self.expert_dp_process_group[param.group_name] if is_moe_param(
                         param) else self.dp_process_group
-                    grad_reduc.data.div_(dist.get_world_size(group=process_group) / float(self.sequence_parallel_size))
 
                 partition_ids = self.param_to_partition_ids[i][param_id]
                 assert all([p_id < dist.get_world_size(group=process_group) for p_id in partition_ids
@@ -1102,8 +1112,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     curr_size += numel
                     prev_id, prev_process_group = partition_id, process_group
 
-            if not self.ipg_bucket_has_moe_params:
-                tensor.div_(dist.get_world_size(group=self.dp_process_group) / float(self.sequence_parallel_size))
+            tensor.div_(dist.get_world_size(group=self.dp_process_group) / float(self.sequence_parallel_size))
 
             buckets = {}
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
@@ -1218,9 +1227,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         if self.micro_step_id > 0:
             accumulate_gradients()
-
-        # at the boundary we will send 32bit directly
-        if not self.is_gradient_accumulation_boundary:
+        else:
             copy_gradients_to_cpu()
 
     def set_norm_for_param_grad(self, param):
@@ -1469,7 +1476,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for param_id in self.is_grad_computed[i][partition_id]:
             param = self.param_dict[param_id]
             if param.grad is None:
-                param.grad = torch.zero_like(param)
+                param.grad = torch.zeros_like(param)
 
     ######################Reduction Related Methods##############################
     def allreduce_bucket(self, bucket, rank=None, log=None, divide=True, process_group=None):
@@ -1811,7 +1818,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         """
         Not supporting closure.
         """
-        self.micro_step_id = -1
+        self.micro_step_id = INITIAL_MICRO_STEP_ID
 
         see_memory_usage(f"In step before checking overflow")
 
@@ -1862,7 +1869,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 #    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
                 bit16_partitions = self.parallel_partitioned_bit16_groups[i]
                 fp32_partition = self.single_partition_of_fp32_groups[i]
-                bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                bit16_partitions[partition_id].data.copy_(
+                    fp32_partition.to(get_accelerator().current_device_name()).data)
 
                 self.timers(OPTIMIZER_STEP_TIMER).stop()
             else:
@@ -1956,8 +1964,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
-            if clip > 1:
-                combined_scale = clip * self.loss_scale
+            clip = torch.clamp(clip, min=1.0)
+            combined_scale = clip * self.loss_scale
 
         for grad in grad_groups_flat:
             if isinstance(grad, list):
@@ -2279,7 +2287,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
                         checkpoint_folder=None,
-                        load_serial=None):
+                        load_serial=None,
+                        param_shapes=None):
         if checkpoint_folder:
             self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:
@@ -2426,7 +2435,9 @@ def estimate_zero2_model_states_mem_needs(total_params,
         gpu_mem = 2 * total_params
         cpu_mem = total_params * max(4 * total_gpus, 16) * additional_buffer_factor
     else:
-        gpu_mem = 4 * total_params + int(16 * total_params / total_gpus)
+        # GPU's total_params multipliers: 2 = params_16bit,
+        # 18 = 2_grads_16bit + 4_grads_32bit + 4_params_32bit + 8_optimizer_states_32bit(momentum and variance)
+        gpu_mem = 2 * total_params + int(18 * total_params / total_gpus)
         cpu_mem = total_params * 4 * num_gpus_per_node * additional_buffer_factor
 
     return int(cpu_mem), int(gpu_mem)
