@@ -334,6 +334,7 @@ class TestAsyncFileOffset(DistributedTest):
 
     def test_offset_write(self, tmpdir, file_partitions, use_cuda_pinned_tensor):
 
+        _skip_for_invalid_environment(use_cuda_pinned_tensor=use_cuda_pinned_tensor)
         ref_file = _get_file_path(tmpdir, '_py_random')
         aio_file = _get_file_path(tmpdir, '_aio_random')
         partition_unit_size = BLOCK_SIZE
@@ -371,6 +372,7 @@ class TestAsyncFileOffset(DistributedTest):
 
     def test_offset_read(self, tmpdir, file_partitions, use_cuda_pinned_tensor):
 
+        _skip_for_invalid_environment(use_cuda_pinned_tensor=use_cuda_pinned_tensor)
         partition_unit_size = BLOCK_SIZE
         file_size = sum(file_partitions) * partition_unit_size
         ref_file, _ = _do_ref_write(tmpdir, 0, file_size)
