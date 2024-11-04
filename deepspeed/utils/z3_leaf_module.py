@@ -39,8 +39,10 @@ def get_z3_leaf_modules(model: torch.nn.Module) -> List[torch.nn.Module]:
     """
     return [module for module in model.modules() if z3_leaf_module(module)]
 
+
 def set_z3_leaf_module(model: torch.nn.Module, flag: bool):
     model._z3_leaf = flag
+
 
 def _do_set_z3_leaf_modules(model: torch.nn.Module, leaf_module_classes: Union[List[Type], List[str]],
                             flag: bool) -> List[torch.nn.Module]:
