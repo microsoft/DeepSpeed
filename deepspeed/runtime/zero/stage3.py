@@ -157,7 +157,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
-        zero_force_coalesced_fetch_layers=None,
+        zero_coalesced_fetch_threshold=0,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -229,7 +229,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             zero_param_parallel_group=zero_param_parallel_group,
             zero_quantized_weights=zero_quantized_weights,
             zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
-            zero_force_coalesced_fetch_layers=zero_force_coalesced_fetch_layers)
+            zero_coalesced_fetch_threshold=zero_coalesced_fetch_threshold)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -460,7 +460,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_param_parallel_group,
         zero_quantized_weights,
         zero_quantized_nontrainable_weights,
-        zero_force_coalesced_fetch_layers,
+        zero_coalesced_fetch_threshold,
     ):
         return DeepSpeedZeRoOffload(
             module=module,
@@ -478,7 +478,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             zero_param_parallel_group=zero_param_parallel_group,
             zero_quantized_weights=zero_quantized_weights,
             zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
-            zero_force_coalesced_fetch_layers=zero_force_coalesced_fetch_layers,
+            zero_coalesced_fetch_threshold=zero_coalesced_fetch_threshold,
         )
 
     def _get_trainable_parameter_groups(self):

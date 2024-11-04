@@ -6,7 +6,7 @@
 import sys
 import torch
 from collections import OrderedDict
-from deepspeed.utils import z3_leaf_module, set_z3_leaf_modules
+from deepspeed.utils import z3_leaf_module, set_z3_leaf_modules, set_z3_leaf_module
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.utils import apply_to_tensors_only, is_zero_param
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
@@ -14,6 +14,7 @@ from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, InflightParamRegistry, iter_params
 from deepspeed.accelerator import get_accelerator
+from deepspeed import utils
 
 FWD_MODULE_STACK = list()
 
@@ -96,7 +97,7 @@ class DeepSpeedZeRoOffload(object):
         zero_param_parallel_group=None,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
-        zero_force_coalesced_fetch_layers=None,
+        zero_coalesced_fetch_threshold=0,
     ):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
@@ -117,6 +118,7 @@ class DeepSpeedZeRoOffload(object):
             self.offload_device = offload_param_config.device
             self.offload_param_pin_memory = offload_param_config.pin_memory
 
+   
         self._convert_to_zero_parameters(ds_config, module, mpu)
 
         for m in module.modules():
@@ -143,10 +145,23 @@ class DeepSpeedZeRoOffload(object):
             module.ds_inflight_param_registry[False] = InflightParamRegistry()
         self.__inflight_param_registry = module.ds_inflight_param_registry
 
+        if zero_coalesced_fetch_threshold >=0:
+            self.min_granularity_value=sys.maxsize
+            self.min_granularity_layer=None
+            self.z3_leaf_layers=[]
+            self.count_layers_and_parameters(module)
+
+            if self.min_granularity_value<=zero_coalesced_fetch_threshold:
+                self.set_z3_leaf_by_threshold(module, zero_coalesced_fetch_threshold)
+                print_rank_0(f"z3_leaf_module was setted by stage3_coalesced_fetch_threshold", force=True)
+                for layer in self.z3_leaf_layers:
+                    print_rank_0(f"{layer.__class__.__name__}:{layer.ds_model_granularity}", force=True)
+            else:
+                utils.logger.warning(f"You have used min_granularity_value, but the smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}],\
+                                     To make this variable effective, you need to set stage3_coalesced_fetch_threshold >= {self.min_granularity_value}")
         self.forward_hooks = []
         self.backward_hooks = []
-        if zero_force_coalesced_fetch_layers is not None and len(zero_force_coalesced_fetch_layers) > 0:
-            set_z3_leaf_modules(module, zero_force_coalesced_fetch_layers)
+
 
         self.setup_zero_stage3_hooks()
         print_rank_0(
@@ -155,6 +170,8 @@ class DeepSpeedZeRoOffload(object):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [end]", force=True)
 
+    
+    
     @instrument_w_nvtx
     def partition_all_parameters(self):
         """Partitioning Parameters that were not partitioned usually if parameters
@@ -486,3 +503,55 @@ class DeepSpeedZeRoOffload(object):
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",
             force=False)
+        
+    def count_layers_and_parameters(self, module):
+        
+        if  not list(module.parameters()):
+            module.ds_model_granularity=sys.maxsize
+            return 0,0
+        
+        num_layers = 0
+        num_params = 0
+        num_params += sum(p.ds_numel for p in module.parameters(recurse=False))
+        
+        for child in module.children():
+            layers_in_child, params_in_child = self.count_layers_and_parameters(child)
+            num_layers += layers_in_child
+            num_params += params_in_child
+        
+        num_layers += 1
+        
+        # 将结果保存到模块的自定义属性中 TODO
+        module.ds_sub_layers = num_layers
+        module.ds_sub_params = num_params
+        
+        ds_model_granularity=num_params//num_layers
+        module.ds_model_granularity=ds_model_granularity
+        if self.min_granularity_value>ds_model_granularity:
+            self.min_granularity_value=ds_model_granularity
+            self.min_granularity_layer=module.__class__.__name__
+            
+        return num_layers, num_params
+
+    def set_z3_leaf_by_threshold(self, module,granularity_treshhold ):
+        num_params = sum(p.ds_numel for p in module.parameters())
+        if num_params==0:
+            return 
+        # Avoid setting as leaf for particularly large models, even if the granularity is very small
+        Z3_MAX_LEAF_SIZE=5e8
+
+        if module.ds_model_granularity<granularity_treshhold and num_params < Z3_MAX_LEAF_SIZE:
+            set_z3_leaf_module(module, True)
+            self.z3_leaf_layers.append(module)
+            return
+        
+        for sub_module in module.children():
+            self.set_z3_leaf_by_threshold(sub_module, granularity_treshhold)
+        
+
+        
+            
+            
+
+
+

@@ -14,7 +14,7 @@ from deepspeed.utils import set_z3_leaf_modules, unset_z3_leaf_modules, get_z3_l
 from deepspeed.accelerator import get_accelerator
 from torch import nn
 import time
-
+from math import ceil
 
 class ChooseModuleByCounter(torch.nn.Module):
 
@@ -186,8 +186,9 @@ class TestZ3LeafOptimization(DistributedTest):
     world_size = 2
     reuse_dist_env = True
     def test_FineGrained_optimization(self):
-        hidden_dim=32
+        hidden_dim=128
         num_block=16
+        stage3_coalesced_fetch_threshold=12000
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -202,7 +203,7 @@ class TestZ3LeafOptimization(DistributedTest):
                 "stage3_prefetch_bucket_size": hidden_dim**2,
                 "stage3_param_persistence_threshold": 0,
                 "stage3_max_reuse_distance": 0,
-                "stage3_force_coalesced_fetch_layers":["FineGrainedBlock"]
+                "stage3_coalesced_fetch_threshold":stage3_coalesced_fetch_threshold
             }
         }
         if get_accelerator().is_fp16_supported():
@@ -221,7 +222,12 @@ class TestZ3LeafOptimization(DistributedTest):
                                     dtype=preferred_dtype())
             dist.barrier()
             loss_list=[]
-         
+
+            # for name, submodule in model.named_modules():
+            #     if hasattr(submodule,'ds_sub_layers'):
+            #         tresh=submodule.ds_sub_params/submodule.ds_sub_layers 
+            #         if dist.get_rank()==0:
+            #             print(f"module '{name}' layers: {submodule.ds_sub_layers}, params: {submodule.ds_sub_params}, tresh:{tresh}")
             for i, batch in enumerate(data_loader):
                 if i ==warm_up_step:
                     get_accelerator().synchronize()
@@ -239,7 +245,7 @@ class TestZ3LeafOptimization(DistributedTest):
             return loss_list, duration
 
         opt_loss_list,opt_duration=bench_loss_and_time(config_dict)
-        del config_dict["zero_optimization"]["stage3_force_coalesced_fetch_layers"]
+        del config_dict["zero_optimization"]["stage3_coalesced_fetch_threshold"]
         basic_loss_list, basic_duration=bench_loss_and_time(config_dict)
         print(f"coalesced fetch time: {opt_duration}, basic duration time:{basic_duration}")
         assert basic_loss_list==opt_loss_list
