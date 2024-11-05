@@ -225,5 +225,5 @@ class TestFPDTAttention(DistributedTest):
         output = torch.matmul(attn_weights, v)
 
         if not torch.allclose(fpdt_output, output):
-            max_abs_diff = torch.max(torch.abs(tensor_a - tensor_b))
+            max_abs_diff = torch.max(torch.abs(fpdt_output - output))
             print("Max absolute difference:", max_abs_diff.item())
