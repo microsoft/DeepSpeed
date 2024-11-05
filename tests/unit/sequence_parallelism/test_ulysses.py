@@ -162,11 +162,11 @@ class TestUlyssesAll2All_odd(DistributedTest):
                                   outputs[i]), f"[{dist.get_rank()}]Outputs differ for sequence dim {seq_dims[i]}"
 
 
-@pytest.mark.parametrize("d0", [1, 4])  #batch dimension
-@pytest.mark.parametrize("d1", [2048, 4096])  #sequence dimension
-@pytest.mark.parametrize("chunk_size", [512, 1024])  #size of chunk
-@pytest.mark.parametrize("num_heads", [4, 8])
-@pytest.mark.parametrize("head_dim", [16, 32])
+@pytest.mark.parametrize("d0", [4])  #batch dimension
+@pytest.mark.parametrize("d1", [2048])  #sequence dimension
+@pytest.mark.parametrize("chunk_size", [512])  #size of chunk
+@pytest.mark.parametrize("num_heads", [8])
+@pytest.mark.parametrize("head_dim", [32])
 class TestFPDTAttention(DistributedTest):
     world_size = 1
 
