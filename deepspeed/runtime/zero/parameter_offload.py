@@ -506,7 +506,7 @@ class DeepSpeedZeRoOffload(object):
                 print_rank_0(f"{layer.__class__.__name__}:{layer.ds_model_granularity}", force=True)
         else:
             utils.logger.warning(
-                f"You have used zero_coalesced_fetch_threshold, but the smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}],\
+                f"You have used stage3_coalesced_fetch_threshold, but the smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}],\
                                      To make this variable effective, you need to set stage3_coalesced_fetch_threshold >= {self.min_granularity_value}"
             )
 
@@ -528,9 +528,6 @@ class DeepSpeedZeRoOffload(object):
             num_params += params_in_child
 
         num_layers += 1
-        #for debug
-        # module.ds_sub_layers = num_layers
-        # module.ds_sub_params = num_params
 
         ds_model_granularity = num_params // num_layers
         module.ds_model_granularity = ds_model_granularity

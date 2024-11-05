@@ -231,11 +231,7 @@ class TestZ3LeafOptimization(DistributedTest):
                                             dtype=preferred_dtype())
             dist.barrier()
             loss_list = []
-            # for name, submodule in model.named_modules():
-            #     if hasattr(submodule,'ds_sub_layers'):
-            #         tresh=submodule.ds_sub_params/submodule.ds_sub_layers
-            #         if dist.get_rank()==0:
-            #             print(f"module '{name}' layers: {submodule.ds_sub_layers}, params: {submodule.ds_sub_params}, tresh:{tresh}")
+
             for i, batch in enumerate(data_loader):
                 if i == warm_up_step:
                     dist.barrier()
