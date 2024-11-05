@@ -90,6 +90,16 @@ class TestFPDTAttention():
     def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
                                                           num_heads: int) -> None:
         skip_on_arch(min_arch=8)
+
+        try:
+            from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
+        except ImportError:
+            _flash_attn_forward = None
+            _flash_attn_backward = None
+
+        if _flash_attn_forward is None or _flash_attn_backward is None:
+            pytest.skip("Flash Attention is not available.")
+
         model = AutoModel.from_pretrained('bert-base-uncased')
         ds_engine, _, _, _ = initialize(
             model=model,

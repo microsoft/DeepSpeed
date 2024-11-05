@@ -900,8 +900,10 @@ class FPDT_Attention(torch.nn.Module):
 
         super(FPDT_Attention, self).__init__()
         if _flash_attn_forward is None or _flash_attn_backward is None:
-            raise ImportError("DeepSpeed FPDT requires flash-attn 2.6.3. Please install it with `pip install flash-attn --no-build-isolation`.")
-    
+            raise ImportError(
+                "DeepSpeed FPDT requires flash-attn 2.6.3. Please install it with `pip install flash-attn --no-build-isolation`."
+            )
+
         self.spg = sequence_process_group
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
