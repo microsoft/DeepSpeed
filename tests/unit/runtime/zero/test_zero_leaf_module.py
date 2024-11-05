@@ -194,7 +194,7 @@ class TestZ3LeafOptimization(DistributedTest):
     world_size = 2
     reuse_dist_env = True
 
-    def test_FineGrained_optimization(self):
+    def test_finegrained_optimization(self):
         hidden_dim = 128
         num_block = 16
         stage3_coalesced_fetch_threshold = 12000

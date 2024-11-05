@@ -553,11 +553,14 @@ class DeepSpeedZeRoOffload(object):
         if num_params == 0:
             # skip Modules without parameters, such as GELU, etc.
             return
-
         if module.ds_model_granularity <= granularity_treshhold:
-            set_z3_leaf_module(module, True)
-            self.z3_leaf_layers.append(module)
-            return
+            if module.__class__.__name__ not in torch.nn.modules.container.__all__:
+                # Do not set container modules like ModuleList as leaf modules
+                # as this will prevent hooks from being set on their children
+                # and they may do not invoke the forward method
+                set_z3_leaf_module(module, True)
+                self.z3_leaf_layers.append(module)
+                return
 
         for sub_module in module.children():
             self._set_leaf_by_threshold_preorder(sub_module, granularity_treshhold)
