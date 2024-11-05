@@ -2245,3 +2245,93 @@ class GatheredParameters:
         for h in handles:
             h.wait()
         self.params[0].partition(param_list=self.params, has_been_updated=True)
+
+
+class ZeRO3HybridOffload:
+    """NOTE: This feature works only for forward pass.
+    This feature allows users to gather ZeRO3-partitioned params and offload a part of them to host memory. The offloaded parameters are loaded to device memory in pre-forward hook and offloaded back to host memory in post-forward hook.
+
+    Args:
+        model (``torch.nn.Module``): The model whose parameters will be gathered and offloaded. The model must be initialized for ZeRO3.
+        param_threshold (int): The threshold for the number of parameters to offload to host memory.
+
+    Usage:
+    ======
+    You can reduce all-gather's in loop.
+
+    .. code-block:: python
+
+        with deepspeed.zero.ZeRO3HybridOffload(model, param_threshold=1e9):
+            for x in dataset:
+                output = model(x)
+
+    Generation using auto-regressive models is one good example where this feature can be useful.
+
+    ... code-block:: python
+
+        with deepspeed.zero.ZeRO3HybridOffload(model, param_threshold=1e9):
+            output = model.generate(input_ids)
+    """
+
+    def __init__(self, model, param_threshold, enabled=True):
+        self.enabled = enabled
+        self.model = model
+        self.param_threshold = param_threshold
+        self.device = torch.device(get_accelerator().current_device())
+
+    def __enter__(self):
+        if not self.enabled:
+            return
+
+        n_params = 0
+        self.gathered_params = []
+        self.handles = []
+
+        for m in self.model.modules():
+            offloaded_params = []
+            m.disable_z3_fetch = True
+
+            for p in m.parameters(recurse=False):
+                p.all_gather(param_list=[p])
+                n_params += p.numel()
+                if n_params > self.param_threshold:
+                    # Offload
+                    p.data = p.data.cpu()
+                    offloaded_params.append(p)
+                self.gathered_params.append(p)
+
+            if len(offloaded_params) > 0:
+
+                def wrapper_pre_hook(target_params):
+
+                    def pre_forward_hook(module, input):
+                        for p in target_params:
+                            p.data = p.data.to(self.device)
+
+                    return pre_forward_hook
+
+                self.handles.append(m.register_forward_pre_hook(wrapper_pre_hook(offloaded_params)))
+
+                def wrapper_post_hook(target_params):
+
+                    def post_forward_hook(module, input, output):
+                        for p in target_params:
+                            p.data = p.data.cpu()
+
+                    return post_forward_hook
+
+                self.handles.append(m.register_forward_hook(wrapper_post_hook(offloaded_params)))
+
+    def __exit__(self, *exc):
+        if not self.enabled:
+            return
+
+        for p in self.gathered_params:
+            p.data = p.data.to(self.device)
+            p.partition(param_list=[p], has_been_updated=False)
+
+        for h in self.handles:
+            h.remove()
+
+        for m in self.model.modules():
+            m.disable_z3_fetch = False

@@ -6,7 +6,7 @@
 from .partition_parameters import ZeroParamType
 from .partition_parameters import ZeroParamStatus
 from .partition_parameters import Init
-from .partition_parameters import GatheredParameters
+from .partition_parameters import GatheredParameters, ZeRO3HybridOffload
 from .partition_parameters import register_external_parameter
 
 from .tiling import TiledLinear

@@ -281,6 +281,8 @@ class DeepSpeedZeRoOffload(object):
 
         @instrument_w_nvtx
         def _post_forward_module_hook(module, input, output):
+            if hasattr(module, "disable_z3_fetch") and module.disable_z3_fetch:
+                return
 
             global FWD_MODULE_STACK
             FWD_MODULE_STACK.pop()
@@ -442,6 +444,9 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def pre_sub_module_forward_function(self, sub_module):
+        if hasattr(sub_module, "disable_z3_fetch") and sub_module.disable_z3_fetch:
+            return
+
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}", force=False)
 
         global FWD_MODULE_STACK
@@ -457,9 +462,11 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def post_sub_module_forward_function(self, sub_module):
+        if hasattr(sub_module, "disable_z3_fetch") and sub_module.disable_z3_fetch:
+            return
+
         see_memory_usage(f"After sub module function {sub_module.__class__.__name__} {sub_module.id} before release",
                          force=False)
-
         param_coordinator = self.get_param_coordinator(training=sub_module.training)
         param_coordinator.release_sub_module(sub_module)
 
@@ -468,6 +475,9 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def pre_sub_module_backward_function(self, sub_module):
+        if hasattr(sub_module, "disable_z3_fetch") and sub_module.disable_z3_fetch:
+            return
+
         assert sub_module.training, "backward pass is invalid for module in evaluation mode"
         param_coordinator = self.get_param_coordinator(training=True)
         param_coordinator.trace_prologue(sub_module)
@@ -477,6 +487,9 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
+        if hasattr(sub_module, "disable_z3_fetch") and sub_module.disable_z3_fetch:
+            return
+
         assert sub_module.training, "backward pass is invalid for module in evaluation mode"
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
