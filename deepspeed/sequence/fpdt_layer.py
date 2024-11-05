@@ -584,17 +584,29 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 for k_i in range(len(global_k)):
                     causal_chunk = i == k_i
                     with get_accelerator().stream(compute_stream):
-                        block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
-                            global_q[q_compute_chunk_idx].get_gpu_chunk(),
-                            global_k[kv_compute_chunk_idx].get_gpu_chunk(),
-                            global_v[kv_compute_chunk_idx].get_gpu_chunk(),
-                            ctx.dropout_p,
-                            ctx.softmax_scale,
-                            causal=causal_chunk,
-                            window_size=ctx.window_size,
-                            softcap=0.0,
-                            alibi_slopes=ctx.alibi_slopes,
-                            return_softmax=False)
+                        try:
+                            block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
+                                global_q[q_compute_chunk_idx].get_gpu_chunk(),
+                                global_k[kv_compute_chunk_idx].get_gpu_chunk(),
+                                global_v[kv_compute_chunk_idx].get_gpu_chunk(),
+                                ctx.dropout_p,
+                                ctx.softmax_scale,
+                                causal=causal_chunk,
+                                window_size=ctx.window_size,
+                                softcap=0.0,
+                                alibi_slopes=ctx.alibi_slopes,
+                                return_softmax=False)
+                        except TypeError:
+                            block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
+                                global_q[q_compute_chunk_idx].get_gpu_chunk(),
+                                global_k[kv_compute_chunk_idx].get_gpu_chunk(),
+                                global_v[kv_compute_chunk_idx].get_gpu_chunk(),
+                                ctx.dropout_p,
+                                ctx.softmax_scale,
+                                causal=causal_chunk,
+                                window_size=ctx.window_size,
+                                alibi_slopes=ctx.alibi_slopes,
+                                return_softmax=False)
                         cur_attn_output, cur_attn_lse = update_out_and_lse(cur_attn_output, cur_attn_lse, block_out,
                                                                            block_lse)
 
@@ -743,23 +755,41 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 dv_this = torch.zeros(global_v[0].chunk_shape, dtype=dtype, device=device)
 
                 with get_accelerator().stream(compute_stream):
-                    _flash_attn_backward(grad_global_attn_output[q_compute_chunk_idx].get_gpu_chunk(),
-                                         global_q[q_compute_chunk_idx].get_gpu_chunk(),
-                                         global_k[kv_compute_chunk_idx].get_gpu_chunk(),
-                                         global_v[kv_compute_chunk_idx].get_gpu_chunk(),
-                                         attn_output[q_compute_chunk_idx].get_gpu_chunk(),
-                                         lse[q_compute_chunk_idx].get_gpu_chunk(),
-                                         dq_this,
-                                         dk_this,
-                                         dv_this,
-                                         dropout_p,
-                                         softmax_scale,
-                                         causal_chunk,
-                                         window_size,
-                                         softcap=0.0,
-                                         alibi_slopes=alibi_slopes,
-                                         deterministic=False,
-                                         rng_state=None)
+                    try:
+                        _flash_attn_backward(grad_global_attn_output[q_compute_chunk_idx].get_gpu_chunk(),
+                                             global_q[q_compute_chunk_idx].get_gpu_chunk(),
+                                             global_k[kv_compute_chunk_idx].get_gpu_chunk(),
+                                             global_v[kv_compute_chunk_idx].get_gpu_chunk(),
+                                             attn_output[q_compute_chunk_idx].get_gpu_chunk(),
+                                             lse[q_compute_chunk_idx].get_gpu_chunk(),
+                                             dq_this,
+                                             dk_this,
+                                             dv_this,
+                                             dropout_p,
+                                             softmax_scale,
+                                             causal_chunk,
+                                             window_size,
+                                             softcap=0.0,
+                                             alibi_slopes=alibi_slopes,
+                                             deterministic=False,
+                                             rng_state=None)
+                    except TypeError:
+                        _flash_attn_backward(grad_global_attn_output[q_compute_chunk_idx].get_gpu_chunk(),
+                                             global_q[q_compute_chunk_idx].get_gpu_chunk(),
+                                             global_k[kv_compute_chunk_idx].get_gpu_chunk(),
+                                             global_v[kv_compute_chunk_idx].get_gpu_chunk(),
+                                             attn_output[q_compute_chunk_idx].get_gpu_chunk(),
+                                             lse[q_compute_chunk_idx].get_gpu_chunk(),
+                                             dq_this,
+                                             dk_this,
+                                             dv_this,
+                                             dropout_p,
+                                             softmax_scale,
+                                             causal_chunk,
+                                             window_size,
+                                             alibi_slopes=alibi_slopes,
+                                             deterministic=False,
+                                             rng_state=None)
 
                 if i != (len(global_k) - 1):
                     if q_i != (len(global_q) - 1):
