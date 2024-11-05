@@ -206,8 +206,8 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                 global_q_chunk_len = q_chunk.shape[1]
                 if rotary_pos_emb is not None:
                     q_chunk = apply_rotary_pos_emb(q_chunk,
-                                                pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
-                                                pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
+                                                   pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
+                                                   pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
                 global_q.append(q_chunk)
 
                 k_chunk = qkv_chunk[:, :, projection_size:projection_size + kv_projection_size].contiguous().reshape(
@@ -216,8 +216,8 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                 k_chunk = single_all_to_all(k_chunk, scatter_idx, gather_idx, 0, spg)
                 if rotary_pos_emb is not None:
                     k_chunk = apply_rotary_pos_emb(k_chunk,
-                                                pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
-                                                pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
+                                                   pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
+                                                   pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
                 global_k.append(k_chunk)
 
                 v_chunk = qkv_chunk[:, :, projection_size + kv_projection_size:].contiguous().reshape(
@@ -364,11 +364,11 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                 dv[i].add_(dv_this.to(torch.float))
 
             dk_seq_len = dk[i].shape[1]
-            
+
             if ctx.pos_emb_cos is not None:
                 dk[i] = apply_rotary_pos_emb_backward(dk[i].to(dtype),
-                                                    ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
-                                                    ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
+                                                      ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
+                                                      ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
             else:
                 dk[i] = dk[i].to(dtype)
             dv[i] = dv[i].to(dtype)
@@ -402,8 +402,8 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
             dq_seq_len = dq[i].shape[1]
             if ctx.pos_emb_cos is not None:
                 dq[i] = apply_rotary_pos_emb_backward(dq[i].to(dtype),
-                                                    ctx.pos_emb_cos[:, dq_seq_len * i:dq_seq_len * (i + 1)],
-                                                    ctx.pos_emb_sin[:, dq_seq_len * i:dq_seq_len * (i + 1)])
+                                                      ctx.pos_emb_cos[:, dq_seq_len * i:dq_seq_len * (i + 1)],
+                                                      ctx.pos_emb_sin[:, dq_seq_len * i:dq_seq_len * (i + 1)])
             else:
                 dq[i] = dq[i].to(dtype)
             dq[i] = single_all_to_all(dq[i].to(dtype).contiguous(), gather_idx, scatter_idx, 0, spg)
