@@ -25,8 +25,6 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
 
-warn_reuse_dist_env = False
-
 
 def is_rocm_pytorch():
     return hasattr(torch.version, 'hip') and torch.version.hip is not None
@@ -178,13 +176,6 @@ class DistributedExec(ABC):
                 print("Ignoring reuse_dist_env for hpu")
                 self.reuse_dist_env = False
 
-        global warn_reuse_dist_env
-        if self.reuse_dist_env and not warn_reuse_dist_env:
-            # Currently we see memory leak for tests that reuse distributed environment
-            print("Ignoring reuse_dist_env and forcibly setting it to False")
-            warn_reuse_dist_env = True
-        self.reuse_dist_env = False
-
         if self.reuse_dist_env:
             if num_procs not in self._pool_cache:
                 self._pool_cache[num_procs] = mp.Pool(processes=num_procs)
@@ -286,7 +277,11 @@ class DistributedExec(ABC):
             self._launch_daemonic_procs(num_procs, init_method)
 
     def _dist_run(self, local_rank, num_procs, master_port, init_method, skip_msg=""):
-        if not dist.is_initialized():
+        if dist.is_initialized():
+            if get_accelerator().is_available():
+                # local_rank might not match the rank in the previous run if you are reusing the environment
+                get_accelerator().set_device(dist.get_rank())
+        else:
             """ Initialize deepspeed.comm and execute the user function. """
             if self.set_dist_env:
                 os.environ['MASTER_ADDR'] = '127.0.0.1'
