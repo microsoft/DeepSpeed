@@ -329,13 +329,13 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                 q_chunk = global_q[q_i]
                 attn_output_chunk = attn_output[q_i]
                 lse_chunk = lse[q_i]
-                dout = grad_global_attn_output[q_i]
+                d_out = grad_global_attn_output[q_i]
 
                 dq_this = torch.zeros(global_q[0].shape, dtype=dtype, device=device)
                 dk_this = torch.zeros(global_k[0].shape, dtype=dtype, device=device)
                 dv_this = torch.zeros(global_v[0].shape, dtype=dtype, device=device)
 
-                _flash_attn_backward(dout,
+                _flash_attn_backward(d_out,
                                      q_chunk,
                                      k_chunk,
                                      v_chunk,
