@@ -41,7 +41,7 @@ jobs:
           ds_report
       - name: Install FlashAttention
         run: |
-          python -m pip flash-attn
+          python -m pip install flash-attn
       - name: Python environment
         run: |
           python -m pip list
