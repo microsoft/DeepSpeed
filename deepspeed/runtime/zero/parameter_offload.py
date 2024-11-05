@@ -506,12 +506,15 @@ class DeepSpeedZeRoOffload(object):
                 print_rank_0(f"{layer.__class__.__name__}:{layer.ds_model_granularity}", force=True)
         else:
             utils.logger.warning(
-                f"You have used stage3_coalesced_fetch_threshold, but the smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}],\
-                                     To make this variable effective, you need to set stage3_coalesced_fetch_threshold >= {self.min_granularity_value}"
+                f"The smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}]. "\
+                f"To make stage3_coalesced_fetch_threshold effective, you need to set stage3_coalesced_fetch_threshold >= {self.min_granularity_value}"
             )
 
     def _get_granularity_recursively(self, module):
         """This function is used to recursively obtain the granularity of each module."""
+
+        # Avoid setting as leaf for particularly large models, even if the granularity is very small
+        Z3_MAX_LEAF_SIZE = 1e9
 
         if not list(module.parameters()):
             # skip Modules without parameters, such as GELU, etc.
@@ -521,6 +524,10 @@ class DeepSpeedZeRoOffload(object):
         num_layers = 0
         num_params = 0
         num_params += sum(p.ds_numel for p in module.parameters(recurse=False))
+        if not any(module.children()):
+            # torch leaf module
+            module.ds_model_granularity = sys.maxsize
+            return 1, num_params
 
         for child in module.children():
             layers_in_child, params_in_child = self._get_granularity_recursively(child)
@@ -529,8 +536,10 @@ class DeepSpeedZeRoOffload(object):
 
         num_layers += 1
 
-        ds_model_granularity = num_params // num_layers
+        ds_model_granularity = (num_params // num_layers) if num_params <= Z3_MAX_LEAF_SIZE else sys.maxsize
         module.ds_model_granularity = ds_model_granularity
+        # module.ds_model_num_layers = num_layers
+        # module.ds_model_num_params = num_params
         if self.min_granularity_value > ds_model_granularity:
             self.min_granularity_value = ds_model_granularity
             self.min_granularity_layer = module.__class__.__name__
@@ -540,15 +549,12 @@ class DeepSpeedZeRoOffload(object):
     def _set_leaf_by_threshold_preorder(self, module, granularity_treshhold):
         '''Set modules as leaf modules based on the threshold, prioritizing parent nodes.'''
 
-        # Avoid setting as leaf for particularly large models, even if the granularity is very small
-        Z3_MAX_LEAF_SIZE = 5e8
-
         num_params = sum(p.ds_numel for p in module.parameters())
         if num_params == 0:
             # skip Modules without parameters, such as GELU, etc.
             return
 
-        if module.ds_model_granularity < granularity_treshhold and num_params < Z3_MAX_LEAF_SIZE:
+        if module.ds_model_granularity <= granularity_treshhold:
             set_z3_leaf_module(module, True)
             self.z3_leaf_layers.append(module)
             return
