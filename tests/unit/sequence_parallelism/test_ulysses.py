@@ -194,7 +194,7 @@ class TestFPDTAttention(DistributedTest):
         )
         #3D tensor : l, b, d
         dim = head_dim * num_heads
-        input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device)
+        input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
         spg = ds_engine.data_parallel_group
 
         qkv_linear_weight = Parameter(torch.empty(dim + 2 * dim, dim, device=ds_engine.device, dtype=torch.half))
@@ -223,7 +223,7 @@ class TestFPDTAttention(DistributedTest):
         scores = scores.masked_fill(causal_mask, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
         output = torch.matmul(attn_weights, v)
-        
+
         if not torch.allclose(fpdt_output, output):
             max_abs_diff = torch.max(torch.abs(tensor_a - tensor_b))
             print("Max absolute difference:", max_abs_diff.item())
