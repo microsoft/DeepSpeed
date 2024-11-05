@@ -277,8 +277,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         if hasattr(model_config, "vision_config"):
             if "MllamaVisionEncoderLayer" in str(module):
                 num_kv_heads = _autotp.get_model_num_kv_heads(model_config.vision_config)
-            else:
+            elif hasattr(model_config, "text_config"):
                 num_kv_heads = _autotp.get_model_num_kv_heads(model_config.text_config)
+            else:
+                num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
         else:
             num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
 
@@ -345,7 +347,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                                       "weight") and not module.embed_out.weight.is_meta and isinstance(
                                                           module.embed_out, torch.nn.Linear):
             module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
-        elif hasattr(module.language_model, "lm_head"):
+        elif hasattr(module, "language_model") and hasattr(module.language_model, "lm_head"):
             module = replace_wo_policy(module.language_model, ("lm_head", ), 0, "lm_head")
         return module
 
