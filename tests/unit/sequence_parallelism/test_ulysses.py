@@ -222,7 +222,7 @@ class TestFPDTAttention(DistributedTest):
         causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
         scores = scores.masked_fill(causal_mask, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
-        output = torch.matmul(attn_weights, v)
+        output = torch.matmul(attn_weights, v).permute(0, 2, 1, 3)
 
         if not torch.allclose(fpdt_output, output):
             max_abs_diff = torch.max(torch.abs(fpdt_output - output))
