@@ -218,12 +218,10 @@ class TestFPDTAttention(DistributedTest):
 
         scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim, dtype=torch.half))
 
-        causal_mask = torch.triu(torch.ones(d1, d1), diagonal=1).bool().cuda()
+        causal_mask = torch.triu(torch.ones(d1, d1, device=ds_engine.device), diagonal=1).bool()
         causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
         scores = scores.masked_fill(causal_mask, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
         output = torch.matmul(attn_weights, v).permute(0, 2, 1, 3)
 
-        if not torch.allclose(fpdt_output, output):
-            max_abs_diff = torch.max(torch.abs(fpdt_output - output))
-            print("Max absolute difference:", max_abs_diff.item())
+        assert torch.allclose(fpdt_output, output), f"{torch.max(torch.abs(fpdt_output - output))}"
