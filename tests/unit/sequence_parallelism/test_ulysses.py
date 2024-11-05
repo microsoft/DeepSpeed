@@ -218,7 +218,7 @@ class TestFPDTAttention(DistributedTest):
 
         scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim, dtype=torch.half))
 
-        causal_mask = torch.triu(torch.ones(d1, d1), diagonal=1).bool()
+        causal_mask = torch.triu(torch.ones(d1, d1), diagonal=1).bool().cuda()
         causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
         scores = scores.masked_fill(causal_mask, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
