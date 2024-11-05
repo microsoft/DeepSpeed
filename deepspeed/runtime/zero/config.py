@@ -248,7 +248,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     coalesced_fetch_threshold: int = Field(pp_int(0), alias="stage3_coalesced_fetch_threshold")
     """
-    Treat the layer as an integral unit (to avoid recursion) when fetching at stage3.
+    The ratio of a module's number of parameters/required forward passes (layers)
+    measures model granularity. Modules with values below this threshold will be
+    treated as an integral unit (to avoid recursion) when fetching at stage3.
     This will reduce the host overhead and separated allgather overhead in fetching
     parameters introduced by hooks for fine-grained layers.
     """

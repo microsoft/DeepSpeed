@@ -14,7 +14,6 @@ from deepspeed.utils import set_z3_leaf_modules, unset_z3_leaf_modules, get_z3_l
 from deepspeed.accelerator import get_accelerator
 from torch import nn
 import time
-from math import ceil
 
 
 class ChooseModuleByCounter(torch.nn.Module):
@@ -192,7 +191,6 @@ class TestSetZ3LeafModule(DistributedTest):
 
 
 class TestZ3LeafOptimization(DistributedTest):
-    # Need multiple gpus to test possible hanging
     world_size = 2
     reuse_dist_env = True
 
@@ -233,7 +231,6 @@ class TestZ3LeafOptimization(DistributedTest):
                                             dtype=preferred_dtype())
             dist.barrier()
             loss_list = []
-
             # for name, submodule in model.named_modules():
             #     if hasattr(submodule,'ds_sub_layers'):
             #         tresh=submodule.ds_sub_params/submodule.ds_sub_layers
@@ -241,8 +238,9 @@ class TestZ3LeafOptimization(DistributedTest):
             #             print(f"module '{name}' layers: {submodule.ds_sub_layers}, params: {submodule.ds_sub_params}, tresh:{tresh}")
             for i, batch in enumerate(data_loader):
                 if i == warm_up_step:
+                    dist.barrier()
                     get_accelerator().synchronize()
-                    st = time.time()
+                    start_time = time.time()
                 batch[0].requires_grad = True
                 loss = model(batch[0], batch[1])
                 loss = loss[1]
@@ -250,13 +248,13 @@ class TestZ3LeafOptimization(DistributedTest):
                 model.backward(loss)
                 model.step()
             get_accelerator().synchronize()
-            en = time.time()
-            duration = en - st
+            end_time = time.time()
+            duration = end_time - start_time
             model.destroy()
             return loss_list, duration
 
         opt_loss_list, opt_duration = bench_loss_and_time(config_dict)
         del config_dict["zero_optimization"]["stage3_coalesced_fetch_threshold"]
         basic_loss_list, basic_duration = bench_loss_and_time(config_dict)
-        print(f"coalesced fetch time: {opt_duration}, basic duration time:{basic_duration}")
+        print(f"coalesced fetch time: {opt_duration}, basic time:{basic_duration}")
         assert basic_loss_list == opt_loss_list
