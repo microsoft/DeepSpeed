@@ -195,7 +195,7 @@ class TestFPDTAttention(DistributedTest):
         #3D tensor : l, b, d
         dim = head_dim * num_heads
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device)
-        spg = ds_engine.seq_parallel_group
+        spg = ds_engine.data_parallel_group
 
         qkv_linear_weight = Parameter(torch.empty(dim + 2 * dim, dim, device=ds_engine.device, dtype=torch.half))
 

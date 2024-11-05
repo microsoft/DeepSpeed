@@ -486,9 +486,13 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
 
         do_save = layernorm_output.requires_grad
 
-        pos_emb_cos, pos_emb_sin = rotary_pos_emb[0].permute(1, 0, 2, 3), rotary_pos_emb[1].permute(1, 0, 2, 3)
-        ctx.pos_emb_cos = pos_emb_cos
-        ctx.pos_emb_sin = pos_emb_sin
+        if rotary_pos_emb is not None:
+            pos_emb_cos, pos_emb_sin = rotary_pos_emb[0].permute(1, 0, 2, 3), rotary_pos_emb[1].permute(1, 0, 2, 3)
+            ctx.pos_emb_cos = pos_emb_cos
+            ctx.pos_emb_sin = pos_emb_sin
+        else:
+            ctx.pos_emb_cos = None
+            ctx.pos_emb_sin = None
         with torch.no_grad():
             per_gpu_seq_len = layernorm_output.shape[0]
             chunk_size = per_gpu_seq_len // num_chunks
@@ -559,11 +563,12 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
 
                 dist.barrier()
 
-                pos_emb_cos_chunk = pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
-                pos_emb_sin_chunk = pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
+                if ctx.pos_emb_cos is not None:
+                    pos_emb_cos_chunk = pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
+                    pos_emb_sin_chunk = pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)]
 
-                q_chunk = apply_rotary_pos_emb(q_chunk, pos_emb_cos_chunk, pos_emb_sin_chunk)
-                k_chunk = apply_rotary_pos_emb(k_chunk, pos_emb_cos_chunk, pos_emb_sin_chunk)
+                    q_chunk = apply_rotary_pos_emb(q_chunk, pos_emb_cos_chunk, pos_emb_sin_chunk)
+                    k_chunk = apply_rotary_pos_emb(k_chunk, pos_emb_cos_chunk, pos_emb_sin_chunk)
 
                 compute_stream.wait_stream(offload_stream)
                 compute_stream.synchronize()
@@ -812,12 +817,17 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
             compute_stream.synchronize()
 
             dk_seq_len = dk_accum.shape[1]
-            dq_accum = apply_rotary_pos_emb_backward(dq[kv_compute_chunk_idx].get_gpu_chunk().to(dtype),
-                                                     ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
-                                                     ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
-            dk_accum = apply_rotary_pos_emb_backward(dk_accum.to(dtype),
-                                                     ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
-                                                     ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
+            
+            if ctx.pos_emb_cos is not None:
+                dq_accum = apply_rotary_pos_emb_backward(dq[kv_compute_chunk_idx].get_gpu_chunk().to(dtype),
+                                                        ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
+                                                        ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
+                dk_accum = apply_rotary_pos_emb_backward(dk_accum.to(dtype),
+                                                        ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
+                                                        ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
+            else:
+                dq_accum = dq[kv_compute_chunk_idx].get_gpu_chunk().to(dtype)
+                dk_accum = dk_accum.to(dtype)
             dv_accum = dv_accum.to(dtype)
 
             dq_accum = single_all_to_all(dq_accum.contiguous(), gather_idx, scatter_idx, 0, spg)
