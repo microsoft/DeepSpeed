@@ -7,12 +7,14 @@ import torch
 
 from typing import Optional, Any, Tuple
 from torch import Tensor
-
+from packaging import version
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 
 try:
+    import flash_attn
     from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
+    flash_attn_version = version.parse(flash_attn.__version__)
 except ImportError:
     _flash_attn_forward = None
     _flash_attn_backward = None
@@ -228,16 +230,28 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
 
                 for k_i in range(len(global_k)):
                     causal_chunk = i == k_i
-                    block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(global_q[i],
-                                                                                 global_k[k_i],
-                                                                                 global_v[k_i],
-                                                                                 ctx.dropout_p,
-                                                                                 ctx.softmax_scale,
-                                                                                 causal=causal_chunk,
-                                                                                 window_size=ctx.window_size,
-                                                                                 softcap=0.0,
-                                                                                 alibi_slopes=ctx.alibi_slopes,
-                                                                                 return_softmax=False)
+                    if flash_attn_version >= version.parse("2.6.0"):
+                        block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(global_q[i],
+                                                                                     global_k[k_i],
+                                                                                     global_v[k_i],
+                                                                                     ctx.dropout_p,
+                                                                                     ctx.softmax_scale,
+                                                                                     causal=causal_chunk,
+                                                                                     window_size=ctx.window_size,
+                                                                                     softcap=0.0,
+                                                                                     alibi_slopes=ctx.alibi_slopes,
+                                                                                     return_softmax=False)
+                    else:
+                        block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(global_q[i],
+                                                                                     global_k[k_i],
+                                                                                     global_v[k_i],
+                                                                                     ctx.dropout_p,
+                                                                                     ctx.softmax_scale,
+                                                                                     causal=causal_chunk,
+                                                                                     window_size=ctx.window_size,
+                                                                                     alibi_slopes=ctx.alibi_slopes,
+                                                                                     return_softmax=False)
+
                     global_o[i], global_lse[i] = update_out_and_lse(global_o[i], global_lse[i], block_out, block_lse)
 
                 global_o[i] = global_o[i].to(q_chunk.dtype)
@@ -341,23 +355,41 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                 dk_this = torch.zeros(global_k[0].shape, dtype=dtype, device=device)
                 dv_this = torch.zeros(global_v[0].shape, dtype=dtype, device=device)
 
-                _flash_attn_backward(d_out,
-                                     q_chunk,
-                                     k_chunk,
-                                     v_chunk,
-                                     attn_output_chunk,
-                                     lse_chunk,
-                                     dq_this,
-                                     dk_this,
-                                     dv_this,
-                                     dropout_p,
-                                     softmax_scale,
-                                     causal_chunk,
-                                     window_size,
-                                     softcap=0.0,
-                                     alibi_slopes=alibi_slopes,
-                                     deterministic=False,
-                                     rng_state=None)
+                if flash_attn_version >= version.parse("2.6.0"):
+                    _flash_attn_backward(d_out,
+                                         q_chunk,
+                                         k_chunk,
+                                         v_chunk,
+                                         attn_output_chunk,
+                                         lse_chunk,
+                                         dq_this,
+                                         dk_this,
+                                         dv_this,
+                                         dropout_p,
+                                         softmax_scale,
+                                         causal_chunk,
+                                         window_size,
+                                         softcap=0.0,
+                                         alibi_slopes=alibi_slopes,
+                                         deterministic=False,
+                                         rng_state=None)
+                else:
+                    _flash_attn_backward(d_out,
+                                         q_chunk,
+                                         k_chunk,
+                                         v_chunk,
+                                         attn_output_chunk,
+                                         lse_chunk,
+                                         dq_this,
+                                         dk_this,
+                                         dv_this,
+                                         dropout_p,
+                                         softmax_scale,
+                                         causal_chunk,
+                                         window_size,
+                                         alibi_slopes=alibi_slopes,
+                                         deterministic=False,
+                                         rng_state=None)
 
                 dq[q_i].add_(dq_this.to(torch.float))
                 dk[i].add_(dk_this.to(torch.float))
@@ -596,7 +628,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 for k_i in range(len(global_k)):
                     causal_chunk = i == k_i
                     with get_accelerator().stream(compute_stream):
-                        try:
+                        if flash_attn_version >= version.parse("2.6.0"):
                             block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
                                 global_q[q_compute_chunk_idx].get_gpu_chunk(),
                                 global_k[kv_compute_chunk_idx].get_gpu_chunk(),
@@ -608,7 +640,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                                 softcap=0.0,
                                 alibi_slopes=ctx.alibi_slopes,
                                 return_softmax=False)
-                        except TypeError:
+                        else:
                             block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
                                 global_q[q_compute_chunk_idx].get_gpu_chunk(),
                                 global_k[kv_compute_chunk_idx].get_gpu_chunk(),
@@ -767,7 +799,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                 dv_this = torch.zeros(global_v[0].chunk_shape, dtype=dtype, device=device)
 
                 with get_accelerator().stream(compute_stream):
-                    try:
+                    if flash_attn_version >= version.parse("2.6.0"):
                         _flash_attn_backward(grad_global_attn_output[q_compute_chunk_idx].get_gpu_chunk(),
                                              global_q[q_compute_chunk_idx].get_gpu_chunk(),
                                              global_k[kv_compute_chunk_idx].get_gpu_chunk(),
@@ -785,7 +817,7 @@ class _FPDTGPUOffloadingAttentionImpl_(torch.autograd.Function):
                                              alibi_slopes=alibi_slopes,
                                              deterministic=False,
                                              rng_state=None)
-                    except TypeError:
+                    else:
                         _flash_attn_backward(grad_global_attn_output[q_compute_chunk_idx].get_gpu_chunk(),
                                              global_q[q_compute_chunk_idx].get_gpu_chunk(),
                                              global_k[kv_compute_chunk_idx].get_gpu_chunk(),
