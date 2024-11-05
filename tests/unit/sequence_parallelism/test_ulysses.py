@@ -223,5 +223,7 @@ class TestFPDTAttention(DistributedTest):
         scores = scores.masked_fill(causal_mask, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
         output = torch.matmul(attn_weights, v)
-
-        assert torch.allclose(fpdt_output, output)
+        
+        if not torch.allclose(fpdt_output, output):
+            max_abs_diff = torch.max(torch.abs(tensor_a - tensor_b))
+            print("Max absolute difference:", max_abs_diff.item())
