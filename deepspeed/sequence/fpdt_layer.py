@@ -152,9 +152,13 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
 
         do_save = layernorm_output.requires_grad
 
-        pos_emb_cos, pos_emb_sin = rotary_pos_emb[0].permute(1, 0, 2, 3), rotary_pos_emb[1].permute(1, 0, 2, 3)
-        ctx.pos_emb_cos = pos_emb_cos
-        ctx.pos_emb_sin = pos_emb_sin
+        if rotary_pos_emb is not None:
+            pos_emb_cos, pos_emb_sin = rotary_pos_emb[0].permute(1, 0, 2, 3), rotary_pos_emb[1].permute(1, 0, 2, 3)
+            ctx.pos_emb_cos = pos_emb_cos
+            ctx.pos_emb_sin = pos_emb_sin
+        else:
+            ctx.pos_emb_cos = None
+            ctx.pos_emb_sin = None
 
         with torch.no_grad():
             per_gpu_seq_len = layernorm_output.shape[0]
@@ -200,18 +204,20 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                     hidden_size_per_attention_head).permute(1, 0, 2, 3).contiguous()  # b, l, nh, hd
                 q_chunk = single_all_to_all(q_chunk, scatter_idx, gather_idx, 0, spg)
                 global_q_chunk_len = q_chunk.shape[1]
-                q_chunk = apply_rotary_pos_emb(q_chunk,
-                                               pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
-                                               pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
+                if rotary_pos_emb is not None:
+                    q_chunk = apply_rotary_pos_emb(q_chunk,
+                                                pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
+                                                pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
                 global_q.append(q_chunk)
 
                 k_chunk = qkv_chunk[:, :, projection_size:projection_size + kv_projection_size].contiguous().reshape(
                     qkv_chunk.shape[0], qkv_chunk.shape[1], -1,
                     hidden_size_per_attention_head).permute(1, 0, 2, 3).contiguous()  # b, l, nh, hd
                 k_chunk = single_all_to_all(k_chunk, scatter_idx, gather_idx, 0, spg)
-                k_chunk = apply_rotary_pos_emb(k_chunk,
-                                               pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
-                                               pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
+                if rotary_pos_emb is not None:
+                    k_chunk = apply_rotary_pos_emb(k_chunk,
+                                                pos_emb_cos[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)],
+                                                pos_emb_sin[:, global_q_chunk_len * i:global_q_chunk_len * (i + 1)])
                 global_k.append(k_chunk)
 
                 v_chunk = qkv_chunk[:, :, projection_size + kv_projection_size:].contiguous().reshape(
@@ -358,9 +364,13 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
                 dv[i].add_(dv_this.to(torch.float))
 
             dk_seq_len = dk[i].shape[1]
-            dk[i] = apply_rotary_pos_emb_backward(dk[i].to(dtype),
-                                                  ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
-                                                  ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
+            
+            if ctx.pos_emb_cos is not None:
+                dk[i] = apply_rotary_pos_emb_backward(dk[i].to(dtype),
+                                                    ctx.pos_emb_cos[:, dk_seq_len * i:dk_seq_len * (i + 1)],
+                                                    ctx.pos_emb_sin[:, dk_seq_len * i:dk_seq_len * (i + 1)])
+            else:
+                dk[i] = dk[i].to(dtype)
             dv[i] = dv[i].to(dtype)
             dk[i] = single_all_to_all(dk[i].contiguous(), gather_idx, scatter_idx, 0, spg)
             dv[i] = single_all_to_all(dv[i].contiguous(), gather_idx, scatter_idx, 0, spg)
@@ -390,10 +400,12 @@ class _FPDTGPUAttentionImpl_(torch.autograd.Function):
 
         for i in range(num_chunks):
             dq_seq_len = dq[i].shape[1]
-            dq[i] = apply_rotary_pos_emb_backward(dq[i].to(dtype),
-                                                  ctx.pos_emb_cos[:, dq_seq_len * i:dq_seq_len * (i + 1)],
-                                                  ctx.pos_emb_sin[:, dq_seq_len * i:dq_seq_len * (i + 1)])
-
+            if ctx.pos_emb_cos is not None:
+                dq[i] = apply_rotary_pos_emb_backward(dq[i].to(dtype),
+                                                    ctx.pos_emb_cos[:, dq_seq_len * i:dq_seq_len * (i + 1)],
+                                                    ctx.pos_emb_sin[:, dq_seq_len * i:dq_seq_len * (i + 1)])
+            else:
+                dq[i] = dq[i].to(dtype)
             dq[i] = single_all_to_all(dq[i].to(dtype).contiguous(), gather_idx, scatter_idx, 0, spg)
 
             input_chunk = layernorm_output[:input_chunk_size].reshape(-1, layernorm_output.shape[-1])
@@ -434,7 +446,7 @@ class SequenceChunk:
         self.gpu_chunk = chunk if is_in_use else None
 
     def load_to_gpu(self):
-        # assert self.gpu_chunk is None
+        assert self.gpu_chunk is None
         if self.gpu_chunk is not None:
             pass
         else:
@@ -973,7 +985,7 @@ class FPDT_Attention(torch.nn.Module):
                 cpu_offloading=True) -> Tensor:
         self.num_chunks_attn = layernorm_output.shape[0] * dist.get_world_size(self.spg) // self.chunk_size
 
-        if not cpu_offloading:
+        if not cpu_offloading or self.num_chunks_attn == 1:
             output = _FPDTGPUAttentionImpl_.apply(layernorm_output, attention_mask, inference_params, rotary_pos_emb,
                                                   self.spg, self.scatter_idx, self.gather_idx, self.hidden_size,
                                                   self.projection_size, self.hidden_size_per_attention_head,

@@ -164,7 +164,7 @@ class TestUlyssesAll2All_odd(DistributedTest):
 
 @pytest.mark.parametrize("d0", [4, 1])  #batch dimension
 @pytest.mark.parametrize("d1", [2048, 8192])  #sequence dimension
-@pytest.mark.parametrize("chunk_size", [512, 2048])  #size of chunk
+@pytest.mark.parametrize("chunk_size", [512, 1024])  #size of chunk
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_dim", [32])
 class TestFPDTAttention(DistributedTest):
