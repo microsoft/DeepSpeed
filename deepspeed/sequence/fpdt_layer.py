@@ -434,7 +434,7 @@ class SequenceChunk:
         self.gpu_chunk = chunk if is_in_use else None
 
     def load_to_gpu(self):
-        assert self.gpu_chunk is None
+        # assert self.gpu_chunk is None
         if self.gpu_chunk is not None:
             pass
         else:
