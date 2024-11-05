@@ -21,12 +21,12 @@ from deepspeed.module_inject.tp_shard import get_shard_size_list
 
 
 class TestUlyssesUtils(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     def test_mesh_device_creation(self) -> None:
         skip_on_arch(min_arch=8)
         model = AutoModel.from_pretrained('bert-base-uncased')
-        sp_size = 1
+        sp_size = 2
         dp_size = 2
         ds_engine, _, _, _ = initialize(
             model=model,
@@ -49,7 +49,7 @@ class TestUlyssesUtils(DistributedTest):
 @pytest.mark.parametrize("num_heads", [4, 8])
 @pytest.mark.parametrize("head_dim", [16, 32])
 class TestUlyssesAll2All(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     def test_alltoall_output_consistency(self, d0: int, d1: int, head_dim: int, num_heads: int) -> None:
         skip_on_arch(min_arch=8)
