@@ -14,6 +14,7 @@ from ..inference_parameter import InferenceParameter
 
 # Currently have dependency loops for the type hints.
 InferenceModel = Type["InferenceModel"]
+LayerContainer = Type["LayerContainer"]
 
 MAPPING_KEY = "PARAM_MAPPING"
 PLIST_HELPERS = "_ds_plist_strip_vals"
