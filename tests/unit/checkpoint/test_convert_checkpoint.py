@@ -52,6 +52,8 @@ class TestCheckpointConvert(DistributedTest):
         
         # load state_dict from fp32 checkpoint
         state_dict = torch.load(fp32_save_dir / 'pytorch_model.bin')
+        
+        # check shared tensor
         assert id(state_dict['layer1.weight']) == id(state_dict['layer2.weight'])
         
         # load state_dict into model
