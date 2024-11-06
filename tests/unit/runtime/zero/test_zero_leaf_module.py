@@ -197,7 +197,7 @@ class TestZ3LeafOptimization(DistributedTest):
     def test_finegrained_optimization(self):
         hidden_dim = 128
         num_block = 16
-        stage3_coalesced_fetch_threshold_list = [100]
+        stage3_module_granularity_threshold_list = [0, 100, 12100, 10000000]
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -218,7 +218,6 @@ class TestZ3LeafOptimization(DistributedTest):
             config_dict["fp16"] = {"enabled": True}
         elif preferred_dtype() is torch.bfloat16:
             config_dict["bf16"] = {"enabled": True}
-            
 
         def bench_loss_and_time(config):
             warm_up_step = 10
@@ -248,21 +247,20 @@ class TestZ3LeafOptimization(DistributedTest):
             duration = end_time - start_time
             model.destroy()
             return loss_list, duration
-        result_loss_list=[]
-        result_duration=[]
 
-        # baseline_loss_list, baseline_exec_time = bench_loss_and_time(config_dict)
-        
-        for threshold in stage3_coalesced_fetch_threshold_list:
-            config_dict["zero_optimization"]["stage3_coalesced_fetch_threshold"]=threshold
+        result_loss_list = []
+        result_duration = []
+
+        baseline_loss_list, baseline_exec_time = bench_loss_and_time(config_dict)
+
+        for threshold in stage3_module_granularity_threshold_list:
+            config_dict["zero_optimization"]["stage3_module_granularity_threshold"] = threshold
             loss_list, duration = bench_loss_and_time(config_dict)
             result_duration.append(duration)
             result_loss_list.append(loss_list)
-        # if dist.get_rank()==0:
-        #     print(f"baseline exec time:",baseline_exec_time)
-        # for idx,threshold in enumerate(stage3_coalesced_fetch_threshold_list):
-        #     if dist.get_rank()==0:
-        #         print(f"finegrained optimziation exec time: {result_duration[idx]}, threshold:{threshold} " )
-        #     assert baseline_loss_list == result_loss_list[idx], f"incorrect loss value with threshold:{threshold}"
-
-
+        if dist.get_rank() == 0:
+            print(f"baseline exec time:", baseline_exec_time)
+        for idx, threshold in enumerate(stage3_module_granularity_threshold_list):
+            if dist.get_rank() == 0:
+                print(f"finegrained optimziation exec time: {result_duration[idx]},granularity threshold:{threshold} ")
+            assert baseline_loss_list == result_loss_list[idx], f"incorrect loss value with threshold:{threshold}"

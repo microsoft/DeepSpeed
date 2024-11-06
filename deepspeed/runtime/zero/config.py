@@ -21,7 +21,7 @@ ZeRO optimization should be enabled as:
     "stage3_max_live_parameters" : 1000000000,
     "stage3_max_reuse_distance" : 1000000000,
     "stage3_use_all_reduce_for_fetch_params": [true|false],
-    "stage3_coalesced_fetch_threshold": 0,
+    "stage3_module_granularity_threshold": 0,
     "allgather_partitions": [true|false],
     "use_multi_rank_bucket_allreduce": [true|false],
     "allgather_bucket_size": 500000000,
@@ -246,13 +246,12 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     this option is enabled and then saves the fp16 model weights.
     """
 
-    coalesced_fetch_threshold: int = Field(pp_int(0), alias="stage3_coalesced_fetch_threshold")
+    module_granularity_threshold: int = Field(pp_int(0), alias="stage3_module_granularity_threshold")
     """
-    The ratio of a module's number of parameters/required forward passes (layers)
-    measures model granularity. Modules with values below this threshold will be
-    treated as an integral unit (to avoid recursion) when fetching at stage3.
-    This will reduce the host overhead and separated allgather overhead in fetching
-    parameters introduced by hooks for fine-grained layers.
+    The granularity of a module is determined by the ratio of "parameter_count / (1 + descendant count)".
+    ZeRO3 classifies modules with a granularity below the threshold as fine-grained,
+    which are treated as integral units during parameter fetching. This reduces host overhead
+    and the separate allgather overhead introduced by hooks for fine-grained layers when fetching parameters.
     """
 
     use_all_reduce_for_fetch_params: bool = Field(False, alias="stage3_use_all_reduce_for_fetch_params")
