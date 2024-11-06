@@ -30,6 +30,7 @@ jobs:
       - name: Python environment
         run: |
           pip uninstall torch --yes
+          pip install setuptools
           pip list
 
       - name: Build deepspeed
