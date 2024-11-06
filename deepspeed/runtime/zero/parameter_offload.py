@@ -556,7 +556,7 @@ class DeepSpeedZeRoOffload(object):
         if self.min_granularity_value > ds_model_granularity:
             self.min_granularity_value = ds_model_granularity
             self.min_granularity_layer = module.__class__.__name__
-        self.granularity_info.add(f"{module.__class__.__name__.ljust(30)}|{str(ds_model_granularity).rjust(10)}")
+        self.granularity_info.add(f"{module.__class__.__name__.ljust(30)}|{str(ds_model_granularity).rjust(20)}")
 
         return num_layers, num_params
 
