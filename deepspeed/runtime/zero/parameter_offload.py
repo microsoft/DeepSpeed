@@ -152,6 +152,7 @@ class DeepSpeedZeRoOffload(object):
         if zero_coalesced_fetch_threshold >= 0:
             self.min_granularity_value = sys.maxsize
             self.min_granularity_layer = None
+            self.granularity_info=set()
             self.z3_leaf_layers = []
             self._set_z3_leaf_modules_by_threshold(module, zero_coalesced_fetch_threshold)
 
@@ -501,7 +502,7 @@ class DeepSpeedZeRoOffload(object):
         self._get_granularity_recursively(module)
         if self.min_granularity_value <= zero_coalesced_fetch_threshold:
             self._set_leaf_by_threshold_preorder(module, zero_coalesced_fetch_threshold)
-            print_rank_0(f"z3_leaf_module was set by stage3_coalesced_fetch_threshold", force=True)
+            print_rank_0(f"z3_leaf_module was set by stage3_coalesced_fetch_threshold:{zero_coalesced_fetch_threshold}", force=True)
             for layer in self.z3_leaf_layers:
                 print_rank_0(f"{layer.__class__.__name__}:{layer.ds_model_granularity}", force=True)
         else:
@@ -509,6 +510,8 @@ class DeepSpeedZeRoOffload(object):
                 f"The smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}]. "\
                 f"To make stage3_coalesced_fetch_threshold effective, you need to set stage3_coalesced_fetch_threshold >= {self.min_granularity_value}"
             )
+            for granularity in self.granularity_info:
+                print_rank_0(granularity)
 
     def _get_granularity_recursively(self, module):
         """This function is used to recursively obtain the granularity of each module."""
@@ -534,8 +537,14 @@ class DeepSpeedZeRoOffload(object):
             num_layers += layers_in_child
             num_params += params_in_child
 
+        if module.__class__.__name__ in torch.nn.modules.container.__all__:
+            # Do not set container modules like ModuleList as leaf modules
+            # as this will prevent hooks from being set on their children
+            # and they may do not invoke the forward method
+            module.ds_model_granularity=sys.maxsize
+            return num_layers, num_params
+        
         num_layers += 1
-
         ds_model_granularity = (num_params // num_layers) if num_params <= Z3_MAX_LEAF_SIZE else sys.maxsize
         module.ds_model_granularity = ds_model_granularity
         # module.ds_model_num_layers = num_layers
@@ -543,6 +552,7 @@ class DeepSpeedZeRoOffload(object):
         if self.min_granularity_value > ds_model_granularity:
             self.min_granularity_value = ds_model_granularity
             self.min_granularity_layer = module.__class__.__name__
+        self.granularity_info.add(f"{module.__class__.__name__}:{ds_model_granularity}" )
 
         return num_layers, num_params
 
@@ -554,10 +564,6 @@ class DeepSpeedZeRoOffload(object):
             # skip Modules without parameters, such as GELU, etc.
             return
         if module.ds_model_granularity <= granularity_treshhold:
-            if module.__class__.__name__ not in torch.nn.modules.container.__all__:
-                # Do not set container modules like ModuleList as leaf modules
-                # as this will prevent hooks from being set on their children
-                # and they may do not invoke the forward method
                 set_z3_leaf_module(module, True)
                 self.z3_leaf_layers.append(module)
                 return
