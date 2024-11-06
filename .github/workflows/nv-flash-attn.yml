@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'deepspeed/sequence/**'
+      - 'tests/unit/sequence_parallelism/**'
       - '.github/workflows/nv-flash-attn.yml'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
