@@ -393,6 +393,7 @@ class GatheredTensor:
     A pseudo tensor that collects partitioned weights.
     It is more memory efficient when there are multiple groups.
     """
+
     def __init__(self, flat_groups, flat_groups_offset, offset, partitioned_numel, shape):
         self.flat_groups = flat_groups
         self.flat_groups_offset = flat_groups_offset
@@ -408,7 +409,7 @@ class GatheredTensor:
         end_idx = self.offset + self.partitioned_numel
         world_size = len(self.flat_groups)
         pad_flat_param_chunks = []
-        
+
         for rank_i in range(world_size):
             # for each rank, we need to collect weights from related group/groups
             flat_groups_at_rank_i = self.flat_groups[rank_i]
@@ -426,7 +427,7 @@ class GatheredTensor:
                 start_offset = self.offset - self.flat_groups_offset[group_id]
                 end_offset = min(end_idx, self.flat_groups_offset[group_id + 1]) - self.flat_groups_offset[group_id]
                 pad_flat_param_chunks.append(flat_tensor[start_offset:end_offset])
-        
+
         # collect weights from all ranks
         pad_flat_param = torch.cat(pad_flat_param_chunks, dim=0)
         param = pad_flat_param[:self.shape.numel()].view(self.shape).contiguous()
@@ -528,7 +529,10 @@ def to_torch_tensor(state_dict, return_empty_tensor=False):
     return state_dict
 
 
-def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_frozen_parameters=False, lazy_mode=False):
+def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir,
+                                             tag=None,
+                                             exclude_frozen_parameters=False,
+                                             lazy_mode=False):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated state_dict that can be loaded with
     ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example
@@ -583,13 +587,11 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, exclude_f
     if not os.path.isdir(ds_checkpoint_dir):
         raise FileNotFoundError(f"Directory '{ds_checkpoint_dir}' doesn't exist")
 
-
     state_dict = _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_parameters)
     if lazy_mode:
         return state_dict
     else:
         return to_torch_tensor(state_dict)
-    
 
 
 def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
@@ -610,7 +612,7 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
         - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in the file named ``latest`` in the checkpoint folder, e.g., ``global_step14``
         - ``exclude_frozen_parameters``: exclude frozen parameters
     """
-    
+
     # Dependency pre-check
     if safe_serialization:
         try:
@@ -626,7 +628,10 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
             raise
 
     # Convert zero checkpoint to state_dict
-    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag, exclude_frozen_parameters, lazy_merge=True)
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir,
+                                                          tag,
+                                                          exclude_frozen_parameters,
+                                                          lazy_merge=True)
 
     # Shard the model if it is too big.
     weights_name = "model.safetensors" if safe_serialization else "pytorch_model.bin"

@@ -45,16 +45,16 @@ class TestCheckpointConvert(DistributedTest):
         deepspeed_engine.save_checkpoint(ds_save_dir, tag="checkpoint")
 
         model = ModelWithSharedWeights()
-        
+
         # save checkpoint
         fp32_save_dir = tmpdir / "checkpoint_fp32"
         convert_zero_checkpoint_to_fp32_state_dict(ds_save_dir, fp32_save_dir)
-        
+
         # load state_dict from fp32 checkpoint
         state_dict = torch.load(fp32_save_dir / 'pytorch_model.bin')
-        
+
         # check shared tensor
         assert id(state_dict['layer1.weight']) == id(state_dict['layer2.weight'])
-        
+
         # load state_dict into model
         model.load_state_dict(state_dict, strict=True)
