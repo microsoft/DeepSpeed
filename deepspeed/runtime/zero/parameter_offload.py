@@ -144,7 +144,7 @@ class DeepSpeedZeRoOffload(object):
         if not hasattr(module, "ds_inflight_param_registry"):
             module.ds_inflight_param_registry = InflightParamRegistry()
         self.__inflight_param_registry = module.ds_inflight_param_registry
-        
+
         self.param_coordinator = PartitionedParameterCoordinator(
             prefetch_bucket_sz=self._prefetch_bucket_sz,
             max_reuse_distance_in_numel=self._max_reuse_distance_in_numel,
@@ -156,7 +156,7 @@ class DeepSpeedZeRoOffload(object):
             zero_quantized_weights=self.zero_quantized_weights,
             zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
         )
-        
+
         if zero_module_granularity_threshold >= 0:
             self.min_granularity_value = sys.maxsize
             self.min_granularity_layer = None
