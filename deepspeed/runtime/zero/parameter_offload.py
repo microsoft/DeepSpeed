@@ -510,8 +510,9 @@ class DeepSpeedZeRoOffload(object):
                 f"The smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}]. "\
                 f"To make stage3_coalesced_fetch_threshold effective, you need to set stage3_coalesced_fetch_threshold >= {self.min_granularity_value}"
             )
+            print_rank_0(f"{'MODULE NAME'.ljust(30)}|{'GRANULARITY VALUE'.rjust(20)}", force=True)
             for granularity in self.granularity_info:
-                print_rank_0(granularity)
+                print_rank_0(granularity, force=True)
 
     def _get_granularity_recursively(self, module):
         """This function is used to recursively obtain the granularity of each module."""
@@ -552,7 +553,7 @@ class DeepSpeedZeRoOffload(object):
         if self.min_granularity_value > ds_model_granularity:
             self.min_granularity_value = ds_model_granularity
             self.min_granularity_layer = module.__class__.__name__
-        self.granularity_info.add(f"{module.__class__.__name__}:{ds_model_granularity}" )
+        self.granularity_info.add(f"{module.__class__.__name__.ljust(30)}|{str(ds_model_granularity).rjust(10)}" )
 
         return num_layers, num_params
 
