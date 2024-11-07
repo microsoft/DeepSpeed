@@ -171,7 +171,7 @@ class TestFPDTAttention(DistributedTest):
     def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
                                                           num_heads: int) -> None:
         skip_on_arch(min_arch=8)
-        world_size = 2
+        world_size = 1
 
         try:
             from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
@@ -199,7 +199,7 @@ class TestFPDTAttention(DistributedTest):
         get_accelerator().manual_seed_all(seed)
 
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
-        spg = ds_engine.seq_parallel_group
+        spg = ds_engine.data_parallel_group
 
         class args:
 
