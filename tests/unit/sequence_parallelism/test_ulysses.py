@@ -167,11 +167,11 @@ class TestUlyssesAll2All_odd(DistributedTest):
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_dim", [32])
 class TestFPDTAttention(DistributedTest):
-    world_size = 2
 
     def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
                                                           num_heads: int) -> None:
         skip_on_arch(min_arch=8)
+        world_size = 2
 
         try:
             from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
