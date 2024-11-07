@@ -250,4 +250,4 @@ class TestFPDTAttention(DistributedTest):
         baseline_output_shuffled = FPDT_InputConstruct(output, None, None, None, None, args(), world_size,
                                                        dist.get_rank()).generate()[0]  # b, l, n, d
 
-        assert torch.allclose(fpdt_output, output), f"{torch.max(torch.abs(fpdt_output - output))}"
+        assert torch.allclose(fpdt_output, baseline_output_shuffled), f"{torch.max(torch.abs(fpdt_output - baseline_output_shuffled))}"
