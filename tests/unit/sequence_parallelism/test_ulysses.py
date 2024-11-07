@@ -171,7 +171,7 @@ class TestFPDTAttention(DistributedTest):
     def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
                                                           num_heads: int) -> None:
         skip_on_arch(min_arch=8)
-        world_size = 1
+        world_size = 2
 
         try:
             from flash_attn.flash_attn_interface import _flash_attn_forward, _flash_attn_backward
@@ -199,7 +199,7 @@ class TestFPDTAttention(DistributedTest):
         get_accelerator().manual_seed_all(seed)
 
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
-        spg = ds_engine.data_parallel_group
+        spg = ds_engine.seq_parallel_group
 
         class args:
 
@@ -250,4 +250,4 @@ class TestFPDTAttention(DistributedTest):
         baseline_output_shuffled = FPDT_InputConstruct(output, None, None, None, None, args(), world_size,
                                                        dist.get_rank()).generate()[0]  # b, l, n, d
 
-        assert torch.allclose(fpdt_output, baseline_output_shuffled), f"{torch.max(torch.abs(fpdt_output - baseline_output_shuffled))}"
+        assert torch.allclose(fpdt_output, baseline_output_shuffled), f"sp size: {dist.get_world_size(spg)}, input_tensor: {input_tensor.shape}, fpdt_input_tensor: {fpdt_input_tensor.shape}, fpdt_output: {fpdt_output.shape},            baseline_output_shuffled: {baseline_output_shuffled.shape},{torch.max(torch.abs(fpdt_output - baseline_output_shuffled))}"
