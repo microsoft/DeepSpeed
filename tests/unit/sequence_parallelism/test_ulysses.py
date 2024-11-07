@@ -204,7 +204,7 @@ class TestFPDTAttention(DistributedTest):
         fpdt_input_tensor = FPDT_InputConstruct(input_tensor.permute(1, 0, 2), None, None, None, None, None,
                                                 world_size, dist.get_rank()).generate().permute(1, 0, 2)
 
-        if rank == 0:
+        if dist.get_rank() == 0:
             qkv_linear_weight = torch.nn.Parameter(
                 torch.empty(dim + 2 * dim, dim, device=dist.get_rank(), dtype=torch.half))
             torch.nn.init.normal_(qkv_linear_weight, mean=0.0, std=0.02)
