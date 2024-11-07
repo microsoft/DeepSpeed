@@ -494,22 +494,24 @@ class DeepSpeedZeRoOffload(object):
             force=False)
 
     def _set_z3_leaf_modules_by_threshold(self, module, zero_module_granularity_threshold):
+
         self._get_granularity_recursively(module)
+        print_rank_0(f"{'MODULE NAME'.ljust(30)}|{'GRANULARITY VALUE'.rjust(20)}", force=True)
+        for granularity in self.granularity_info:
+            print_rank_0(granularity, force=True)
+
         if self.min_granularity_value <= zero_module_granularity_threshold:
             self._set_leaf_by_threshold_preorder(module, zero_module_granularity_threshold)
-            print_rank_0(
-                f"z3_leaf_module was set by stage3_module_granularity_threshold:{zero_module_granularity_threshold}",
-                force=True)
+            utils.logger.info(
+                f"z3_leaf_module was set by stage3_module_granularity_threshold:{zero_module_granularity_threshold}")
             for layer in self.z3_leaf_layers:
                 print_rank_0(f"{layer.__class__.__name__}:{layer.ds_model_granularity}", force=True)
         else:
             utils.logger.warning(
                 f"The smallest module granularity is [{self.min_granularity_layer}:{self.min_granularity_value}]. "\
-                f"To make stage3_module_granularity_threshold effective, you need to set stage3_module_granularity_threshold >= {self.min_granularity_value}"
+                f"To make stage3_module_granularity_threshold effective, you need to set stage3_module_granularity_threshold >= {self.min_granularity_value}. "\
+                f"Current Value:{zero_module_granularity_threshold}"
             )
-            print_rank_0(f"{'MODULE NAME'.ljust(30)}|{'GRANULARITY VALUE'.rjust(20)}", force=True)
-            for granularity in self.granularity_info:
-                print_rank_0(granularity, force=True)
 
     def _get_granularity_recursively(self, module):
         """This function is used to recursively obtain the granularity of each module."""
