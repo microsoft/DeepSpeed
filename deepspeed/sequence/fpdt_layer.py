@@ -117,15 +117,16 @@ class FPDT_InputConstruct(torch.nn.Module):
         gather_indices = indices[:, 0]
         token_chunk_indices = indices[:, 1]
         indices = torch.cat([token_chunk_indices[gather_indices == i] for i in range(gather_chunk.shape[0])])
-        load_balanced_loss_mask = self.loss_mask[:, indices]
+        load_balanced_loss_mask = self.loss_mask[:, indices] if self.loss_mask is not None else self.loss_mask
 
         indices = indices.reshape(-1, self.chunk_size)[self.num_chunk_per_gpu * self.sp_rank:self.num_chunk_per_gpu *
                                                        (self.sp_rank + 1)].flatten().contiguous()
         load_balanced_tokens = self.tokens[:, indices]
-        load_balanced_labels = self.labels[:, indices]
+        load_balanced_labels = self.labels[:, indices] if self.labels is not None else self.labels
 
-        load_balanced_attention_mask = self.attention_mask if self.attention_mask is not None else None
-        load_balanced_position_ids = self.position_ids[:, indices]
+        load_balanced_attention_mask = self.attention_mask if self.attention_mask is not None else self.attention_mask
+        load_balanced_position_ids = self.position_ids[:,
+                                                       indices] if self.position_ids is not None else self.position_ids
 
         return load_balanced_tokens, load_balanced_labels, load_balanced_loss_mask, load_balanced_attention_mask, load_balanced_position_ids
 

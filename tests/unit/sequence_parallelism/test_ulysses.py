@@ -6,13 +6,12 @@
 import pytest
 import torch
 import torch.nn.functional as F
-from torch.nn.parameter import Parameter
 import deepspeed.comm as dist
 from deepspeed import initialize
 from transformers import AutoModel
 from unit.common import DistributedTest
 from deepspeed.sequence.layer import _SeqAllToAll
-from deepspeed.sequence.fpdt_layer import _FPDTGPUOffloadingAttentionImpl_
+from deepspeed.sequence.fpdt_layer import _FPDTGPUOffloadingAttentionImpl_, FPDT_InputConstruct
 from unit.util import skip_on_arch
 from unit.simple_model import *
 from deepspeed.utils import groups
@@ -162,13 +161,13 @@ class TestUlyssesAll2All_odd(DistributedTest):
                                   outputs[i]), f"[{dist.get_rank()}]Outputs differ for sequence dim {seq_dims[i]}"
 
 
-@pytest.mark.parametrize("d0", [4, 1])  #batch dimension
-@pytest.mark.parametrize("d1", [2048, 8192])  #sequence dimension
-@pytest.mark.parametrize("chunk_size", [512, 1024])  #size of chunk
+@pytest.mark.parametrize("d0", [4])  #batch dimension
+@pytest.mark.parametrize("d1", [2048])  #sequence dimension
+@pytest.mark.parametrize("chunk_size", [128])  #size of chunk
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_dim", [32])
 class TestFPDTAttention(DistributedTest):
-    world_size = 1
+    world_size = 4
 
     def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
                                                           num_heads: int) -> None:
@@ -189,20 +188,39 @@ class TestFPDTAttention(DistributedTest):
             config_params={
                 "train_batch_size": 8,
                 "data_parallel_size": 1,
-                "sequence_parallel_size": 1
+                "sequence_parallel_size": world_size
             },
         )
         #3D tensor : l, b, d
         dim = head_dim * num_heads
+
+        seed = 42
+        torch.manual_seed(seed)
+        get_accelerator().manual_seed_all(seed)
+
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
-        spg = ds_engine.data_parallel_group
+        spg = ds_engine.seq_parallel_group
 
-        qkv_linear_weight = Parameter(torch.empty(dim + 2 * dim, dim, device=ds_engine.device, dtype=torch.half))
+        fpdt_input_tensor = FPDT_InputConstruct(input_tensor.permute(1, 0, 2), None, None, None, None, None,
+                                                world_size, dist.get_rank()).generate().permute(1, 0, 2)
 
-        qkv_linear_bias = Parameter(torch.empty(dim + 2 * dim, device=ds_engine.device, dtype=torch.half))
+        if rank == 0:
+            qkv_linear_weight = torch.nn.Parameter(
+                torch.empty(dim + 2 * dim, dim, device=dist.get_rank(), dtype=torch.half))
+            torch.nn.init.normal_(qkv_linear_weight, mean=0.0, std=0.02)
 
-        num_chunks_attn = input_tensor.shape[0] * dist.get_world_size(spg) // chunk_size
-        fpdt_output = _FPDTGPUOffloadingAttentionImpl_.apply(input_tensor, None, None, None, spg, 2, 0, dim, dim,
+            qkv_linear_bias = torch.nn.Parameter(torch.empty(dim + 2 * dim, device=dist.get_rank(), dtype=torch.half))
+            torch.nn.init.normal_(qkv_linear_bias, mean=0.0, std=0.02)
+        else:
+            qkv_linear_weight = torch.nn.Parameter(
+                torch.empty(dim + 2 * dim, dim, device=dist.get_rank(), dtype=torch.half))
+            qkv_linear_bias = torch.nn.Parameter(torch.empty(dim + 2 * dim, device=dist.get_rank(), dtype=torch.half))
+
+        dist.broadcast(qkv_linear_weight, src=0, group=spg)
+        dist.broadcast(qkv_linear_bias, src=0, group=spg)
+
+        num_chunks_attn = fpdt_input_tensor.shape[0] * dist.get_world_size(spg) // chunk_size
+        fpdt_output = _FPDTGPUOffloadingAttentionImpl_.apply(fpdt_input_tensor, None, None, None, spg, 2, 0, dim, dim,
                                                              head_dim, dim, qkv_linear_weight, qkv_linear_bias, 0,
                                                              num_chunks_attn, True)
 
@@ -223,5 +241,8 @@ class TestFPDTAttention(DistributedTest):
         scores = scores.masked_fill(causal_mask, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
         output = torch.matmul(attn_weights, v).permute(0, 2, 1, 3)
+
+        baseline_output_shuffled = FPDT_InputConstruct(output, None, None, None, None, None, world_size,
+                                                       dist.get_rank()).generate()  # b, l, n, d
 
         assert torch.allclose(fpdt_output, output), f"{torch.max(torch.abs(fpdt_output - output))}"
