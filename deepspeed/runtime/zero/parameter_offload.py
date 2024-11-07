@@ -157,7 +157,7 @@ class DeepSpeedZeRoOffload(object):
             zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
         )
 
-        if zero_module_granularity_threshold >= 0:
+        if zero_module_granularity_threshold > 0:
             self.min_granularity_value = sys.maxsize
             self.min_granularity_layer = None
             self.granularity_info = set()
