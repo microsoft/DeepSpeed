@@ -201,7 +201,12 @@ class TestFPDTAttention(DistributedTest):
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
         spg = ds_engine.seq_parallel_group
 
-        fpdt_input_tensor = FPDT_InputConstruct(input_tensor.permute(1, 0, 2), None, None, None, None, None,
+        class args:
+
+            def __init__(self):
+                self.ds_sequence_parallel_fpdt_chunk_size = chunk_size
+
+        fpdt_input_tensor = FPDT_InputConstruct(input_tensor.permute(1, 0, 2), None, None, None, None, args(),
                                                 world_size, dist.get_rank()).generate().permute(1, 0, 2)
 
         if dist.get_rank() == 0:
