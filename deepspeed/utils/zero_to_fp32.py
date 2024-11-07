@@ -571,7 +571,7 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir,
         state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, lazy_mode=True) # not on cpu
         for name, lazy_tensor in state_dict.item():
             tensor = lazy_tensor.contiguous()  # to cpu
-            print(name, tensor)  
+            print(name, tensor)
             # del tensor to release memory if it no longer in use
     """
     if tag is None:
@@ -631,7 +631,7 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
     state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir,
                                                           tag,
                                                           exclude_frozen_parameters,
-                                                          lazy_merge=True)
+                                                          lazy_mode=True)
 
     # Shard the model if it is too big.
     weights_name = "model.safetensors" if safe_serialization else "pytorch_model.bin"
