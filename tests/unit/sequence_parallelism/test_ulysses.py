@@ -247,7 +247,7 @@ class TestFPDTAttention(DistributedTest):
         attn_weights = F.softmax(scores, dim=-1)
         output = torch.matmul(attn_weights, v).permute(0, 2, 1, 3)
 
-        baseline_output_shuffled = FPDT_InputConstruct(output, None, None, None, None, None, world_size,
+        baseline_output_shuffled = FPDT_InputConstruct(output, None, None, None, None, args(), world_size,
                                                        dist.get_rank()).generate()[0]  # b, l, n, d
 
         assert torch.allclose(fpdt_output, output), f"{torch.max(torch.abs(fpdt_output - output))}"
