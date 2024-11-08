@@ -49,51 +49,69 @@ jobs:
       TORCHINDUCTOR_COMPILE_THREADS: 1
       TEST_LIST: |
         test_accelerator.py
+        test_activation_checkpointing.py
+        test_activation_checkpointing_non_reentrant.py
+        test_adamw.py
+        test_autocast.py
         test_autotuning.py
+        test_bf16.py
+        test_coalesced_collectives.py
         test_compression.py
+        test_csr.py
+        test_data.py
         test_dist.py
-        test_elastic.py
         test_ds_arguments.py
-        test_run.py
-        test_multinode_runner.py
+        test_ds_config_dict.py
+        test_ds_config_model.py
+        test_ds_initialize.py
+        test_dynamic_loss_scale.py
+        test_elastic.py
+        test_flops_profiler.py
+        test_fp16.py
+        test_get_optim_files.py
+        test_groups.py
+        test_hybrid_adam.py
+        test_ignore_unused_parameters.py
+        test_init_on_device.py
+        test_intX_quantization.py
+        test_latest_checkpoint.py
+        test_moe_checkpoint.py
         test_moe_tp.py
         test_monitor.py
-        (test_zero_optimizer.py and (TestSaveTensorClone or TestZeRONonDistributed))
-        (test_latest_checkpoint.py and test_missing_latest)
+        test_multi_output_model.py
+        test_multinode_runner.py
+        test_mup_optimizers.py
+        test_other_optimizer.py
+        test_partition.py
+        test_partition_balanced.py
+        test_pipe.py
+        test_pipe_module.py
+        test_pipe_schedule.py
+        test_pipeline.py
+        test_pld.py
         test_reshape_checkpoint.py
+        test_run.py
+        test_runtime_utils.py
         test_shared_weights.py
         test_sparse.py
         test_tag_validation.py
-        test_pipe_module.py
-        (test_flops_profiler.py and test_flops_profiler_in_inference)
-        test_get_optim_files.py
-        test_groups.py
-        test_partition_balanced.py
-        (test_adamw.py and TestAdamConfigs)
-        test_coalesced_collectives.py
-        test_activation_checkpointing_non_reentrant.py
-        test_activation_checkpointing.py
-        test_data.py
-        (test_ds_config_dict.py and (TestBasicConfig or TestBatchConfig))
-        test_ds_config_model.py
-        test_mup_optimizers.py
-        (test_pld.py and test_pld_schedule)
-        test_runtime_utils.py
-        test_pipe_schedule.py
         test_topology.py
-        (test_ds_initialize.py and (TestClientOptimizer or TestClientLrScheduler))
-        test_csr.py
-        (test_fp16.py and (TestZeroEmptyGrad or TestZeroAllowUntestedOptimizer))
-        (test_bf16.py and TestZeroDtypeCocktail)
-        test_partition.py
-        test_ignore_unused_parameters.py
+        test_universal_checkpoint.py
+        test_user_args.py
+        test_zero.py
         test_zero_config.py
+        test_zero_context.py
         test_zero_context_ancestry.py
-        (test_zero_context.py and not TestSerialContext)
+        test_zero_context_return.py
         test_zero_dynamic_class.py
+        test_zero_leaf_module.py
         test_zero_nesting_init.py
+        test_zero_offloadpp.py
+        test_zero_optimizer.py
+        test_zero_tiled.py
         test_zeropp.py
-        (test_zero.py and (TestZero3ParamPartitioningLargeParam or TestZero3ParamPartitioningLargeParam))
+
+
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
