@@ -199,9 +199,9 @@ class TestFPDTAttention(DistributedTest):
         get_accelerator().manual_seed_all(seed)
 
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
-        dist.broadcast(input_tensor, src=0, group=spg)
         spg = ds_engine.seq_parallel_group
 
+        dist.broadcast(input_tensor, src=0, group=spg)
         class args:
 
             def __init__(self):
