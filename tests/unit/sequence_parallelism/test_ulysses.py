@@ -161,11 +161,11 @@ class TestUlyssesAll2All_odd(DistributedTest):
                                   outputs[i]), f"[{dist.get_rank()}]Outputs differ for sequence dim {seq_dims[i]}"
 
 
-@pytest.mark.parametrize("d0", [4])  #batch dimension
-@pytest.mark.parametrize("d1", [2048])  #sequence dimension
-@pytest.mark.parametrize("chunk_size", [128])  #size of chunk
-@pytest.mark.parametrize("num_heads", [8])
-@pytest.mark.parametrize("head_dim", [32])
+@pytest.mark.parametrize("d0", [4, 1])  #batch dimension
+@pytest.mark.parametrize("d1", [2048, 8192])  #sequence dimension
+@pytest.mark.parametrize("chunk_size", [128, 256])  #size of chunk
+@pytest.mark.parametrize("num_heads", [8, 4])
+@pytest.mark.parametrize("head_dim", [32, 64])
 class TestFPDTAttention(DistributedTest):
 
     def test_FPDT_attention_offloading_output_consistency(self, d0: int, d1: int, chunk_size: int, head_dim: int,
