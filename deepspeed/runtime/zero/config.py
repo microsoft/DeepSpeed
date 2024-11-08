@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import sys
-from typing import Optional
+from typing import Optional, Dict, Any
 from enum import Enum
 from pydantic import Field, model_validator
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
@@ -43,6 +43,7 @@ ZeRO optimization should be enabled as:
     "zero_quantized_gradients": [true|false],
     "memory_efficient_linear": [true|false],
     "override_module_apply": [true|false],
+    "zeropp_loco_param": {...},
     }
 }
 """
@@ -300,6 +301,10 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     """
     Boolean indicating whether to use quantized zero gradients
     for efficient all_2_all_reduce comm
+    """
+    zeropp_loco_param: Optional[Dict[str, Any]] = None
+    """
+    loco-zero++  params
     """
 
     mics_shard_size: int = Field(-1, new_param="mics_shard_size")

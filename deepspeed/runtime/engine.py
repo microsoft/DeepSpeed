@@ -907,6 +907,9 @@ class DeepSpeedEngine(Module):
     def zero_quantized_gradients(self):
         return self._config.zero_config.zero_quantized_gradients
 
+    def zeropp_loco_param(self):
+        return self._config.zero_config.zeropp_loco_param
+
     def dump_state(self):
         return self._config.dump_state
 
@@ -1183,7 +1186,8 @@ class DeepSpeedEngine(Module):
         # Query the groups module to get information about various parallel groups
         self.local_all_to_all_group = None
         if self.zero_quantized_gradients():
-            log_dist("Using quantized gradients", ranks=[0])
+            message = "Using LoCo quantized gradients" if self.zeropp_loco_param() else "Using quantized gradients"
+            log_dist(message, ranks=[0])
             self.local_all_to_all_group = groups._get_local_all_to_all_group()
         self.data_parallel_group = groups._get_data_parallel_group()
         self.dp_world_size = groups._get_data_parallel_world_size()
@@ -1657,6 +1661,7 @@ class DeepSpeedEngine(Module):
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
                     zero_quantized_weights=self.zero_quantized_weights(),
                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
+                    zeropp_loco_param=self.zeropp_loco_param()
                 )
 
         else:

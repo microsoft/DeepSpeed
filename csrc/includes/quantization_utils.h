@@ -24,6 +24,7 @@ constexpr int max_threads = 1024;
 Class to hold the quantization parameters for a given tensor.
 Holds the implementation of the quantization operation.
 */
+
 template <Type qType, int numBits>
 class Params {
 public:
@@ -145,112 +146,85 @@ public:
 Group stats tracks the necessary statistics about the quantized group
 to abstract the particulars for the main loop.
 */
-template <Type qType>
-class GroupStats {
+// Helper functions
+DS_D_INLINE __half h_abs(const __half& val) {
+    return __habs(val);
+}
+
+DS_D_INLINE __half2 h_abs(const __half2& val) {
+    return __habs2(val);
+}
+
+DS_D_INLINE float to_max_float(const __half& val) {
+    return __half2float(val);
+}
+
+DS_D_INLINE float to_min_float(const __half& val) {
+    return __half2float(val);
+}
+
+DS_D_INLINE float to_max_float(const __half2& val) {
+    const float2 partial_max = conversion::to<float2>(val);
+    return reduce::element<rop::Max>(partial_max.x, partial_max.y);
+}
+
+DS_D_INLINE float to_min_float(const __half2& val) {
+    const float2 partial_min = conversion::to<float2>(val);
+    return reduce::element<rop::Min>(partial_min.x, partial_min.y);
+}
+
+// GroupStats class template
+template <Type qType, typename DataType = __half2>
+class GroupStats;
+
+// Symmetric Quantization
+template <typename DataType>
+class GroupStats<Type::Symmetric, DataType> {
 public:
-    DS_D_INLINE void update(__half2 val);
+    DataType cur_max;
 
-    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp);
-};
+    DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, DataType>(); }
 
-template <>
-class GroupStats<Type::Symmetric> {
-public:
-    // Symmetric quantization only tracks the maximum absolute value
-    __half2 cur_max;
-    float max;
-
-    /*
-    Technically, this would give bad results if there
-    are 0 values to process since the reduction would
-    give -inf instead of 0. We do not consider this
-    to be a reasonable edge case.
-    */
-    DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, __half2>(); }
-
-    /*
-    Updated the running absmax used to calculate params.
-    Function Arguments :
-        val : The __half2 value to update the running min and max with.
-    */
-    DS_D_INLINE void update(__half2 val)
-    {
-        cur_max = reduce::element<rop::Max>(cur_max, __habs2(val));
+    DS_D_INLINE void update(DataType val) {
+        cur_max = reduce::element<rop::Max>(cur_max, h_abs(val));
     }
 
-    /*
-    Function to return calculated quantization params.
-    Template Arguments :
-        numBits -   Number of bits in quantized element.    int : 8 or 4
-    Function Arguments :
-        tb      -   Threadblock object. cg::thread_block
-        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
-    */
     template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::Symmetric, numBits> get_params(
         cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp)
-    {
-        const float2 partial_max = conversion::to<float2>(cur_max);
-        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
-
+        cg::thread_block_tile<hw_warp_size>& warp) {
+        float max = to_max_float(cur_max);
         reduce::partitioned_block<rop::Max, threads_per_group>(tb, warp, max);
         Params<Type::Symmetric, numBits> params(max);
-
         return params;
     }
 };
 
-template <>
-class GroupStats<Type::Asymmetric> {
+// Asymmetric Quantization
+template <typename DataType>
+class GroupStats<Type::Asymmetric, DataType> {
 public:
-    __half2 cur_max;
-    __half2 cur_min;
+    DataType cur_max;
+    DataType cur_min;
 
-    /*
-    Initialize cur_max to -inf, cur_min to inf since
-    we are doing a true range analysis.
-    */
-    DS_D_INLINE GroupStats()
-    {
-        cur_max = reduce::init<rop::Max, __half2>();
-        cur_min = reduce::init<rop::Min, __half2>();
+    DS_D_INLINE GroupStats() {
+        cur_max = reduce::init<rop::Max, DataType>();
+        cur_min = reduce::init<rop::Min, DataType>();
     }
 
-    /*
-    Updated the running min and max used to calculate params.
-    Function Arguments :
-        val : The __half2 value to update the running min and max with.
-    */
-    DS_D_INLINE void update(__half2 val)
-    {
+    DS_D_INLINE void update(DataType val) {
         cur_max = reduce::element<rop::Max>(cur_max, val);
         cur_min = reduce::element<rop::Min>(cur_min, val);
     }
 
-    /*
-    Function to return calculated quantization params.
-    Template Arguments :
-        numBits -   Number of bits in quantized element.    int : 8 or 4
-    Function Arguments :
-        tb      -   Threadblock object. cg::thread_block
-        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
-    */
     template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::Asymmetric, numBits> get_params(
         cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp)
-    {
-        const float2 partial_max = conversion::to<float2>(cur_max);
-        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
-
-        const float2 partial_min = conversion::to<float2>(cur_min);
-        float min = reduce::element<rop::Min>(partial_min.x, partial_min.y);
-
+        cg::thread_block_tile<hw_warp_size>& warp) {
+        float max = to_max_float(cur_max);
+        float min = to_min_float(cur_min);
         reduce::partitioned_block<rop::Max, rop::Min, threads_per_group>(tb, warp, max, min);
-
         Params<Type::Asymmetric, numBits> params(max, min);
-
         return params;
     }
 };
