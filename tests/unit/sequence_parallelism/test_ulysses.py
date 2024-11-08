@@ -199,6 +199,7 @@ class TestFPDTAttention(DistributedTest):
         get_accelerator().manual_seed_all(seed)
 
         input_tensor = torch.randn(d1, d0, dim, device=ds_engine.device, dtype=torch.half)
+        dist.broadcast(input_tensor, src=0, group=spg)
         spg = ds_engine.seq_parallel_group
 
         class args:
@@ -250,4 +251,4 @@ class TestFPDTAttention(DistributedTest):
         baseline_output_shuffled = FPDT_InputConstruct(output, None, None, None, None, args(), world_size,
                                                        dist.get_rank()).generate()[0]  # b, l, n, d
 
-        assert torch.allclose(fpdt_output, baseline_output_shuffled), f"sp size: {dist.get_world_size(spg)}, input_tensor: {input_tensor.shape}, fpdt_input_tensor: {fpdt_input_tensor.shape}, fpdt_output: {fpdt_output.shape},            baseline_output_shuffled: {baseline_output_shuffled.shape},{torch.max(torch.abs(fpdt_output - baseline_output_shuffled))}"
+        assert torch.allclose(fpdt_output, baseline_output_shuffled), f"rank {dist.get_rank()}, sp size: {dist.get_world_size(spg)}, input_tensor: {input_tensor.shape}, fpdt_input_tensor: {fpdt_input_tensor.shape}, fpdt_output: {fpdt_output.shape},            baseline_output_shuffled: {baseline_output_shuffled.shape},{torch.max(torch.abs(fpdt_output - baseline_output_shuffled))}"
