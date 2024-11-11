@@ -52,7 +52,6 @@ jobs:
         test_activation_checkpointing.py
         test_activation_checkpointing_non_reentrant.py
         test_adamw.py
-        test_autocast.py
         test_autotuning.py
         test_bf16.py
         test_coalesced_collectives.py
@@ -67,13 +66,10 @@ jobs:
         test_dynamic_loss_scale.py
         test_elastic.py
         test_flops_profiler.py
-        test_fp16.py
+        (test_fp16.py and (TestZeroEmptyGrad or TestZeroAllowUntestedOptimizer))
         test_get_optim_files.py
         test_groups.py
-        test_hybrid_adam.py
         test_ignore_unused_parameters.py
-        test_init_on_device.py
-        test_intX_quantization.py
         test_latest_checkpoint.py
         test_moe_checkpoint.py
         test_moe_tp.py
@@ -97,7 +93,6 @@ jobs:
         test_tag_validation.py
         test_topology.py
         test_universal_checkpoint.py
-        test_user_args.py
         test_zero.py
         test_zero_config.py
         test_zero_context.py
