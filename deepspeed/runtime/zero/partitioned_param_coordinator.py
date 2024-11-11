@@ -322,9 +322,10 @@ class PartitionedParameterCoordinator:
                     if len(self.__ongoing_fetch_events) > self.__max_ongoing_fetch_events:
                         self.__ongoing_fetch_events.popleft().synchronize()
 
-                    self.__inflight_param_registry.pop(param).wait()
+                    self.__inflight_param_registry.pop(param).wait(
+                        handle_dependency=not z3_leaf_module(current_submodule))
 
-                    if not get_accelerator().handles_memory_backpressure():
+                    if not get_accelerator().handles_memory_backpressure() and not z3_leaf_module(current_submodule):
                         event = get_accelerator().Event()
                         event.record()
                         self.__ongoing_fetch_events.append(event)
@@ -332,6 +333,8 @@ class PartitionedParameterCoordinator:
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
+            if z3_leaf_module(current_submodule):
+                AllGatherCoalescedHandle.free_buffer()
         self.__profiler.stop_event(wait_event_name, wait_numel)
 
         # kick off parameter prefetches for upcoming modules
@@ -414,9 +417,18 @@ class PartitionedParameterCoordinator:
         params_to_release = (self.__params_to_release(submodule, self.__step_id) if self.is_complete_trace() else set(
             p.ds_id for p in iter_params(submodule, recurse=z3_leaf_module(submodule))))
         for param in iter_params(submodule, recurse=z3_leaf_module(submodule)):
+            free_data = not z3_leaf_module(submodule)
+            if not free_data:
+                # wait for the computation to finish and launch as early as possible.
+                empty_buffer = torch.empty(1, dtype=param.dtype, device=param.device)
             param.ds_active_sub_modules.discard(submodule.id)
             if param.ds_id in params_to_release and not param.is_external_param:
-                self.__release_param(param)
+                self.__release_param(param, free_data=True)
+            if not free_data:
+                if param.ds_id in params_to_release and not param.is_external_param:
+                    # empty buffer ensures that all computations are complete
+                    # and is used for synchronization
+                    param.data = empty_buffer
 
     @instrument_w_nvtx
     @torch.no_grad()
@@ -491,11 +503,11 @@ class PartitionedParameterCoordinator:
 
     @compiler.disable
     @instrument_w_nvtx
-    def __release_param(self, param: Parameter) -> None:
+    def __release_param(self, param: Parameter, free_data: bool = True) -> None:
         if param.ds_status == ZeroParamStatus.AVAILABLE and not param.ds_active_sub_modules:
             if logger.isEnabledFor(logging.DEBUG):
                 debug_rank0(f"-release: {param.ds_summary()}")
-            param.partition()
+            param.partition(free_data=free_data)
             self.__n_available_params -= param.ds_numel
 
     @instrument_w_nvtx
