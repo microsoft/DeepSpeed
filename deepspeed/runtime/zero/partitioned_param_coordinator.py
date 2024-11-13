@@ -76,18 +76,17 @@ class PartitionedParameterCoordinator:
         param: Parameter
         step_id_last_used_at: int
 
-    def __init__(
-        self,
-        prefetch_bucket_sz: int,
-        max_reuse_distance_in_numel: int,
-        max_available_parameters_in_numel: int,
-        allgather_stream: get_accelerator().Stream,
-        inflight_param_registry: InflightParamRegistry,
-        prefetch_nvme: bool = False,
-        timers=None,
-        zero_quantized_weights=False,
-        zero_quantized_nontrainable_weights=False,
-    ) -> None:
+    def __init__(self,
+                 prefetch_bucket_sz: int,
+                 max_reuse_distance_in_numel: int,
+                 max_available_parameters_in_numel: int,
+                 allgather_stream: get_accelerator().Stream,
+                 inflight_param_registry: InflightParamRegistry,
+                 prefetch_nvme: bool = False,
+                 timers=None,
+                 zero_quantized_weights=False,
+                 zero_quantized_nontrainable_weights=False,
+                 fast_fetch_for_leaf_module=False) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = inflight_param_registry
         # keeps track of the number of submodules invoked so far.
@@ -129,6 +128,10 @@ class PartitionedParameterCoordinator:
         # TODO. make this configurable via JSON
         self.__max_ongoing_fetch_events: int = 2
         self.__profiler = PartitionedParameterProfiler(timers if ENABLE_PROFILER else None)
+
+        # whether to enable fast fetch for the z3 leaf module.
+        # this will improve fetch speed but will not break down leaf module parameters to alleviate memory pressure.
+        self.fast_fetch_for_leaf_module = fast_fetch_for_leaf_module
 
     """Tracing and Tracking
     TODO. consider performing trace before initializing PartitionedParameterCoordinator
@@ -309,6 +312,7 @@ class PartitionedParameterCoordinator:
         wait_numel = 0
         wait_event_name = __class__.FORWARD_FETCH_WAIT if forward else __class__.BACKWARD_FETCH_WAIT
         self.__profiler.start_event(wait_event_name)
+        fast_fetch = self.fast_fetch_for_leaf_module and z3_leaf_module(current_submodule)
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
@@ -322,10 +326,9 @@ class PartitionedParameterCoordinator:
                     if len(self.__ongoing_fetch_events) > self.__max_ongoing_fetch_events:
                         self.__ongoing_fetch_events.popleft().synchronize()
 
-                    self.__inflight_param_registry.pop(param).wait(
-                        handle_dependency=not z3_leaf_module(current_submodule))
+                    self.__inflight_param_registry.pop(param).wait(handle_dependency=not fast_fetch)
 
-                    if not get_accelerator().handles_memory_backpressure() and not z3_leaf_module(current_submodule):
+                    if not get_accelerator().handles_memory_backpressure() and not fast_fetch:
                         event = get_accelerator().Event()
                         event.record()
                         self.__ongoing_fetch_events.append(event)
@@ -333,7 +336,7 @@ class PartitionedParameterCoordinator:
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
-            if z3_leaf_module(current_submodule):
+            if fast_fetch:
                 AllGatherCoalescedHandle.free_buffer()
         self.__profiler.stop_event(wait_event_name, wait_numel)
 
@@ -416,18 +419,19 @@ class PartitionedParameterCoordinator:
         be released."""
         params_to_release = (self.__params_to_release(submodule, self.__step_id) if self.is_complete_trace() else set(
             p.ds_id for p in iter_params(submodule, recurse=z3_leaf_module(submodule))))
+
+        free_data = not z3_leaf_module(submodule) or not self.fast_fetch_for_leaf_module
+        if not free_data:
+            # wait for the computation to finish and launch as early as possible.
+            empty_buffer = torch.empty(1, device=get_accelerator().current_device())
+
         for param in iter_params(submodule, recurse=z3_leaf_module(submodule)):
-            free_data = not z3_leaf_module(submodule)
-            if not free_data:
-                # wait for the computation to finish and launch as early as possible.
-                empty_buffer = torch.empty(1, dtype=param.dtype, device=param.device)
             param.ds_active_sub_modules.discard(submodule.id)
             if param.ds_id in params_to_release and not param.is_external_param:
                 self.__release_param(param, free_data=True)
             if not free_data:
                 if param.ds_id in params_to_release and not param.is_external_param:
                     # empty buffer ensures that all computations are complete
-                    # and is used for synchronization
                     param.data = empty_buffer
 
     @instrument_w_nvtx
