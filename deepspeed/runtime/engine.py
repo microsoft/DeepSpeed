@@ -811,6 +811,9 @@ class DeepSpeedEngine(Module):
     def zero_prefetch_bucket_size(self):
         return self._config.zero_config.prefetch_bucket_size
 
+    def zero_module_granularity_threshold(self):
+        return self._config.zero_config.module_granularity_threshold
+
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
@@ -1077,7 +1080,10 @@ class DeepSpeedEngine(Module):
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
         if self.fp16_enabled() and not get_accelerator().is_fp16_supported():
-            raise ValueError("Type fp16 is not supported.")
+            raise ValueError("Type fp16 is not supported on your device.")
+
+        if self.bfloat16_enabled() and not get_accelerator().is_bf16_supported():
+            raise ValueError("Type bf16 is not supported on your device.")
 
         expected_optim_types = self._supported_optims()
         expected_optim_types += [type(None), Callable]
@@ -1611,6 +1617,7 @@ class DeepSpeedEngine(Module):
                     zero_param_parallel_group=zero_param_parallel_group,
                     zero_quantized_weights=self.zero_quantized_weights(),
                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
+                    zero_module_granularity_threshold=self.zero_module_granularity_threshold(),
                 )
             else:
                 log_dist(
@@ -1657,6 +1664,7 @@ class DeepSpeedEngine(Module):
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
                     zero_quantized_weights=self.zero_quantized_weights(),
                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
+                    zero_module_granularity_threshold=self.zero_module_granularity_threshold(),
                 )
 
         else:

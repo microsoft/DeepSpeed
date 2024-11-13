@@ -157,6 +157,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
+        zero_module_granularity_threshold=0,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -227,7 +228,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             mpu=mpu,
             zero_param_parallel_group=zero_param_parallel_group,
             zero_quantized_weights=zero_quantized_weights,
-            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
+            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
+            zero_module_granularity_threshold=zero_module_granularity_threshold)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -458,6 +460,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_param_parallel_group,
         zero_quantized_weights,
         zero_quantized_nontrainable_weights,
+        zero_module_granularity_threshold,
     ):
         return DeepSpeedZeRoOffload(module=module,
                                     timers=timers,
@@ -473,7 +476,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     mpu=mpu,
                                     zero_param_parallel_group=zero_param_parallel_group,
                                     zero_quantized_weights=zero_quantized_weights,
-                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
+                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
+                                    zero_module_granularity_threshold=zero_module_granularity_threshold)
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
@@ -538,10 +542,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.grad_partitions_flat_buffer = get_accelerator().pin_memory(self.grad_partitions_flat_buffer)
 
         offset = 0
+        max_partition_numel = 0
         for param in all_params:
             self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
                 0, offset, param.partition_numel())
             offset += param.partition_numel()
+            max_partition_numel = max(max_partition_numel, param.partition_numel())
+        if self.offload_optimizer:
+            self.pinned_grad_buffer: Tensor = get_accelerator().pin_memory(
+                torch.empty(max_partition_numel, device=self.device))
 
     def _link_all_hp_params(self):
         for p in self.module.parameters():
@@ -588,8 +597,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         return device_buffer
 
-    def _get_param_coordinator(self, training):
-        return self.parameter_offload.get_param_coordinator(training)
+    def _get_param_coordinator(self):
+        return self.parameter_offload.get_param_coordinator()
 
     def _configure_offloading(self, offload_optimizer_config, offload_param_config):
         ###################### offload optimizer setup ##################################
@@ -1498,9 +1507,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         offload_fp32_gradients[i].append(grad_buffer.float())
                         offload_fp32_offsets[i].append(dest_offset)
                     else:
+                        buffer_numel = grad_buffer.numel()
                         fp32_grad_tensor = self.fp32_partitioned_groups_flat[i].grad.narrow(
-                            0, dest_offset, grad_buffer.numel())
-                        fp32_grad_tensor.copy_(grad_buffer)
+                            0, dest_offset, buffer_numel)
+                        self.pinned_grad_buffer[:buffer_numel].copy_(
+                            grad_buffer.to(dtype=torch.float32, non_blocking=True))
+                        get_accelerator().synchronize()
+                        fp32_grad_tensor.copy_(self.pinned_grad_buffer[:buffer_numel], non_blocking=True)
 
             # free the gradient
             if not get_accelerator().is_synchronized_device():
@@ -1865,7 +1878,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         see_memory_usage(f"In step before checking overflow", force=False)
 
         print_rank_0("Finished Tracing at Beginning of Step")
-        self._get_param_coordinator(training=True).hierarchy = 0
+        self._get_param_coordinator().hierarchy = 0
 
         print_rank_0("Finished Tracing at Beginning of Step")
 
@@ -2248,8 +2261,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             scaled_loss.backward()
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
-
-        self._get_param_coordinator(training=True).reset_step()
 
         if self.swap_optimizer:
             self.optimizer_swapper.post_backward()
