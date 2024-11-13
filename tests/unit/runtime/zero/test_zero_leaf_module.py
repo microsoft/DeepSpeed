@@ -210,7 +210,7 @@ class TestZ3LeafOptimization(DistributedTest):
             },
             "zero_optimization": {
                 "stage": 3,
-                "stage3_prefetch_bucket_size": hidden_dim,
+                "stage3_prefetch_bucket_size": hidden_dim**2,
                 "stage3_param_persistence_threshold": 0,
                 "stage3_max_reuse_distance": 0,
             }
