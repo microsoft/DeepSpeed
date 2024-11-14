@@ -9,6 +9,7 @@ import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, SoftmaxOp
+from transformers import DynamicCache
 
 minus_inf = -10000.0
 
@@ -23,6 +24,7 @@ class DeepSpeedSelfAttention(nn.Module):
         data_type = self.config.dtype
         data_type_fp = torch.half if self.config.dtype == torch.int8 else self.config.dtype
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
+        self.layer_idx = self.config.layer_id
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = get_accelerator().current_device_name()  #if config.bigscience_bloom else 'cpu'
         if self.config.set_empty_params:
@@ -89,7 +91,7 @@ class DeepSpeedSelfAttention(nn.Module):
                 torch.empty(self.hidden_size_per_partition * 3, dtype=data_type_fp, device=device)
             ]
 
-    def compute_attention(self, qkv_out, input_mask, layer_past, alibi, is_prompt, token_idx, position_ids):
+    def compute_attention(self, qkv_out, input_mask, layer_past, alibi, is_prompt, token_idx, position_ids, cache_position):
         if isinstance(qkv_out, list) or isinstance(qkv_out, tuple):
             qkv_out = qkv_out[0]
 
@@ -140,6 +142,7 @@ class DeepSpeedSelfAttention(nn.Module):
                 norm_w=None,
                 norm_b=None,
                 alibi=None,
+                cache_position=None, # TODO: Lev, optional cache position tensor
                 **kwargs):
         if self.attn_qkvw is None:
             self._attn_qkvw, self._attn_qkvb = self._merge_qkv()
@@ -165,20 +168,22 @@ class DeepSpeedSelfAttention(nn.Module):
         token_idx = kwargs.get("token_idx", None)
         position_ids = kwargs.get("position_ids", None)
 
-        context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
+        #context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
+        context_layer, kv_layer = self.compute_attention(qkv_out=qkv_out,
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
                                                                        alibi=alibi,
                                                                        is_prompt=is_prompt,
                                                                        token_idx=token_idx,
-                                                                       position_ids=position_ids)
+                                                                       position_ids=position_ids,
+                                                                       cache_position=cache_position)
 
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
         inp_norm = qkv_out[-1]
 
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(output, group=self.mp_group)
-        return (output, key_layer, value_layer, context_layer, inp_norm)
+        return (output, kv_layer, context_layer, inp_norm)
 
 
 class BloomSelfAttention(DeepSpeedSelfAttention):
@@ -221,7 +226,7 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
 
         return tensor_list
 
-    def compute_attention(self, qkv_out, input_mask, layer_past, alibi, is_prompt, token_idx, position_ids):
+    def compute_attention(self, qkv_out, input_mask, layer_past, alibi, is_prompt, token_idx, position_ids, cache_position):
         if isinstance(qkv_out, list) or isinstance(qkv_out, tuple):
             qkv_out = qkv_out[0]
 
@@ -246,13 +251,24 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         key_layer = key_layer.transpose(1, 2).reshape(output_size[0] * output_size[1], output_size[3],
                                                       -1).transpose(-1, -2)
         value_layer = value_layer.transpose(1, 2).reshape(output_size[0] * output_size[1], output_size[3], -1)
+        #import pdb; pdb.set_trace()
         if layer_past is not None:
-            past_key, past_value = layer_past
-            # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
-            key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
-            value_layer = torch.cat((past_value.type_as(value_layer), value_layer), dim=-2)
+            #past_key, past_value = layer_past
+            # NEW 1
+            cache_kwargs = {"cache_position": cache_position}
+            key_layer, value_layer = layer_past.update(key_layer, value_layer, self.layer_idx, cache_kwargs)
+            #import pdb; pdb.set_trace()
 
-        presents = (key_layer, value_layer)
+            # NEW 2
+            #past_key, past_value = DynamicCache.from_legacy_cache(layer_past)
+            #cache_out = DynamicCache.from_legacy_cache(layer_past)
+
+            # OLD
+            # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
+            #key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
+            #value_layer = torch.cat((past_value.type_as(value_layer), value_layer), dim=-2)
+
+        #presents = (key_layer, value_layer)
         # Raw attention scores. [batch_size * num_heads, q_length, k_length]
         matmul_result = torch.matmul(query_layer, key_layer)
         # change view to [batch_size, num_heads, q_length, k_length]
@@ -293,9 +309,11 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
             context_layer.size(1), context_layer.shape[-1])
 
         context_layer = self._transpose_for_context(context_layer)
-        key_layer = presents[0]
-        value_layer = presents[1]
+        #key_layer = presents[0]
+        #value_layer = presents[1]
 
-        return context_layer, key_layer, value_layer
+        outputs = (context_layer, layer_past)
+
+        return outputs
 
     ###################### End of HF modeling_bloom addition ########################
