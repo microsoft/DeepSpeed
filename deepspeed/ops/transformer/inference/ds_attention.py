@@ -253,20 +253,19 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         value_layer = value_layer.transpose(1, 2).reshape(output_size[0] * output_size[1], output_size[3], -1)
         #import pdb; pdb.set_trace()
         if layer_past is not None:
-            #past_key, past_value = layer_past
-            # NEW 1
+            # # OLD
+            # past_key, past_value = layer_past
+            # # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
+            # key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
+            # value_layer = torch.cat((past_value.type_as(value_layer), value_layer), dim=-2)
+
+            # NEW
+            print(f"cache_position = {cache_position}")
             cache_kwargs = {"cache_position": cache_position}
             key_layer, value_layer = layer_past.update(key_layer, value_layer, self.layer_idx, cache_kwargs)
+            print(key_layer)
+            print(value_layer)
             #import pdb; pdb.set_trace()
-
-            # NEW 2
-            #past_key, past_value = DynamicCache.from_legacy_cache(layer_past)
-            #cache_out = DynamicCache.from_legacy_cache(layer_past)
-
-            # OLD
-            # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
-            #key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
-            #value_layer = torch.cat((past_value.type_as(value_layer), value_layer), dim=-2)
 
         #presents = (key_layer, value_layer)
         # Raw attention scores. [batch_size * num_heads, q_length, k_length]

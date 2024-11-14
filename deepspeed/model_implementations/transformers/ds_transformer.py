@@ -126,6 +126,7 @@ class DeepSpeedTransformerInference(nn.Module):
             # This needs to be redesigned later!
             layer_head_mask=None,
             past_key_value=None,
+            cache_position=None,
             **kwargs):
 
         if x is not None:
@@ -170,6 +171,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b,
                                               alibi,
+                                              cache_position,
                                               **kwargs)
 
             #presents = (key, value)
