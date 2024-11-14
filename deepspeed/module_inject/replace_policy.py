@@ -18,12 +18,13 @@ from .containers import UNetPolicy
 from .containers import VAEPolicy
 from .containers import LLAMA2LayerPolicy
 from .containers import InternLMLayerPolicy
+from .containers import HFBigCodeLayerPolicy
 
 # transformer-based policies
 replace_policies = [
     HFBertLayerPolicy, HFGPTNEOLayerPolicy, GPTNEOXLayerPolicy, HFGPTJLayerPolicy, MegatronLayerPolicy,
     HFGPT2LayerPolicy, BLOOMLayerPolicy, HFOPTLayerPolicy, HFCLIPLayerPolicy, HFDistilBertLayerPolicy,
-    LLAMALayerPolicy, LLAMA2LayerPolicy, InternLMLayerPolicy
+    LLAMALayerPolicy, LLAMA2LayerPolicy, InternLMLayerPolicy, HFBigCodeLayerPolicy
 ]
 
 # non-transformer-based policies
