@@ -14,7 +14,7 @@ from deepspeed.module_inject.tp_shard import get_shard_size_list, set_num_kv_hea
 from deepspeed.utils import groups
 
 
-def _get_res_shape(scatter_idx, batch_dim_idx, seq_world_size, input):
+def _generate_layout_params(scatter_idx, batch_dim_idx, seq_world_size, input):
     if batch_dim_idx == 0:
         if scatter_idx < 2:
             bs, global_seq_len, num_local_head, head_dim = input.shape
@@ -195,7 +195,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, batch_dim_idx, group, asyn
         assert async_op == False, "uneven head sp does not support async op"
         return uneven_heads_all2all(input, scatter_idx, gather_idx, batch_dim_idx, group)
 
-    pre_all2all_permute_idx, pre_all2all_inp_shape, post_all2all_permute_idx, post_all2all_res_shape = _get_res_shape(
+    pre_all2all_permute_idx, pre_all2all_inp_shape, post_all2all_permute_idx, post_all2all_res_shape = _generate_layout_params(
         scatter_idx, batch_dim_idx, seq_world_size, input)
 
     input_t = pre_all2all_fun(pre_all2all_permute_idx, pre_all2all_inp_shape, input)
