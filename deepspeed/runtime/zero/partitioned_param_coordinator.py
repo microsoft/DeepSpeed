@@ -336,8 +336,8 @@ class PartitionedParameterCoordinator:
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
-            if fast_fetch:
-                AllGatherCoalescedHandle.free_buffer()
+        if fast_fetch:
+            AllGatherCoalescedHandle.free_buffer()
         self.__profiler.stop_event(wait_event_name, wait_numel)
 
         # kick off parameter prefetches for upcoming modules
