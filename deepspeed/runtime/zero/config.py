@@ -304,7 +304,12 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     """
     zeropp_loco_param: Optional[Dict[str, Any]] = None
     """
-    loco-zero++  params
+    This dictionary contains parameters for using LoCo-Zero++, with two key parameters:
+    - `err_beta`: A coefficient for the moving average of quantization errors before and after gradient computation.
+    It ranges between 0 and 1, with a default value of 0.8.
+    - `reset_T`: The number of steps after which the moving average error buffer is cleared. Its default value is 1024.
+    These parameters can be adjusted based on performance needs. Example configuration in ds config:
+    "zeropp_loco_param": { "err_beta": 0.8, "reset_T": 1024}
     """
 
     mics_shard_size: int = Field(-1, new_param="mics_shard_size")
