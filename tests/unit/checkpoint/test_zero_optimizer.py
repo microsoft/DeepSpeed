@@ -618,8 +618,8 @@ class TestSaveTensorClone(DistributedTest):
         clone_ckpt_file = os.path.join(tmpdir, 'clone_ckpt.pt')
         torch.save(clone_state_dict, clone_ckpt_file)
 
-        compare_state_dicts(torch.load(ref_ckpt_file, weights_only=False), torch.load(clone_ckpt_file,
-                                                                                     weights_only=False))
+        compare_state_dicts(torch.load(ref_ckpt_file, weights_only=False),
+                            torch.load(clone_ckpt_file, weights_only=False))
 
 
 class TestZeRONonDistributed(DistributedTest):
