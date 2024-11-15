@@ -157,7 +157,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
-        zeropp_loco_param = None
+        zero_module_granularity_threshold=0,
+        zeropp_loco_param = None,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -228,7 +229,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             mpu=mpu,
             zero_param_parallel_group=zero_param_parallel_group,
             zero_quantized_weights=zero_quantized_weights,
-            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
+            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
+            zero_module_granularity_threshold=zero_module_granularity_threshold)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -461,6 +463,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_param_parallel_group,
         zero_quantized_weights,
         zero_quantized_nontrainable_weights,
+        zero_module_granularity_threshold,
     ):
         return DeepSpeedZeRoOffload(module=module,
                                     timers=timers,
@@ -476,7 +479,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     mpu=mpu,
                                     zero_param_parallel_group=zero_param_parallel_group,
                                     zero_quantized_weights=zero_quantized_weights,
-                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
+                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
+                                    zero_module_granularity_threshold=zero_module_granularity_threshold)
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
