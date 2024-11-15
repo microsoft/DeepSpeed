@@ -264,7 +264,7 @@ class TestZeROElasticCheckpoint(DistributedTest):
         model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
 
         if load_optim:
-            saved_sd = torch.load(os.path.join(tmpdir, opt_state_dict_file), weights_only=True)
+            saved_sd = torch.load(os.path.join(tmpdir, opt_state_dict_file), weights_only=False)
             curr_sd = model.optimizer.optimizer.state_dict()
             compare_opt_state_dicts(curr_sd, saved_sd, expected_mismatch_keys)
 
@@ -618,8 +618,8 @@ class TestSaveTensorClone(DistributedTest):
         clone_ckpt_file = os.path.join(tmpdir, 'clone_ckpt.pt')
         torch.save(clone_state_dict, clone_ckpt_file)
 
-        compare_state_dicts(torch.load(ref_ckpt_file, weights_only=True), torch.load(clone_ckpt_file,
-                                                                                     weights_only=True))
+        compare_state_dicts(torch.load(ref_ckpt_file, weights_only=False), torch.load(clone_ckpt_file,
+                                                                                     weights_only=False))
 
 
 class TestZeRONonDistributed(DistributedTest):
