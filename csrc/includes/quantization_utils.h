@@ -147,28 +147,22 @@ Group stats tracks the necessary statistics about the quantized group
 to abstract the particulars for the main loop.
 */
 // Helper functions
-DS_D_INLINE __half h_abs(const __half& val) {
-    return __habs(val);
-}
+DS_D_INLINE __half h_abs(const __half& val) { return __habs(val); }
 
-DS_D_INLINE __half2 h_abs(const __half2& val) {
-    return __habs2(val);
-}
+DS_D_INLINE __half2 h_abs(const __half2& val) { return __habs2(val); }
 
-DS_D_INLINE float to_max_float(const __half& val) {
-    return __half2float(val);
-}
+DS_D_INLINE float to_max_float(const __half& val) { return __half2float(val); }
 
-DS_D_INLINE float to_min_float(const __half& val) {
-    return __half2float(val);
-}
+DS_D_INLINE float to_min_float(const __half& val) { return __half2float(val); }
 
-DS_D_INLINE float to_max_float(const __half2& val) {
+DS_D_INLINE float to_max_float(const __half2& val)
+{
     const float2 partial_max = conversion::to<float2>(val);
     return reduce::element<rop::Max>(partial_max.x, partial_max.y);
 }
 
-DS_D_INLINE float to_min_float(const __half2& val) {
+DS_D_INLINE float to_min_float(const __half2& val)
+{
     const float2 partial_min = conversion::to<float2>(val);
     return reduce::element<rop::Min>(partial_min.x, partial_min.y);
 }
@@ -185,14 +179,16 @@ public:
 
     DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, DataType>(); }
 
-    DS_D_INLINE void update(DataType val) {
+    DS_D_INLINE void update(DataType val)
+    {
         cur_max = reduce::element<rop::Max>(cur_max, h_abs(val));
     }
 
     template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::Symmetric, numBits> get_params(
         cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp) {
+        cg::thread_block_tile<hw_warp_size>& warp)
+    {
         float max = to_max_float(cur_max);
         reduce::partitioned_block<rop::Max, threads_per_group>(tb, warp, max);
         Params<Type::Symmetric, numBits> params(max);
@@ -207,12 +203,14 @@ public:
     DataType cur_max;
     DataType cur_min;
 
-    DS_D_INLINE GroupStats() {
+    DS_D_INLINE GroupStats()
+    {
         cur_max = reduce::init<rop::Max, DataType>();
         cur_min = reduce::init<rop::Min, DataType>();
     }
 
-    DS_D_INLINE void update(DataType val) {
+    DS_D_INLINE void update(DataType val)
+    {
         cur_max = reduce::element<rop::Max>(cur_max, val);
         cur_min = reduce::element<rop::Min>(cur_min, val);
     }
@@ -220,7 +218,8 @@ public:
     template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::Asymmetric, numBits> get_params(
         cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp) {
+        cg::thread_block_tile<hw_warp_size>& warp)
+    {
         float max = to_max_float(cur_max);
         float min = to_min_float(cur_min);
         reduce::partitioned_block<rop::Max, rop::Min, threads_per_group>(tb, warp, max, min);

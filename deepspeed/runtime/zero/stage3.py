@@ -158,7 +158,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
         zero_module_granularity_threshold=0,
-        zeropp_loco_param = None,
+        zeropp_loco_param=None,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -1386,11 +1386,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         global_world_size = dist.get_world_size()
         num_nodes = global_world_size // local_world_size
         if self.all2all_process_group is not None and num_nodes > 1:
-            grad_partitions_for_rank = (
-                all_to_all_loco_quant_reduce(params_to_reduce, self.all2all_process_group, self.zeropp_loco_param)
-                if self.zeropp_loco_param is not None else
-                all_to_all_quant_reduce(full_grads_for_rank, self.all2all_process_group)
-            )
+            grad_partitions_for_rank = (all_to_all_loco_quant_reduce(params_to_reduce, self.all2all_process_group,
+                                                                     self.zeropp_loco_param)
+                                        if self.zeropp_loco_param is not None else all_to_all_quant_reduce(
+                                            full_grads_for_rank, self.all2all_process_group))
         else:
             grad_partitions_for_rank = reduce_scatter_coalesced(full_grads_for_rank, self.dp_process_group)
 
@@ -2035,7 +2034,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         p.intra_ef_buf[1] *= scale
                         p.inter_ef_buf[1] *= scale
 
-
     @instrument_w_nvtx
     def _overflow_check_and_loss_scale_update(self):
 
@@ -2049,9 +2047,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.overflow:
             self._overflow_clean_up(prev_scale)
-        
+
         #update loco error buf
-        self._loco_err_buf_update(self.overflow, self.loss_scale/prev_scale)
+        self._loco_err_buf_update(self.overflow, self.loss_scale / prev_scale)
 
         return self.overflow
 

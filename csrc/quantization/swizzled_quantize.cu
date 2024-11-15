@@ -3,10 +3,10 @@
 
 // DeepSpeed Team
 
+#include "dequantization_utils.h"
 #include "memory_access_utils.h"
 #include "quantization_utils.h"
 #include "reduction_utils.h"
-#include "dequantization_utils.h"
 
 using rop = reduce::ROpType;
 
@@ -196,7 +196,6 @@ void launch_swizzled_quant(int8_t* q_data,
     }
 }
 
-
 template <int numBits, int totalChunks, int threads, quantize::Type quantType>
 __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
                                            float* quantized_scales,
@@ -219,33 +218,29 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
     int device_id = blockIdx_z_swizzled / nodes;
     int node_id = blockIdx_z_swizzled % nodes;
 
-  
     int blockIdx_z_orig = node_id * devices_per_node + device_id;
 
-
-    int block_rank_orig = blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_orig * gridDim.x * gridDim.y;
-
+    int block_rank_orig =
+        blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_orig * gridDim.x * gridDim.y;
 
     const int elem_offset = threadIdx.x * quantize::h_per_load;
     const int block_offset_orig = block_rank_orig * elems_per_group;
     const int base_offset_orig = block_offset_orig + elem_offset;
     const int stride = blockDim.x * quantize::h_per_load;
     const __half* uncompressed_data_base = uncompressed_data + base_offset_orig;
-    
-    const int block_rank_swizzled = blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_swizzled * gridDim.x * gridDim.y;
+
+    const int block_rank_swizzled =
+        blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_swizzled * gridDim.x * gridDim.y;
     const int block_offset_swizzled = block_rank_swizzled * elems_per_group;
     const int base_offset_swizzled = block_offset_swizzled + elem_offset;
     const __half* error_feedback_base = error_feedback + base_offset_swizzled;
 
-
     __half local_buffer[totalChunks * quantize::h_per_load];
     __half err_buffer[totalChunks * quantize::h_per_load];
 
+    quantize::GroupStats<quantType, __half> stats;
 
-    quantize::GroupStats<quantType, __half>  stats;
-    
-
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < totalChunks; i++) {
         __half* iteration_buffer = local_buffer + i * quantize::h_per_load;
         __half* iter_err_buffer = err_buffer + i * quantize::h_per_load;
@@ -253,33 +248,26 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
         bool do_loads = (elem_offset + i_stride) < elems_per_group;
 
         mem_access::load_global<quantize::granularity>(
-            iteration_buffer, uncompressed_data_base + i_stride,
-            do_loads);
-        
+            iteration_buffer, uncompressed_data_base + i_stride, do_loads);
+
         mem_access::load_global<quantize::granularity>(
-                iter_err_buffer, error_feedback_base + i_stride,
-                do_loads);
-        
-        #pragma unroll
+            iter_err_buffer, error_feedback_base + i_stride, do_loads);
+
+#pragma unroll
         for (int j = 0; j < quantize::h_per_load; j++) {
             iteration_buffer[j] = __hadd(iteration_buffer[j], iter_err_buffer[j]);
             stats.update(iteration_buffer[j]);
         }
     }
 
-
     auto params = stats.template get_params<numBits, threads>(tb, warp);
 
     // Initialize dequantization parameters based on params
     auto de_params = params;
     de_params.scale = 1.0f / params.scale;
-    if constexpr (quantType == quantize::Type::Asymmetric) {
-        de_params.offset = params.offset;
-    }
+    if constexpr (quantType == quantize::Type::Asymmetric) { de_params.offset = params.offset; }
 
-    if (threadIdx.x == 0) {
-        params.store(quantized_scales, block_rank_swizzled);
-    }
+    if (threadIdx.x == 0) { params.store(quantized_scales, block_rank_swizzled); }
 
     constexpr int out_scalar_effect = 8 / numBits;
     const int out_block_offset = block_rank_swizzled * elems_per_group / out_scalar_effect;
@@ -289,8 +277,7 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
     const int out_stride = stride / out_scalar_effect;
     constexpr int num_int8_out = quantize::h_per_load / out_scalar_effect;
 
-
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < totalChunks; i++) {
         const int iter_offset = i * stride + base_offset_swizzled;
         __half* iteration_buffer = local_buffer + i * quantize::h_per_load;
@@ -298,33 +285,37 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
 
         if (i * stride + elem_offset < elems_per_group) {
             int8_t local_output[quantize::h_per_load / out_scalar_effect];
-            quantize::_chunk<numBits, quantType>(
-                local_output, iteration_buffer, params);
+            quantize::_chunk<numBits, quantType>(local_output, iteration_buffer, params);
             mem_access::store_global<num_int8_out>(out_base + i * out_stride, local_output);
 
             // Dequantize the quantized output to compute the dequantized value
             __half dequant_buffer[quantize::h_per_load];
             dequantize::chunk<__half, numBits, quantType>(dequant_buffer, local_output, de_params);
 
-            // Compute new error: sum - dequant_buffer
-            #pragma unroll
+// Compute new error: sum - dequant_buffer
+#pragma unroll
             for (int j = 0; j < quantize::h_per_load; j++) {
                 __half new_error = __hsub(iteration_buffer[j], dequant_buffer[j]);
                 iter_err_buffer[j] = __hmul(iter_err_buffer[j], __float2half(err_beta)) +
-                                         __hmul(__float2half(1.0f - err_beta), new_error);
+                                     __hmul(__float2half(1.0f - err_beta), new_error);
             }
             mem_access::store_global<16>(error_feedback + iter_offset, iter_err_buffer);
         }
     }
 }
 
-
-
-
-#define LAUNCH_LOCO_SWIZZLE_QUANT(total_chunks, threads)                                           \
-    loco_swizzled_quant_kernel<numBits, total_chunks, threads, qType><<<grid, block, 0, stream>>>( \
-        output_data, params, input_data, error_feedback, err_beta,                                 \
-        groups, elems_per_group, pipelining, nodes, devices_per_node);
+#define LAUNCH_LOCO_SWIZZLE_QUANT(total_chunks, threads)              \
+    loco_swizzled_quant_kernel<numBits, total_chunks, threads, qType> \
+        <<<grid, block, 0, stream>>>(output_data,                     \
+                                     params,                          \
+                                     input_data,                      \
+                                     error_feedback,                  \
+                                     err_beta,                        \
+                                     groups,                          \
+                                     elems_per_group,                 \
+                                     pipelining,                      \
+                                     nodes,                           \
+                                     devices_per_node);
 
 template <int numBits, quantize::Type qType>
 void launch_loco_swizzled_quant_impl(int8_t* output_data,
@@ -383,12 +374,17 @@ void launch_loco_swizzled_quant_impl(int8_t* output_data,
 }
 
 #define DISPATCH_LOCO_SWIZZLE_QUANT(num_bits, qtype)                   \
-    launch_loco_swizzled_quant_impl<num_bits, qtype>(                  \
-        output_data, params, input_data, error_feedback, err_beta,     \
-        groups, elems_per_group, pipelining, nodes, devices_per_node,  \
-        stream);
-
-
+    launch_loco_swizzled_quant_impl<num_bits, qtype>(output_data,      \
+                                                     params,           \
+                                                     input_data,       \
+                                                     error_feedback,   \
+                                                     err_beta,         \
+                                                     groups,           \
+                                                     elems_per_group,  \
+                                                     pipelining,       \
+                                                     nodes,            \
+                                                     devices_per_node, \
+                                                     stream);
 
 void launch_loco_swizzled_quant(int8_t* output_data,
                                 float* params,

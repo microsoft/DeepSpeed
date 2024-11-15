@@ -177,14 +177,14 @@ at::Tensor dequantize_int8_to_half_experimental(at::Tensor& data_in,
 }
 
 std::vector<at::Tensor> ds_loco_swizzle_quant(at::Tensor& input_vals,
-                                             at::Tensor& error_feedback,
-                                             float err_beta,
-                                             int groups,
-                                             int num_bits,
-                                             quantize::Type quant_type,
-                                             int pipeline_size,
-                                             int nodes,
-                                             int devices_per_node)
+                                              at::Tensor& error_feedback,
+                                              float err_beta,
+                                              int groups,
+                                              int num_bits,
+                                              quantize::Type quant_type,
+                                              int pipeline_size,
+                                              int nodes,
+                                              int devices_per_node)
 {
     auto scales_options = at::TensorOptions()
                               .dtype(at::kFloat)
@@ -206,21 +206,19 @@ std::vector<at::Tensor> ds_loco_swizzle_quant(at::Tensor& input_vals,
     auto output = torch::empty({compressed_vals}, output_options);
     const int elems_per_group = at::numel(input_vals) / groups;
 
-    launch_loco_swizzled_quant(
-        reinterpret_cast<int8_t*>(output.data_ptr()),
-        reinterpret_cast<float*>(scales.data_ptr()),
-        reinterpret_cast<const __half*>(input_vals.data_ptr()),
-        reinterpret_cast<__half*>(error_feedback.data_ptr()),
-        err_beta,
-        num_bits,
-        quant_type,
-        groups,
-        elems_per_group,
-        pipeline_size,
-        nodes,
-        devices_per_node,
-        at::cuda::getCurrentCUDAStream()
-    );
+    launch_loco_swizzled_quant(reinterpret_cast<int8_t*>(output.data_ptr()),
+                               reinterpret_cast<float*>(scales.data_ptr()),
+                               reinterpret_cast<const __half*>(input_vals.data_ptr()),
+                               reinterpret_cast<__half*>(error_feedback.data_ptr()),
+                               err_beta,
+                               num_bits,
+                               quant_type,
+                               groups,
+                               elems_per_group,
+                               pipeline_size,
+                               nodes,
+                               devices_per_node,
+                               at::cuda::getCurrentCUDAStream());
 
     return {output, scales};
 }
@@ -315,14 +313,14 @@ std::vector<at::Tensor> quantized_reduction(at::Tensor& input_vals,
 }
 
 std::vector<at::Tensor> loco_quantized_reduction(at::Tensor& input_vals,
-                                                at::Tensor& input_scales,
-                                                at::Tensor& error_feedback,
-                                                float err_beta,
-                                                int in_groups,
-                                                int out_groups,
-                                                int num_bits,
-                                                quantize::Type quant_type,
-                                                int devices_per_node)
+                                                 at::Tensor& input_scales,
+                                                 at::Tensor& error_feedback,
+                                                 float err_beta,
+                                                 int in_groups,
+                                                 int out_groups,
+                                                 int num_bits,
+                                                 quantize::Type quant_type,
+                                                 int devices_per_node)
 {
     auto scales_options = at::TensorOptions()
                               .dtype(at::kFloat)
@@ -341,7 +339,7 @@ std::vector<at::Tensor> loco_quantized_reduction(at::Tensor& input_vals,
                               .requires_grad(false);
 
     std::vector<int64_t> sz(input_vals.sizes().begin(), input_vals.sizes().end());
-    sz[sz.size() - 1] = sz.back() / devices_per_node; 
+    sz[sz.size() - 1] = sz.back() / devices_per_node;
 
     const int elems_per_in_tensor = at::numel(input_vals) / devices_per_node;
 
@@ -350,23 +348,21 @@ std::vector<at::Tensor> loco_quantized_reduction(at::Tensor& input_vals,
     const int elems_per_in_group = elems_per_in_tensor / (in_groups / devices_per_node);
     const int elems_per_out_group = elems_per_in_tensor / out_groups;
 
-    launch_loco_dequant_reduce(
-        (int8_t*)output.data_ptr(),
-        (float*)scales.data_ptr(),
-        (const int8_t*)input_vals.data_ptr(),
-        (const float*)input_scales.data_ptr(),
-        devices_per_node,
-        num_bits,
-        quant_type,
-        out_groups,
-        elems_per_out_group,
-        elems_per_in_tensor,
-        in_groups / devices_per_node,
-        elems_per_in_group,
-        (half*)error_feedback.data_ptr(),
-        err_beta,
-        at::cuda::getCurrentCUDAStream()
-    );
+    launch_loco_dequant_reduce((int8_t*)output.data_ptr(),
+                               (float*)scales.data_ptr(),
+                               (const int8_t*)input_vals.data_ptr(),
+                               (const float*)input_scales.data_ptr(),
+                               devices_per_node,
+                               num_bits,
+                               quant_type,
+                               out_groups,
+                               elems_per_out_group,
+                               elems_per_in_tensor,
+                               in_groups / devices_per_node,
+                               elems_per_in_group,
+                               (half*)error_feedback.data_ptr(),
+                               err_beta,
+                               at::cuda::getCurrentCUDAStream());
 
     return {output, scales};
 }
@@ -402,5 +398,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("swizzle_quant", &ds_swizzle_quant);
     m.def("quantized_reduction", &quantized_reduction);
     m.def("loco_swizzle_quant", &ds_loco_swizzle_quant, "LoCo Swizzled Quantization Kernel");
-    m.def("loco_quantized_reduction", &loco_quantized_reduction, "LoCo Quantization and Reduction Kernel");
+    m.def("loco_quantized_reduction",
+          &loco_quantized_reduction,
+          "LoCo Quantization and Reduction Kernel");
 }
