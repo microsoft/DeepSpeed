@@ -84,6 +84,7 @@ class FlopsProfiler(object):
         self.reset_profile()
         _patch_functionals()
         _patch_tensor_methods()
+        _patch_miscellaneous_operations()
 
         def register_module_hooks(module, ignore_list):
             if ignore_list and type(module) in ignore_list:
@@ -139,6 +140,7 @@ class FlopsProfiler(object):
         if self.started and self.func_patched:
             _reload_functionals()
             _reload_tensor_methods()
+            _reload_miscellaneous_operations()
             self.func_patched = False
 
         def remove_profile_attrs(module):
@@ -957,10 +959,13 @@ def _patch_tensor_methods():
     torch.Tensor.add = wrapFunc(torch.Tensor.add, _add_flops_compute)
 
     torch.einsum = wrapFunc(torch.einsum, _einsum_flops_compute) 
-    einops.einsum = wrapFunc(einops.einsum, _einops_einsum_flops_compute)
 
     torch.baddbmm = wrapFunc(torch.baddbmm, _tensor_addmm_flops_compute)
 
+
+def _patch_miscellaneous_operations():
+    einops.einsum = wrapFunc(einops.einsum, _einops_einsum_flops_compute)
+    
 
 def _reload_functionals():
     # torch.nn.functional does not support importlib.reload()
@@ -1016,9 +1021,12 @@ def _reload_tensor_methods():
     torch.Tensor.add = old_functions[torch.Tensor.add.__str__]
 
     torch.einsum = old_functions[torch.einsum.__str__]
-    einops.einsum = old_functions[einops.einsum.__str__]
 
     torch.baddbmm = old_functions[torch.baddbmm.__str__]
+    
+    
+def _reload_miscellaneous_operations():
+    einops.einsum = old_functions[einops.einsum.__str__]
 
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
