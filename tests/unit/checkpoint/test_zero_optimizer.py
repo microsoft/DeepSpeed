@@ -523,7 +523,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         all_ckpt_folder = os.path.join(tmpdir, 'all_params')
         ds_engine.save_checkpoint(all_ckpt_folder)
         all_params_ckpt_file = get_model_ckpt_name_for_rank(os.path.join(all_ckpt_folder, 'global_step0'), '00')
-        loaded_all_param_model = torch.load(all_params_ckpt_file, weights_only=True)['module']
+        loaded_all_param_model = torch.load(all_params_ckpt_file, weights_only=False)['module']
         all_param_names = set([n for n, p in model.named_parameters()])
         assert set(loaded_all_param_model.keys()) == all_param_names
 
@@ -536,7 +536,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         # Excluding frozen parameters should reduce checkpoint size
         assert os.path.getsize(all_params_ckpt_file) > os.path.getsize(trainable_ckpt_file)
 
-        loaded_trainable_param_model = torch.load(trainable_ckpt_file, weights_only=True)['module']
+        loaded_trainable_param_model = torch.load(trainable_ckpt_file, weights_only=False)['module']
         frozen_param_names = set([n for n, p in model.named_parameters() if not p.requires_grad])
         loaded_trainable_param_names = set(loaded_trainable_param_model.keys())
         overlap_names = set.intersection(loaded_trainable_param_names, frozen_param_names)
@@ -575,7 +575,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
 
         custom_state_dict_ckpt_file = get_model_ckpt_name_for_rank(
             os.path.join(custom_state_dict_ckpt_folder, 'global_step0'), '00')
-        loaded_custom_state_dict_param_model = torch.load(custom_state_dict_ckpt_file, weights_only=True)['module']
+        loaded_custom_state_dict_param_model = torch.load(custom_state_dict_ckpt_file, weights_only=False)['module']
         loaded_custom_state_dict_param_names = set(loaded_custom_state_dict_param_model.keys())
 
         custom_state_dict_param_names = set([k for k, v in model.state_dict().items()])
