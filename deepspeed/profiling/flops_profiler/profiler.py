@@ -18,7 +18,6 @@ from deepspeed.utils.timer import FORWARD_GLOBAL_TIMER, BACKWARD_GLOBAL_TIMER, S
 from deepspeed.utils.torch import required_torch_version
 import einops
 
-
 Tensor = torch.Tensor
 
 module_flop_count = []
@@ -790,6 +789,7 @@ def _einsum_flops_compute(equation, *operands):
             return flop, 0
     raise NotImplementedError("Unsupported einsum operation.")
 
+
 def _einops_einsum_flops_compute(*args):
     """
     Count flops for the einops.einsum operation.
@@ -958,14 +958,14 @@ def _patch_tensor_methods():
     torch.add = wrapFunc(torch.add, _add_flops_compute)
     torch.Tensor.add = wrapFunc(torch.Tensor.add, _add_flops_compute)
 
-    torch.einsum = wrapFunc(torch.einsum, _einsum_flops_compute) 
+    torch.einsum = wrapFunc(torch.einsum, _einsum_flops_compute)
 
     torch.baddbmm = wrapFunc(torch.baddbmm, _tensor_addmm_flops_compute)
 
 
 def _patch_miscellaneous_operations():
     einops.einsum = wrapFunc(einops.einsum, _einops_einsum_flops_compute)
-    
+
 
 def _reload_functionals():
     # torch.nn.functional does not support importlib.reload()
@@ -1023,8 +1023,8 @@ def _reload_tensor_methods():
     torch.einsum = old_functions[torch.einsum.__str__]
 
     torch.baddbmm = old_functions[torch.baddbmm.__str__]
-    
-    
+
+
 def _reload_miscellaneous_operations():
     einops.einsum = old_functions[einops.einsum.__str__]
 
