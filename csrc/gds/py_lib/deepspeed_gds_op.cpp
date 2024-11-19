@@ -91,6 +91,7 @@ void gds_op_desc_t::remove_buffer_from_registry(const torch::Tensor& buffer)
 
 gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const torch::Tensor& buffer,
+                             const int op_id,
                              const int fd,
                              const char* filename,
                              const int64_t file_num_bytes,
@@ -99,6 +100,7 @@ gds_op_desc_t::gds_op_desc_t(const bool read_op,
                              const int64_t file_offset)
     : io_op_desc_t(read_op,
                    buffer,
+                   op_id,
                    fd,
                    filename,
                    file_num_bytes,

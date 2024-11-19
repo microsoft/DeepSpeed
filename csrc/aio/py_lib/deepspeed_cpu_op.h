@@ -16,6 +16,7 @@ struct cpu_op_desc_t : io_op_desc_t {
     cpu_op_desc_t(const bool read_op,
                   const torch::Tensor& buffer,
                   const std::unique_ptr<struct deepspeed_pin_tensor_t>& pinned_tensor_mgr,
+                  const int op_id,
                   const int fd,
                   const char* filename,
                   const int64_t file_num_bytes,

@@ -18,7 +18,8 @@ struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
                            const int queue_depth,
                            const bool single_submit,
                            const bool overlap_events,
-                           const int intra_op_parallelism);
+                           const int intra_op_parallelism,
+                           const int inter_op_parallelism);
 
     ~deepspeed_gds_handle_t();
 
@@ -39,6 +40,7 @@ struct deepspeed_gds_handle_t : deepspeed_io_handle_t {
 
     std::shared_ptr<struct io_op_desc_t> _create_io_op_desc(const bool read_op,
                                                             const torch::Tensor& buffer,
+                                                            const int op_id,
                                                             const int fd,
                                                             const char* filename,
                                                             const int64_t file_num_bytes,

@@ -20,6 +20,7 @@ struct gds_op_desc_t : io_op_desc_t {
 
     gds_op_desc_t(const bool read_op,
                   const torch::Tensor& buffer,
+                  const int op_id,
                   const int fd,
                   const char* filename,
                   const int64_t file_num_bytes,

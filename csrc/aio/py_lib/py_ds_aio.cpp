@@ -21,19 +21,21 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("deepspeed_memcpy", &deepspeed_py_memcpy, "DeepSpeed Memory Copy");
 
     py::class_<deepspeed_aio_handle_t>(m, "aio_handle")
-        .def(py::init<const int, const int, const bool, const bool, const int>(),
+        .def(py::init<const int, const int, const bool, const bool, const int, const int>(),
              "AIO handle constructor",
              "block_size"_a = 1024 * 1024,
              "queue_depth"_a = 128,
              "single_submit"_a = false,
              "overlap_events"_a = false,
-             "intra_op_parallelism"_a = 1)
+             "intra_op_parallelism"_a = 1,
+             "inter_op_parallelism"_a = 1)
 
         .def("get_block_size", &deepspeed_aio_handle_t::get_block_size)
         .def("get_queue_depth", &deepspeed_aio_handle_t::get_queue_depth)
         .def("get_single_submit", &deepspeed_aio_handle_t::get_single_submit)
         .def("get_overlap_events", &deepspeed_aio_handle_t::get_overlap_events)
         .def("get_intra_op_parallelism", &deepspeed_aio_handle_t::get_intra_op_parallelism)
+        .def("get_inter_op_parallelism", &deepspeed_aio_handle_t::get_inter_op_parallelism)
 
         .def("read",
              &deepspeed_aio_handle_t::read,
@@ -112,5 +114,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 
         .def("wait",
              &deepspeed_aio_handle_t::wait,
-             "Wait for (ongoing) asynchronous operations to complete");
+             "Wait for (ongoing) asynchronous operations to complete")
+
+        .def("get_completion",
+             &deepspeed_aio_handle_t::get_completion,
+             "Wait for completion and get id");
 }

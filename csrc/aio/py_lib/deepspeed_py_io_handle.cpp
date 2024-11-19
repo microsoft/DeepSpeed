@@ -9,6 +9,7 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 
 #include "deepspeed_py_io_handle.h"
 #include <cstdlib>
+#include <chrono>
 
 using namespace std;
 
@@ -18,13 +19,16 @@ deepspeed_io_handle_t::deepspeed_io_handle_t(const int block_size,
                                              const int queue_depth,
                                              const bool single_submit,
                                              const bool overlap_events,
-                                             const int intra_op_parallelism)
+                                             const int intra_op_parallelism,
+                                             const int inter_op_parallelism)
     : _aio_ctxt(new aio_context(block_size, queue_depth)),
       _single_submit(single_submit),
       _overlap_events(overlap_events),
       _intra_op_parallelism(intra_op_parallelism),
+      _inter_op_parallelism(inter_op_parallelism),
       _aio_config(block_size, queue_depth, single_submit, overlap_events, false),
       _num_pending_ops(0),
+      _op_ids(0),
       _pinned_tensor_mgr(new deepspeed_pin_tensor_t())
 {
     for (auto i = 0; i < intra_op_parallelism; ++i) {
@@ -57,6 +61,9 @@ const bool deepspeed_io_handle_t::get_single_submit() const { return _single_sub
 const bool deepspeed_io_handle_t::get_overlap_events() const { return _overlap_events; }
 
 const int deepspeed_io_handle_t::get_intra_op_parallelism() const { return _intra_op_parallelism; }
+
+const int deepspeed_io_handle_t::get_inter_op_parallelism() const { return _inter_op_parallelism; }
+
 
 int deepspeed_io_handle_t::read(torch::Tensor& buffer,
                                 const char* filename,
@@ -138,6 +145,7 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
 
 void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc_t> scheduled_op)
 {
+    // TODO: track last used thread and start from there
     for (auto& ctxt : _thread_contexts) {
         {
             std::lock_guard<std::mutex> lock(ctxt->_work_sync._mutex);
@@ -150,6 +158,11 @@ void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc
 
 std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
 {
+    // Give each op a thread counter
+    // Decrement thread count when it shows up on compelete queue
+    // Once it's at zero it's a completed op
+    // Might keep global work and complete queues
+    // Independent threads for both
     std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
     for (auto& ctxt : _thread_contexts) {
         std::unique_lock<std::mutex> lock(ctxt->_complete_sync._mutex);
@@ -194,6 +207,21 @@ int deepspeed_io_handle_t::wait()
     return num_completed_ops;
 }
 
+int deepspeed_io_handle_t::get_completion()
+{
+    assert(_num_pending_ops > 0);
+   // auto start = std::chrono::high_resolution_clock::now();
+    auto completed_op = _wait_for_aio_work();
+	//auto end = std::chrono::high_resolution_clock::now();
+    //auto time = std::chrono::duration<double, std::milli>(end - start).count();
+    //std::cout << "Wait Time: " << time << " ms" << std::endl;
+    if (completed_op->_validate) { completed_op->validate(); }
+    completed_op->finish();
+    close(completed_op->_fd);
+    --_num_pending_ops;
+    return completed_op->_op_id;
+}
+
 bool deepspeed_io_handle_t::_is_valid_parallel_aio_op(const bool read_op, const int64_t num_bytes)
 {
     const auto op_string = read_op ? "Read" : "Write";
@@ -209,6 +237,7 @@ bool deepspeed_io_handle_t::_is_valid_parallel_aio_op(const bool read_op, const 
 std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     const bool read_op,
     const torch::Tensor& buffer,
+    const int op_id,
     const int fd,
     const char* filename,
     const int64_t file_num_bytes,
@@ -218,6 +247,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_create_io_op_desc(
     return std::make_shared<cpu_op_desc_t>(read_op,
                                            buffer,
                                            _pinned_tensor_mgr,
+                                           op_id,
                                            fd,
                                            filename,
                                            file_num_bytes,
@@ -248,12 +278,13 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
 
+    _op_ids++;
     auto scheduled_op =
-        _create_io_op_desc(true, buffer, fd, filename, num_file_bytes, validate, file_offset);
+        _create_io_op_desc(true, buffer, _op_ids, fd, filename, num_file_bytes, validate, file_offset);
 
     _schedule_aio_work(scheduled_op);
 
-    if (async) { return 0; }
+    if (async) { return _op_ids; } // Return op number
 
     return wait();
 }
@@ -272,12 +303,13 @@ int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
     const auto fd = open_file(filename, false);
     if (fd == -1) { return -1; }
 
+    _op_ids++;
     auto scheduled_op =
-        _create_io_op_desc(false, buffer, fd, filename, num_write_bytes, validate, file_offset);
+        _create_io_op_desc(false, buffer, _op_ids, fd, filename, num_write_bytes, validate, file_offset);
 
     _schedule_aio_work(scheduled_op);
 
-    if (async) { return 0; }
+    if (async) { return _op_ids; }
 
     return wait();
 }

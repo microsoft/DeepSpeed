@@ -19,8 +19,9 @@ deepspeed_gds_handle_t::deepspeed_gds_handle_t(const int block_size,
                                                const int queue_depth,
                                                const bool single_submit,
                                                const bool overlap_events,
-                                               const int intra_op_parallelism)
-    : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, 1),
+                                               const int intra_op_parallelism,
+                                               const int inter_op_parallelism)
+    : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, inter_op_parallelism, 1),
       _intra_gds_op_parallelism(intra_op_parallelism)
 {
     _init_cuFile(block_size, queue_depth);
@@ -104,6 +105,7 @@ bool deepspeed_gds_handle_t::unpin_device_tensor(const torch::Tensor& buffer)
 std::shared_ptr<struct io_op_desc_t> deepspeed_gds_handle_t::_create_io_op_desc(
     const bool read_op,
     const torch::Tensor& buffer,
+    const int op_id,
     const int fd,
     const char* filename,
     const int64_t file_num_bytes,
@@ -113,6 +115,7 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_gds_handle_t::_create_io_op_desc(
     if (buffer.is_cuda()) {
         return std::make_shared<gds_op_desc_t>(read_op,
                                                buffer,
+                                               op_id,
                                                fd,
                                                filename,
                                                file_num_bytes,
@@ -121,5 +124,5 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_gds_handle_t::_create_io_op_desc(
                                                file_offset);
     }
     return deepspeed_io_handle_t::_create_io_op_desc(
-        read_op, buffer, fd, filename, file_num_bytes, validate, file_offset);
+        read_op, buffer, op_id, fd, filename, file_num_bytes, validate, file_offset);
 }

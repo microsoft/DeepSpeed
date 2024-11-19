@@ -12,6 +12,7 @@
 struct io_op_desc_t {
     const bool _read_op;
     torch::Tensor _buffer;
+    int _op_id;
     int _fd;
     const std::string _filename;
     const int64_t _file_num_bytes;
@@ -23,6 +24,7 @@ struct io_op_desc_t {
 
     io_op_desc_t(const bool read_op,
                  const torch::Tensor& buffer,
+                 const int op_id,
                  const int fd,
                  const char* filename,
                  const int64_t file_num_bytes,
