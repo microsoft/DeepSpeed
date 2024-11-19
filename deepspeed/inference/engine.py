@@ -6,6 +6,7 @@
 import torch
 import time
 import os
+import deepspeed
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
@@ -13,6 +14,7 @@ from torch.nn.modules import Module
 from packaging import version as pkg_version
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 from deepspeed.utils.timer import SynchronizedWallClockTimer
+from deepspeed.runtime.compiler import is_compile_supported
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
@@ -51,12 +53,7 @@ class InferenceEngine(Module):
         DS_INFERENCE_ENABLED = True
 
         super().__init__()
-
-        # Have to import here because inference_module is a global, but python
-        # globals only work at the module level and will not be updated unless
-        # we import it each time we init a new inference engine.
-        from ..model_implementations.transformers.ds_transformer import inference_module
-        if inference_module is not None:
+        if DeepSpeedTransformerInference.workspace is not None:
             self.destroy()
 
         self.module = model
@@ -71,8 +68,9 @@ class InferenceEngine(Module):
         if hasattr(self.module, "config"):
             TransformerPolicy.hf_model_config = self.module.config
 
-        if config.dtype == torch.half and not get_accelerator().is_fp16_supported():
-            raise ValueError("Type fp16 is not supported.")
+        if config.dtype not in get_accelerator().supported_dtypes():
+            raise ValueError(
+                f"Data type {config.dtype} is not supported by {get_accelerator().device_name()} accelerator")
 
         # todo: keep this self.injection_dict because we don't use to change config.injection_policy API
         # todo: this will get changed when Molly's PR on auto injection dict is merged
@@ -187,17 +185,14 @@ class InferenceEngine(Module):
 
         # Check if local CUDA graphs can be created in replacement modules
         self.local_cuda_graph = self._local_cuda_graph_used(self.module)
+        self._is_compiled = False
 
     def destroy(self):
-        # Have to import here because inference_module is a global, but python
-        # globals only work at the module level and will not be updated unless
-        # we import it each time we init a new inference engine.
-        from ..model_implementations.transformers.ds_transformer import inference_module
         DeepSpeedTransformerInference.layer_id = 0
         DeepSpeedSelfAttention.num_layers = 0
-        if inference_module is not None:
-            inference_module.release_workspace()
-            inference_module = None
+        if DeepSpeedTransformerInference.workspace.is_allocated():
+            DeepSpeedTransformerInference.workspace.release_workspace()
+        DeepSpeedTransformerInference.workspace = None
 
     def profile_model_time(self, use_cuda_events=True):
         if not self.model_profile_enabled and not self._config.enable_cuda_graph:
@@ -323,7 +318,7 @@ class InferenceEngine(Module):
         if self._config.checkpoint is not None and not isinstance(self._config.checkpoint, (str, dict)):
             raise ValueError(f"checkpoint must be None, str or dict, got {type(self._config.checkpoint)}")
 
-        supported_dtypes = [None, torch.half, torch.int8, torch.float]
+        supported_dtypes = [None, torch.half, torch.int8, torch.float, torch.bfloat16]
         if self._config.dtype not in supported_dtypes:
             raise ValueError(f"{self._config.dtype} not supported, valid dtype: {supported_dtypes}")
 
@@ -636,3 +631,22 @@ class InferenceEngine(Module):
                     )
 
         return self.module.generate(*inputs, **kwargs)
+
+    def compile(self, backend=get_accelerator().get_compile_backend(), compile_kwargs={}) -> None:
+        """
+        Compile the module using the specified backend and kwargs.
+        """
+        if not is_compile_supported():
+            raise RuntimeError("compile is not supported in your version of PyTorch.")
+
+        if self._is_compiled:
+            return
+
+        # Avoid graph breaks
+        deepspeed.utils.nvtx.enable_nvtx = False
+        self.module.compile(backend=backend, **compile_kwargs)
+        self._is_compiled = True
+
+    @property
+    def is_compiled(self) -> bool:
+        return self._is_compiled

@@ -8,6 +8,7 @@ import torch
 import pytest
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.transformer.inference.op_binding.layer_norm import LayerNormOp
 from .inference_test_utils import allclose, get_dtypes, assert_almost_equal
 try:
     import triton  # noqa: F401 # type: ignore
@@ -21,8 +22,6 @@ except ImportError:
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
-inference_module = None
-
 
 def ref_implementation(vals, gamma, beta, epsilon, channels, dtype):
     vals_f = vals.to(torch.float32)
@@ -32,10 +31,7 @@ def ref_implementation(vals, gamma, beta, epsilon, channels, dtype):
 
 
 def ds_implementation(vals, gamma, beta, epsilon):
-    global inference_module
-    if inference_module is None:
-        inference_module = InferenceBuilder().load()
-    return inference_module.layer_norm(vals, gamma, beta, epsilon)
+    return LayerNormOp()(vals, gamma, beta, epsilon)
 
 
 def ds_triton_implementation(vals, gamma, beta, epsilon):
@@ -83,10 +79,7 @@ def residual_ref_implementation(vals, bias, res, gamma, beta, epsilon, channels,
 
 
 def residual_ds_implementation(vals, bias, res, gamma, beta, epsilon):
-    global inference_module
-    if inference_module is None:
-        inference_module = InferenceBuilder().load()
-    return inference_module._layer_norm_residual(vals, bias, res, gamma, beta, epsilon)
+    return LayerNormOp.layer_norm_residual(vals, bias, res, gamma, beta, epsilon)
 
 
 def residual_ds_triton_implementation(vals, bias, res, gamma, beta, epsilon):
@@ -137,10 +130,7 @@ def residual_store_ref_implementation(vals, bias, res, gamma, beta, epsilon, cha
 
 
 def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
-    global inference_module
-    if inference_module is None:
-        inference_module = InferenceBuilder().load()
-    return inference_module.layer_norm_residual_store_pre_ln_res(vals, bias, res, gamma, beta, epsilon)
+    return LayerNormOp.layer_norm_residual_store_pre_ln_res(vals, bias, res, gamma, beta, epsilon)
 
 
 @pytest.mark.inference_ops
@@ -175,19 +165,20 @@ def test_layer_norm_residual_store_pre_ln_res(batch, seq_len, channels, dtype):
 def test_triton_layer_norm(M, N, dtype, residual, input_bias, eps=1e-5, device='cuda'):
     if not deepspeed.HAS_TRITON:
         pytest.skip("triton has to be installed for the test")
+    dev = get_accelerator().device_name()
     torch.manual_seed(0)
     # create data
     x_shape = (M, N)
     w_shape = (x_shape[-1], )
-    weight = torch.rand(w_shape, dtype=dtype, device='cuda', requires_grad=False)
-    bias = torch.rand(w_shape, dtype=dtype, device='cuda', requires_grad=False)
-    x_bias = torch.rand(w_shape, dtype=dtype, device='cuda', requires_grad=False)
-    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device='cuda')
+    weight = torch.rand(w_shape, dtype=dtype, device=dev, requires_grad=False)
+    bias = torch.rand(w_shape, dtype=dtype, device=dev, requires_grad=False)
+    x_bias = torch.rand(w_shape, dtype=dtype, device=dev, requires_grad=False)
+    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=dev)
     dy = .1 * torch.randn_like(x)
     if residual:
-        res = torch.rand(x_shape, dtype=dtype, device='cuda', requires_grad=False)
+        res = torch.rand(x_shape, dtype=dtype, device=dev, requires_grad=False)
     else:
-        res = torch.zeros(x_shape, dtype=dtype, device='cuda', requires_grad=False)
+        res = torch.zeros(x_shape, dtype=dtype, device=dev, requires_grad=False)
     x.requires_grad_(True)
     # forward pass
     if residual or input_bias:

@@ -8,13 +8,14 @@ Copyright 2021 The Microsoft DeepSpeed Team
 
 import torch
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import NotImplementedBuilder
 from .reduce_op import ReduceOp
 from .torch import TorchBackend
 
 
 def build_ccl_op():
     builder = get_accelerator().create_op_builder("CCLCommBuilder")
-    if builder is None:
+    if builder is None or isinstance(builder, NotImplementedBuilder):
         return None
     ccl_cpp_module = builder.load()
     print(f'DeepSpeed {builder.absolute_name()} built successfully')
@@ -98,12 +99,12 @@ class CCLBackend(TorchBackend):
             else:
                 return self.run_collective(name=name, tensor=tensor, op=op, group=group, async_op=async_op)
 
-    def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+    def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None):
         name = "inference_all_reduce"
         if name in self.available_coll:
-            return self.ccl_comm_op.inference_all_reduce(tensor, op, async_op)
+            return self.ccl_comm_op.inference_all_reduce(tensor, op)
         else:
-            return self.run_collective(name=name, tensor=tensor, op=op, group=None, async_op=async_op)
+            return self.run_collective(name=name, tensor=tensor, op=op, group=None, async_op=False)
 
     def broadcast(self, tensor, src, group=None, async_op=False):
         return self.run_collective(name="broadcast", tensor=tensor, src=src, group=group, async_op=async_op)

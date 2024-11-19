@@ -15,13 +15,13 @@ from ..logging import inference_logger
 
 class HuggingFaceCheckpointEngine(CheckpointEngineBase):
 
-    def __init__(self, model_name_or_path: str, auth_token: str = None) -> None:
+    def __init__(self, model_name_or_path: str, auth_token: str = None, **hf_kwargs) -> None:
         super().__init__()
         from transformers import AutoConfig, GenerationConfig
 
         self.model_name_or_path = model_name_or_path
         self.auth_token = auth_token
-        self.model_config = AutoConfig.from_pretrained(self.model_name_or_path)
+        self.model_config = AutoConfig.from_pretrained(self.model_name_or_path, **hf_kwargs)
         # Define this property here so we can use it in the model implementation
         if not hasattr(self.model_config, "max_seq_length"):
             if hasattr(self.model_config, "max_position_embeddings"):
@@ -108,6 +108,12 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         for checkpoint in self._all_ckpt_paths:
             inference_logger().info(f"Loading checkpoint: {checkpoint}")
             checkpoint_sd = self._checkpoint_load_fn(checkpoint)
+
+            # If the model has tied embeddings, we need to make sure the lm_head weights are tied to the embeddings weights
+            if hasattr(self.model_config, "tie_word_embeddings") and self.model_config.tie_word_embeddings:
+                if self.model_config.model_type == "qwen2":
+                    checkpoint_sd["lm_head.weight"] = checkpoint_sd["model.embed_tokens.weight"]
+
             param_keys = list(checkpoint_sd.keys())
             for param_name in param_keys:
                 param = checkpoint_sd[param_name]

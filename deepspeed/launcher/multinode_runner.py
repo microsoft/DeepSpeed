@@ -34,7 +34,7 @@ class MultiNodeRunner(ABC):
         """Return the command to execute on node"""
 
     def add_export(self, key, var):
-        self.exports[key.strip()] = var.strip()
+        self.exports[key.strip()] = f"\"{var.strip()}\""
 
     def parse_user_args(self):
         return self.args.user_args
@@ -74,7 +74,8 @@ class PDSHRunner(MultiNodeRunner):
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
         if self.args.ssh_port is not None:  # only specify ssh port if it is specified
-            environment["PDSH_SSH_ARGS_APPEND"] += f" -p {self.args.ssh_port}"
+            environment["PDSH_SSH_ARGS_APPEND"] = f"{environment.get('PDSH_SSH_ARGS_APPEND', '')} \
+            -p {self.args.ssh_port}"
 
         active_workers = ",".join(active_resources.keys())
         logger.info("Running on the following workers: %s" % active_workers)
@@ -140,6 +141,17 @@ class OpenMPIRunner(MultiNodeRunner):
     def get_cmd(self, environment, active_resources):
         total_process_count = sum(self.resource_pool.values())
 
+        launcher_args = split(self.args.launcher_args)
+
+        # If btl_tcp_if_include option is provided through launcher_args, we use it. Otherwise, we add
+        # `--mca btl_tcp_if_include eth0` option as a default value for compatibility.
+        btl_tcp_opt = ['--mca', 'btl_tcp_if_include', 'eth0']
+        if len(launcher_args) >= 2:
+            for i in range(len(launcher_args) - 1):
+                if launcher_args[i] in ['-mca', '--mca'] and launcher_args[i + 1] == 'btl_tcp_if_include':
+                    btl_tcp_opt = []
+                    break
+
         mpirun_cmd = [
             'mpirun',
             '-n',
@@ -149,10 +161,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '--mca',
             'btl',
             '^openib',
-            '--mca',
-            'btl_tcp_if_include',
-            'eth0',
-        ] + split(self.args.launcher_args)
+        ] + btl_tcp_opt + launcher_args
 
         export_cmd = []
         for k, v in self.exports.items():
@@ -405,7 +414,7 @@ class MVAPICHRunner(MultiNodeRunner):
         if not mpiname_exists:
             warnings.warn("mpiname does not exist, mvapich is not installed properly")
         else:
-            results = subprocess.check_output('mpiname', shell=True)
+            results = subprocess.check_output(['mpiname'])
             mpiname_results = results.decode('utf-8').strip()
             if "MVAPICH2-GDR" in mpiname_results:
                 exists = True

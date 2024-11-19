@@ -10,9 +10,10 @@ import pytest
 from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder import CPUAdamBuilder, FusedLambBuilder
+from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
 try:
     from apex import amp  # noqa: F401 # type: ignore
@@ -21,10 +22,15 @@ except ImportError:
     _amp_available = False
 amp_available = pytest.mark.skipif(not _amp_available, reason="apex/amp is not installed")
 
+if torch.half not in get_accelerator().supported_dtypes():
+    pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
+
 
 class TestLambFP32GradClip(DistributedTest):
     world_size = 2
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -57,6 +63,8 @@ class TestLambFP32GradClip(DistributedTest):
 class TestLambFP16(DistributedTest):
     world_size = 2
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test__basic(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -84,6 +92,8 @@ class TestLambFP16(DistributedTest):
             model.backward(loss)
             model.step()
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test_empty_grad(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -215,8 +225,10 @@ class TestFP16OptimizerForMoE(DistributedTest):
 
         # initialize MoE
         model = SimpleMoEModel(hidden_dim, ep_size=2)
+        param_group = {'params': [p for p in model.parameters()], 'name': 'random-unique-name'}
+        params = split_params_into_different_moe_groups_for_optimizer(param_group)
         # optimizer = torch.optim.AdamW(params=model.parameters())
-        optimizer = FusedAdam(params=model.parameters())
+        optimizer = FusedAdam(params=params)
         engine, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                        model=model,
                                                        optimizer=optimizer,
@@ -229,6 +241,8 @@ class TestFP16OptimizerForMoE(DistributedTest):
             engine.step()
 
     @pytest.mark.parametrize("fused_lamb_legacy", [(False), (True)])
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system.")
     def test_lamb_gradnorm(self, monkeypatch, fused_lamb_legacy: bool):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -492,6 +506,8 @@ class TestAmp(DistributedTest):
             model.backward(loss)
             model.step()
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                        reason="FusedLambBuilder has not been implemented on this system")
     def test_lamb_basic(self):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
