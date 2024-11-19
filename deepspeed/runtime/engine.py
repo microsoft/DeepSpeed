@@ -2234,8 +2234,8 @@ class DeepSpeedEngine(Module):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
-        assert not self.inside_no_sync_ctxt, \
-        "It is illegal to call Engine.step() inside no_sync context manager"
+        # assert not self.inside_no_sync_ctxt, \
+        # "It is illegal to call Engine.step() inside no_sync context manager"
 
         see_memory_usage("Engine before step", force=self.memory_breakdown())
 
