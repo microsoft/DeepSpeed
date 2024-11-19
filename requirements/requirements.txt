@@ -1,4 +1,3 @@
-einops
 hjson
 msgpack
 ninja
