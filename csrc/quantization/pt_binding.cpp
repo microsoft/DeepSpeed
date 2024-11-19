@@ -360,7 +360,7 @@ std::vector<at::Tensor> loco_quantized_reduction(at::Tensor& input_vals,
                                elems_per_in_tensor,
                                in_groups / devices_per_node,
                                elems_per_in_group,
-                               (half*)error_feedback.data_ptr(),
+                               (__half2*)error_feedback.data_ptr(),
                                err_beta,
                                at::cuda::getCurrentCUDAStream());
 

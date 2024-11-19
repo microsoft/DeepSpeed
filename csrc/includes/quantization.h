@@ -78,7 +78,7 @@ void launch_loco_dequant_reduce(int8_t* reduced_data,
                                 int elems_per_in_tensor,
                                 int groups_per_in_tensor,
                                 int elems_per_in_group,
-                                __half* error_feedback,
+                                __half2* error_feedback,
                                 const float err_beta,
                                 cudaStream_t stream);
 

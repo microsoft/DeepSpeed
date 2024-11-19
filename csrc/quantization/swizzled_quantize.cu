@@ -233,17 +233,17 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
         blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_swizzled * gridDim.x * gridDim.y;
     const int block_offset_swizzled = block_rank_swizzled * elems_per_group;
     const int base_offset_swizzled = block_offset_swizzled + elem_offset;
-    const __half* error_feedback_base = error_feedback + base_offset_swizzled;
+    __half* error_feedback_base = error_feedback + base_offset_swizzled;
 
-    __half local_buffer[totalChunks * quantize::h_per_load];
-    __half err_buffer[totalChunks * quantize::h_per_load];
+    __half2 local_buffer[totalChunks * quantize::h_per_load];
+    __half2 err_buffer[totalChunks * quantize::h_per_load];
 
-    quantize::GroupStats<quantType, __half> stats;
+    quantize::GroupStats<quantType> stats;
 
 #pragma unroll
     for (int i = 0; i < totalChunks; i++) {
-        __half* iteration_buffer = local_buffer + i * quantize::h_per_load;
-        __half* iter_err_buffer = err_buffer + i * quantize::h_per_load;
+        __half2* iteration_buffer = local_buffer + i * quantize::h2_per_load;
+        __half2* iter_err_buffer = err_buffer + i * quantize::h2_per_load;
         const int i_stride = i * stride;
         bool do_loads = (elem_offset + i_stride) < elems_per_group;
 
@@ -254,8 +254,8 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
             iter_err_buffer, error_feedback_base + i_stride, do_loads);
 
 #pragma unroll
-        for (int j = 0; j < quantize::h_per_load; j++) {
-            iteration_buffer[j] = __hadd(iteration_buffer[j], iter_err_buffer[j]);
+        for (int j = 0; j < quantize::h2_per_load; j++) {
+            iteration_buffer[j] = __hadd2(iteration_buffer[j], iter_err_buffer[j]);
             stats.update(iteration_buffer[j]);
         }
     }
@@ -279,27 +279,41 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
 
 #pragma unroll
     for (int i = 0; i < totalChunks; i++) {
-        const int iter_offset = i * stride + base_offset_swizzled;
-        __half* iteration_buffer = local_buffer + i * quantize::h_per_load;
-        __half* iter_err_buffer = err_buffer + i * quantize::h_per_load;
+        const int i_stride = i * stride;
+        __half2* iteration_buffer = local_buffer + i * quantize::h2_per_load;
+        __half2* iter_err_buffer = err_buffer + i * quantize::h2_per_load;
 
-        if (i * stride + elem_offset < elems_per_group) {
+        if (i_stride + elem_offset < elems_per_group) {
             int8_t local_output[quantize::h_per_load / out_scalar_effect];
             quantize::_chunk<numBits, quantType>(local_output, iteration_buffer, params);
             mem_access::store_global<num_int8_out>(out_base + i * out_stride, local_output);
 
             // Dequantize the quantized output to compute the dequantized value
-            __half dequant_buffer[quantize::h_per_load];
-            dequantize::chunk<__half, numBits, quantType>(dequant_buffer, local_output, de_params);
+            __half2 dequant_buffer[quantize::h2_per_load];
+            dequantize::chunk<numBits, quantType>(dequant_buffer, local_output, de_params);
 
 // Compute new error: sum - dequant_buffer
 #pragma unroll
-            for (int j = 0; j < quantize::h_per_load; j++) {
-                __half new_error = __hsub(iteration_buffer[j], dequant_buffer[j]);
-                iter_err_buffer[j] = __hmul(iter_err_buffer[j], __float2half(err_beta)) +
-                                     __hmul(__float2half(1.0f - err_beta), new_error);
+            for (int k = 0; k < quantize::h2_per_load; k++) {
+                // __half2 to float2
+                float2 iter_buf_f = __half22float2(iteration_buffer[k]);
+                float2 dequant_buf_f = __half22float2(dequant_buffer[k]);
+
+                // Update within float precision
+                float2 new_error_f;
+                new_error_f.x = iter_buf_f.x - dequant_buf_f.x;
+                new_error_f.y = iter_buf_f.y - dequant_buf_f.y;
+
+                float2 iter_err_buf_f = __half22float2(iter_err_buffer[k]);
+
+                iter_err_buf_f.x = err_beta * iter_err_buf_f.x + (1.0f - err_beta) * new_error_f.x;
+                iter_err_buf_f.y = err_beta * iter_err_buf_f.y + (1.0f - err_beta) * new_error_f.y;
+
+                // float2 back to __half2
+                iter_err_buffer[k] = __float22half2_rn(iter_err_buf_f);
             }
-            mem_access::store_global<16>(error_feedback + iter_offset, iter_err_buffer);
+             __half2* error_feedback_base_h2 = reinterpret_cast<__half2*>(error_feedback_base);
+            mem_access::store_global<quantize::granularity>(error_feedback_base_h2 + i_stride / 2, iter_err_buffer);
         }
     }
 }
