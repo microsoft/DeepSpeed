@@ -19,8 +19,6 @@ supported_models = {None}
 class DS_BloomContainer(MetaTensorContainer, HybridEngineContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
         # Check transformers version, error if > 4.43.4 (breaks at 4.44.0)
         from importlib.metadata import version
         v_transformers = version('transformers')
@@ -30,6 +28,8 @@ class DS_BloomContainer(MetaTensorContainer, HybridEngineContainer, BaseTransfor
         if major > 4 or (major == 4 and minor > 43):
             import sys
             sys.exit(f"Transformers version {v_transformers} exceeds version 4.43.4! After transformers version 4.43.4, BLOOM inference with DeepSpeed is no longer supported.")
+
+        super().__init__(**kwargs)
 
         # All model specific things should be defined here instead of the base class.
         self.bigscience_bloom = True
