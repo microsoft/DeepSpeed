@@ -20,10 +20,6 @@ class TestZ3MultipleModelCall(DistributedTest):
             "zero_optimization": {
                 "stage": 3
             },
-            "fp16": {
-                "enabled": True,
-                "initial_scale_power": 8
-            },
             "optimizer": {
                 "type": "Adam",
                 "params": {
