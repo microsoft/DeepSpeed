@@ -211,32 +211,27 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
-    int blockIdx_x = blockIdx.x;
-    int blockIdx_y = blockIdx.y;
-    int blockIdx_z_swizzled = blockIdx.z;
+    // Indexing offsets, same as normal quantization for in-case
+    const int block_rank_data = blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y;
+    const int block_offset_data = block_rank_data * elems_per_group;
+    const int elem_offset = tb.thread_index().x * quantize::h_per_load;
+    const int base_offset_data = block_offset_data + elem_offset;
+    const int stride = tb.size() * quantize::h_per_load;
+    const __half* uncompressed_data_base = uncompressed_data + base_offset_data;
 
-    int device_id = blockIdx_z_swizzled / nodes;
-    int node_id = blockIdx_z_swizzled % nodes;
+    const int partition_id = blockIdx.z;
+    const int partition_offset = partition_id / devices_per_node;
+    const int partition_base = (partition_id % devices_per_node) * nodes;
+    const int pipelining_offset = blockIdx.y * (devices_per_node * nodes);
+    const int output_partition = (pipelining_offset + partition_base + partition_offset);
+    const int block_rank_err = output_partition * gridDim.x + blockIdx.x;
 
-    int blockIdx_z_orig = node_id * devices_per_node + device_id;
+    const int block_offset_err = block_rank_err * elems_per_group;
+    const int base_offset_err = block_offset_err + elem_offset;
+    __half* error_feedback_base = error_feedback + base_offset_err;
 
-    int block_rank_orig =
-        blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_orig * gridDim.x * gridDim.y;
-
-    const int elem_offset = threadIdx.x * quantize::h_per_load;
-    const int block_offset_orig = block_rank_orig * elems_per_group;
-    const int base_offset_orig = block_offset_orig + elem_offset;
-    const int stride = blockDim.x * quantize::h_per_load;
-    const __half* uncompressed_data_base = uncompressed_data + base_offset_orig;
-
-    const int block_rank_swizzled =
-        blockIdx_x + blockIdx_y * gridDim.x + blockIdx_z_swizzled * gridDim.x * gridDim.y;
-    const int block_offset_swizzled = block_rank_swizzled * elems_per_group;
-    const int base_offset_swizzled = block_offset_swizzled + elem_offset;
-    __half* error_feedback_base = error_feedback + base_offset_swizzled;
-
-    __half2 local_buffer[totalChunks * quantize::h_per_load];
-    __half2 err_buffer[totalChunks * quantize::h_per_load];
+    __half2 local_buffer[totalChunks * quantize::h2_per_load];
+    __half2 err_buffer[totalChunks * quantize::h2_per_load];
 
     quantize::GroupStats<quantType> stats;
 
@@ -267,10 +262,10 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
     de_params.scale = 1.0f / params.scale;
     if constexpr (quantType == quantize::Type::Asymmetric) { de_params.offset = params.offset; }
 
-    if (threadIdx.x == 0) { params.store(quantized_scales, block_rank_swizzled); }
+    if (threadIdx.x == 0) { params.store(quantized_scales, block_rank_err); }
 
     constexpr int out_scalar_effect = 8 / numBits;
-    const int out_block_offset = block_rank_swizzled * elems_per_group / out_scalar_effect;
+    const int out_block_offset = block_rank_err * elems_per_group / out_scalar_effect;
     const int out_base_offset = out_block_offset + elem_offset / out_scalar_effect;
     int8_t* out_base = quantized_data + out_base_offset;
 
