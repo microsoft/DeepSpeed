@@ -27,7 +27,7 @@ class AsyncIOBuilder(TorchCPUOpBuilder):
             'csrc/aio/common/deepspeed_aio_utils.cpp', 'csrc/aio/common/deepspeed_aio_common.cpp',
             'csrc/aio/common/deepspeed_aio_types.cpp', 'csrc/aio/py_lib/deepspeed_cpu_op.cpp',
             'csrc/aio/py_lib/deepspeed_aio_op_desc.cpp', 'csrc/aio/py_lib/deepspeed_py_copy.cpp',
-            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
+            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp', 'csrc/aio/py_lib/deepspeed_aio_pool.cpp'
         ]
         return src_list
 

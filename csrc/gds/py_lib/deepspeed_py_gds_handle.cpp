@@ -21,7 +21,7 @@ deepspeed_gds_handle_t::deepspeed_gds_handle_t(const int block_size,
                                                const bool overlap_events,
                                                const int intra_op_parallelism,
                                                const int inter_op_parallelism)
-    : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, inter_op_parallelism, 1),
+    : deepspeed_io_handle_t(block_size, queue_depth, single_submit, overlap_events, 1, inter_op_parallelism),
       _intra_gds_op_parallelism(intra_op_parallelism)
 {
     _init_cuFile(block_size, queue_depth);

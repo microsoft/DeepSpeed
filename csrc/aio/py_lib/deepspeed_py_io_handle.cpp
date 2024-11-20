@@ -31,13 +31,17 @@ deepspeed_io_handle_t::deepspeed_io_handle_t(const int block_size,
       _op_ids(0),
       _pinned_tensor_mgr(new deepspeed_pin_tensor_t())
 {
-    for (auto i = 0; i < intra_op_parallelism; ++i) {
-        _thread_contexts.push_back(std::make_shared<deepspeed_aio_thread_t>(i, _aio_config));
+    for (auto n = 0; n < inter_op_parallelism; ++n) {
+        auto pool = std::make_shared<deepspeed_aio_pool_t>(n, intra_op_parallelism);
+        for (auto i = 0; i < intra_op_parallelism; ++i) {
+            auto ctxt = std::make_shared<deepspeed_aio_thread_t>(i, _aio_config);
+            pool->_thread_contexts.push_back(ctxt);
+            _threads.push_back(std::thread(_start_aio_thread, ctxt));
+        }
+        _thread_pools.push_back(pool);
     }
-
-    for (auto& ctxt : _thread_contexts) {
-        _threads.push_back(std::thread(_start_aio_thread, ctxt));
-    }
+    // iterator to thread pool
+    _pool_it = _thread_pools.begin();
 }
 
 deepspeed_io_handle_t::~deepspeed_io_handle_t()
@@ -145,44 +149,40 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
 
 void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc_t> scheduled_op)
 {
-    // TODO: track last used thread and start from there
-    for (auto& ctxt : _thread_contexts) {
-        {
-            std::lock_guard<std::mutex> lock(ctxt->_work_sync._mutex);
-            ctxt->_work_queue.push(scheduled_op);
-        }
-        ctxt->_work_sync._cond_var.notify_one();
+    auto& ctxt = *_pool_it;
+    ctxt->submit_pool_work(scheduled_op);
+    // _pool_it =( _pool_it == _thread_pools.end() ) ? _thread_pools.begin() : _pool_it++;
+    if ( _pool_it == _thread_pools.end() ) {
+        _pool_it = _thread_pools.begin();
+    } else {
+        _pool_it++;
     }
     _num_pending_ops++;
 }
 
 std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
 {
-    // Give each op a thread counter
-    // Decrement thread count when it shows up on compelete queue
-    // Once it's at zero it's a completed op
-    // Might keep global work and complete queues
-    // Independent threads for both
     std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
-    for (auto& ctxt : _thread_contexts) {
-        std::unique_lock<std::mutex> lock(ctxt->_complete_sync._mutex);
-        ctxt->_complete_sync._cond_var.wait(lock,
-                                            [ctxt] { return !ctxt->_complete_queue.empty(); });
-        completed_op = ctxt->_complete_queue.front();
-        ctxt->_complete_queue.pop();
+    // loop until completed op found
+    // TODO: don't always start from the beginning
+    std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>>::iterator it;
+    it = _thread_pools.begin();
+    while (completed_op == nullptr) {
+        auto& ctxt = *it;
+        completed_op = ctxt->pool_work_done();
+        if ( it == _thread_pools.end() ) {
+            it = _thread_pools.begin();
+        } else {it++;}
     }
     return completed_op;
+    // add assert to ensure nullptr not returned
 }
 
 void deepspeed_io_handle_t::_stop_threads()
 {
     assert(0 == _num_pending_ops);
-    for (auto& ctxt : _thread_contexts) {
-        {
-            std::lock_guard<std::mutex> lock(ctxt->_work_sync._mutex);
-            ctxt->_time_to_exit = true;
-        }
-        ctxt->_work_sync._cond_var.notify_one();
+    for (auto& ctxt : _thread_pools) {
+        ctxt->stop_threads();
     }
 }
 
@@ -193,6 +193,7 @@ int deepspeed_io_handle_t::wait()
 
     while (_num_pending_ops > 0) {
         auto completed_op = _wait_for_aio_work();
+        assert(completed_op != nullptr);
 
         if (completed_op->_validate) { completed_op->validate(); }
 
@@ -210,11 +211,12 @@ int deepspeed_io_handle_t::wait()
 int deepspeed_io_handle_t::get_completion()
 {
     assert(_num_pending_ops > 0);
-   // auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
     auto completed_op = _wait_for_aio_work();
-	//auto end = std::chrono::high_resolution_clock::now();
-    //auto time = std::chrono::duration<double, std::milli>(end - start).count();
-    //std::cout << "Wait Time: " << time << " ms" << std::endl;
+    assert(completed_op != nullptr);
+	auto end = std::chrono::high_resolution_clock::now();
+    auto time = std::chrono::duration<double, std::milli>(end - start).count();
+    std::cout << "Wait Time for " << completed_op->_op_id << ": " << time << " ms" << std::endl;
     if (completed_op->_validate) { completed_op->validate(); }
     completed_op->finish();
     close(completed_op->_fd);

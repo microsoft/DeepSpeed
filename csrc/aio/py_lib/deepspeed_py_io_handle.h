@@ -7,9 +7,8 @@
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
-#include <condition_variable>
 #include <memory>
-#include "deepspeed_aio_thread.h"
+#include "deepspeed_aio_pool.h"
 #include "deepspeed_pin_tensor.h"
 
 struct deepspeed_io_handle_t {
@@ -20,8 +19,10 @@ struct deepspeed_io_handle_t {
     const int _inter_op_parallelism;
     deepspeed_aio_config_t _aio_config;
 
-    std::vector<std::shared_ptr<struct deepspeed_aio_thread_t>> _thread_contexts;
     std::vector<std::thread> _threads;
+    std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>> _thread_pools;
+    std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>>::iterator _pool_it;
+
     int _num_pending_ops;
     int _op_ids;
     std::unique_ptr<struct deepspeed_pin_tensor_t> _pinned_tensor_mgr;
