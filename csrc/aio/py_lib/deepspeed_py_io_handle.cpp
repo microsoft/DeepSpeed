@@ -151,12 +151,7 @@ void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc
 {
     auto& ctxt = *_pool_it;
     ctxt->submit_pool_work(scheduled_op);
-    // _pool_it =( _pool_it == _thread_pools.end() ) ? _thread_pools.begin() : _pool_it++;
-    if ( _pool_it == _thread_pools.end() ) {
-        _pool_it = _thread_pools.begin();
-    } else {
-        _pool_it++;
-    }
+    _pool_it =( _pool_it == _thread_pools.end()-1 ) ? _thread_pools.begin() : _pool_it+1;
     _num_pending_ops++;
 }
 
@@ -165,17 +160,13 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
     std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
     // loop until completed op found
     // TODO: don't always start from the beginning
-    std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>>::iterator it;
-    it = _thread_pools.begin();
+    std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>>::iterator _wait_it = _thread_pools.begin();
     while (completed_op == nullptr) {
-        auto& ctxt = *it;
+        auto& ctxt = *_wait_it;
         completed_op = ctxt->pool_work_done();
-        if ( it == _thread_pools.end() ) {
-            it = _thread_pools.begin();
-        } else {it++;}
+        _wait_it =( _wait_it == _thread_pools.end()-1 ) ? _thread_pools.begin() : _wait_it+1 ;
     }
     return completed_op;
-    // add assert to ensure nullptr not returned
 }
 
 void deepspeed_io_handle_t::_stop_threads()
