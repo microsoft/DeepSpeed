@@ -14,7 +14,6 @@ struct deepspeed_aio_pool_t {
     const int _pid;
     const int _done_count;
 
-    std::map<std::shared_ptr<struct io_op_desc_t>,int> _intra_op_count;
     std::vector<std::shared_ptr<struct deepspeed_aio_thread_t>> _thread_contexts;
 
     deepspeed_aio_pool_t(const int pid, const int done_count);

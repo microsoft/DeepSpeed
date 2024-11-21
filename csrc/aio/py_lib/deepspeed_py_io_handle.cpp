@@ -151,21 +151,18 @@ void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc
 {
     auto& ctxt = *_pool_it;
     ctxt->submit_pool_work(scheduled_op);
+    _work_queue.push(ctxt);
     _pool_it =( _pool_it == _thread_pools.end()-1 ) ? _thread_pools.begin() : _pool_it+1;
     _num_pending_ops++;
 }
 
 std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
 {
+    assert(!_work_queue.empty());
     std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
-    // loop until completed op found
-    // TODO: don't always start from the beginning
-    std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>>::iterator _wait_it = _thread_pools.begin();
-    while (completed_op == nullptr) {
-        auto& ctxt = *_wait_it;
-        completed_op = ctxt->pool_work_done();
-        _wait_it =( _wait_it == _thread_pools.end()-1 ) ? _thread_pools.begin() : _wait_it+1 ;
-    }
+    auto ctxt = _work_queue.front();
+    _work_queue.pop();
+    completed_op = ctxt->pool_work_done();
     return completed_op;
 }
 
@@ -271,6 +268,7 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
 
+    // TODO: op id rollover
     _op_ids++;
     auto scheduled_op =
         _create_io_op_desc(true, buffer, _op_ids, fd, filename, num_file_bytes, validate, file_offset);
