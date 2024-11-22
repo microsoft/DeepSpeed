@@ -11,6 +11,7 @@ from torch.nn.parameter import Parameter
 from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
+from typing import Iterable
 
 
 class RowParallel(torch.autograd.Function):
@@ -61,11 +62,60 @@ class Replaced_Layer(nn.Module, ABC):
         """
         pass
 
+    @abstractmethod
+    def gather_params(self, params_list):
+        pass
+
+    def partition(self, params_list):
+        for idx, param in params_list:
+            params_list[idx].data = param.data_partition
+            del param.data_partition
+
+        # for param in params_list:
+        #     param.data=torch.empty(0, dtype=param.dtype, device=param.device)
     def config_tp_training(self, weight):
         assert self.support_training, "No implementation of backward."
         if weight is not None:
             weight.requires_grad = True
             setattr(weight, 'tensor_model_parallel', True)
+            weight.ds_is_preleace_module = True
+            weight.gather_params = self.gather_params
+            weight.partition = self.partition
+
+
+class GatherReplacedLayerParams:
+
+    def __init__(self, params, module, enabled=True):
+        self.enabled = enabled
+        self.module = module
+        if not enabled:
+            return
+        if isinstance(params, Iterable) and not isinstance(params, torch.Tensor):
+            # deal with generators like model.parameters()
+            # must convert to list to be able to iterate more than once if we get a generator
+            params = list(params)
+        else:
+            # single param
+            params = [params]
+
+        self.params = params
+
+        if not any(self._is_replaced_module_weight(p) for p in params):
+            self.enabled = False
+            return
+
+    def _is_replaced_module_weight(self, param):
+        return getattr(param, 'ds_is_preleace_module', False)
+
+    def __enter__(self):
+
+        if self.enabled:
+            self.params[0].gather_params(self.params)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        #TODO : Check whether there are any missing attributes.
+        if self.enabled:
+            self.params[0].partition(self.params)
 
 
 class LinearAllreduce(Replaced_Layer):
@@ -87,6 +137,21 @@ class LinearAllreduce(Replaced_Layer):
         if self.bias is not None:
             output += self.bias
         return output
+
+    def gather_params(self, params_list):
+        world_sz = dist.get_world_size(self.mp_group)
+
+        for idx, param in enumerate(params_list):
+            param = param.transpose(0, 1).contiguous()
+            output_param = torch.empty(world_sz * param.shape[0],
+                                       param.shape[1],
+                                       dtype=param.dtype,
+                                       device=param.device)
+            dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
+            params_list[idx].data_partition = param.data
+            params_list[idx].data = output_param.transpose(0, 1).contiguous()
+        return
+
 
 class TensorParallelConv2d(nn.Module):
 
@@ -207,6 +272,22 @@ class LinearLayer(Replaced_Layer):
         if self.bias is not None:
             output += self.bias
         return output
+
+    def gather_params(self, params_list):
+        world_sz = dist.get_world_size(self.mp_group)
+
+        for idx, param in enumerate(params_list):
+            # TODO: uneven support
+            # shape_tensor=torch.tensor(param.shape[0],dtype=param.dtype,device=param.device)
+            # dist.all_reduce(shape_tensor, group=self.mp_group)
+
+            output_param = torch.empty(world_sz * param.shape[0],
+                                       param.shape[1],
+                                       dtype=param.dtype,
+                                       device=param.device)
+            dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
+            params_list[idx].data_partition = param.data
+            params_list[idx].data = output_param.contiguous()
 
 
 class Normalize(nn.Module):

@@ -356,9 +356,13 @@ class AutoTP():
 
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            data = child.weight.data.split(get_shard_size_list(
-                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
-                                           dim=1)
+
+            data = torch.chunk(child.weight.data, self.mp_size, dim=1)
+
+            # data = child.weight.data.split(get_shard_size_list(
+            #     weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
+            #                                dim=1)
+
             data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
             del data
 
@@ -388,8 +392,9 @@ class AutoTP():
                     prepare_tp_fused_qkvw(self.module, child.bias.data, self.mp_size, mp_replace.gpu_index),
                     get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
-                                               dim=1 if self.conv_linear_layer else 0)
+                data = torch.chunk(child.weight.data, self.mp_size, dim=1 if self.conv_linear_layer else 0)
+                # data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
+                #                                dim=1 if self.conv_linear_layer else 0)
                 data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
                 del data
 

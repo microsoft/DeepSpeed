@@ -3595,6 +3595,27 @@ class DeepSpeedEngine(Module):
         ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
         logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
 
+    def _replace_module_consolidated_state_dict(self):
+        from deepspeed.module_inject.layers import GatherReplacedLayerParams
+        state_dict = OrderedDict() if dist.get_rank() == 0 else None
+
+        def get_layer_state_dict(module, prefix=""):
+            with GatherReplacedLayerParams(list(module.parameters(recurse=False)), module, enabled=True):
+                for name, param in module.named_parameters(recurse=False):
+                    if param is None:
+                        continue
+                    key = prefix + name
+                    if (dist.get_rank() == 0):
+                        state_dict[key] = param.detach().cpu()
+                        # print(key,module, param.detach().cpu().shape)
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_state_dict(child, prefix + name + ".")
+
+        get_layer_state_dict(self.module, prefix="")
+        return state_dict
+
     def _zero3_consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
         """
         Get a full non-partitioned state_dict with fp16 weights on cpu.
