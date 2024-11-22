@@ -13,7 +13,7 @@
 
 <div align="left">
 
-*Figure 1: Project Domino is Microsoft DeepSpeed's Tensor Parallel (TP) Training Engine, which provides a uniform solution for both single-node and **multi-nodeU** cases. Domino scales up traditional single-node-only TP solution to multi-node environments via **near-complete communication hiding** behind computation.*
+*Figure 1: Project Domino is Microsoft DeepSpeed's Tensor Parallel (TP) Training Engine, which provides a uniform solution for both single-node and **multi-node** cases. Domino scales up traditional single-node-only TP solution to multi-node environments via **near-complete communication hiding** behind computation.*
 
 </div>
 </div><br>
