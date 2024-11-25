@@ -5,11 +5,11 @@ DeepSpeed provides routines for checkpointing model state during training.
 
 Loading Training Checkpoints
 ----------------------------
-.. autofunction:: deepspeed.DeepSpeedEngine.load_checkpoint
+.. autofunction:: DeepSpeedEngine.load_checkpoint
 
 Saving Training Checkpoints
 ---------------------------
-.. autofunction:: deepspeed.DeepSpeedEngine.save_checkpoint
+.. autofunction:: DeepSpeedEngine.save_checkpoint
 
 
 ZeRO Checkpoint fp32 Weights Recovery
@@ -30,7 +30,7 @@ ZeRO stage 1 and 2 checkpoints created using ``torch.save()`` can sometimes be l
 is caused by the interaction of ZeRO's tensor flattening and torch's tensor `storage management <https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing>`_ .
 You can avoid this problem by using the ``clone_tensors_for_torch_save`` utility of DeepSpeed as illustrated below.
 
-.. autofunction:: deepspeed.checkpoint.utils.clone_tensors_for_torch_save
+.. autofunction:: checkpoint.utils.clone_tensors_for_torch_save
 
 The following code snippet illustrates this functionality for creating a HuggingFace model checkpoint:
 

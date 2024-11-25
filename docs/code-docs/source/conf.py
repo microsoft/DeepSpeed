@@ -98,4 +98,4 @@ add_module_names = True
 
 autoclass_content = 'auto'
 
-autodoc_mock_imports = ["apex", "mpi4py", "tensorboardX", "numpy", "cupy"]
+autodoc_mock_imports = ["deepspeed", "apex", "mpi4py", "tensorboardX", "numpy", "cupy"]
