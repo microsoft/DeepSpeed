@@ -469,7 +469,7 @@ By default at the end of training with ZeRO stage 3 some parameters could remain
 This is done on purpose as an optimization should you resume training again. If you'd like to clear out the cached
 parameters that use up gpu memory, you can call ``empty_partition_cache`` method of a DeepSpeed engine.
 
-.. autofunction::DeepSpeedEngine.empty_partition_cache
+.. autofunction::deepspeed.DeepSpeedEngine.empty_partition_cache
 
 The following code snippet illustrates this functionality.
 
