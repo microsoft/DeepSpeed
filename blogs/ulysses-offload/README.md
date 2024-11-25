@@ -10,7 +10,7 @@ Model FLOPs Utilization (MFU) than NVIDIA Megatron-SP and DeepSpeed Ulysses.
 To cite and for more technical in depth of this release, please see 
 our [arxiv report](https://arxiv.org/abs/2408.16978):
 
-@article{jplaceholder,
+@article{yao2024ulysses,
 
 title={ Training Ultra Long Context Language Model with Fully Pipelined
 Distributed Transformer},
