@@ -31,11 +31,9 @@
 
 # Introduction
 
-Generative AI (GenAI) has enabled transformative applications in a wide variety of domains, including chatbot, high-quality image and video generation, text summarization. These capabilities are built on top of large foundation models, particularly Large Language Models (LLMs). LLMs are mostly transformer-based models, such as Llama and GPT model series. Due to huge transformer model size which is often far beyond single GPU's device memory capacity, it is necessary to train LLMs in distributed environment like multi-node settings.
+Generative AI (GenAI) has enabled transformative applications in a wide variety of domains, including chatbot, text summarization, and high-quality image and video generation. These capabilities are built on top of large foundation models, particularly Large Language Models (LLMs). LLMs are typically based on the [Transformer](https://arxiv.org/abs/1706.03762) network architecture, and include popular model families such as GPT and Llama. LLMs have grown beyond the memory capacity of a single accelerator (e.g., GPU), and so inferencing or training them requires distributed processing using multiple GPUs or even multiple nodes. 
 
-For large-scale LLM training, three main distributed training paradigms have emerged: Data Parallelism (DP), Tensor Parallelism (TP), Pipeline Parallelism (PP). DP solutions, like DeepSpeed ZeRO and its variant PyTorch FSDP, provide memory-efficient data parallel training scheme. PP and TP both are model parallel techniques, where PP shards model at layer granularity and TP partitions every layer evenly on each GPU. Among all these three, TP is becoming a prominent approach due to its excellent system efficiency in single-node cases, where GPUs are directly connected with high bandwidth links like NVLink and NVSwitch.
-
-However, TP falls short on multi-node cases with low cross-node communication bandwidth. [Prior work](https://arxiv.org/abs/2406.06858) reports the communication can take up to 75\% of end-to-end training time. Even with the latest DGX-H100 nodes equipped with high-end Infiniband of 400GB/s bandwidth, Figure 2 shows that the communication overheads remains to be up to 43\% end-to-end training iteration time. Despite recent advance in GeMM+NCCL kernel fusion techniques, which fuses GeMM with its subsequent communication collective to partially hide communication behind a single GeMM computation. These approaches still have limited computation-communication overlapping scope, thus often unable to fully hide communication behind single GeMM computation kernel. As GPU computation is getting faster (e.g., DGX-B200), communication overhead will be more pronounced in both single node and multi-node scenarios.
+Tensor parallelism (TP) is a popular distributed technique for training LLMs. TP leverages the aggregate memory of multiple GPUs to fit LLMs by partitioning each model layer across the GPUs. However, TP incurs two communication collective operations for each partitioned layer, separately for the forward and backward passes. TP is appealing due to its excellent system efficiency in single-node cases, where GPUs are directly connected via high bandwidth links like NVLink and NVSwitch. However, TP falls short in multi-node cases due to the lower bandwidth of cross-node interconnects. [Prior work](https://arxiv.org/abs/2406.06858) reports that communication can take up to 75\% of end-to-end training time. Figure 2 shows that even on the latest DGX-H100 nodes interconnected with high-end Infiniband of 400GB/s bandwidth, communication overheads remains as high as 43\% of end-to-end training iteration time. Recent advances in GeMM+NCCL kernel fusion are unable to fully hide communication overheads due to their limited scope of computation-communication overlapping. The trend of faster compute in newer GPUs (e.g., DGX-B200) indicates that the communication overheads of TP will be more pronounced in both single node and multiple node scenarios.  
 
 <div align="center">
   <img src="./images/gpt3-scale.png" width="400"><br>
@@ -47,29 +45,29 @@ However, TP falls short on multi-node cases with low cross-node communication ba
 # Domino Highlights
 
 
-* *1-sentence summary*: Domino achieves **Near-Complete** communication hiding behind computation via breaking down a single batch training into smaller and independent pieces, allowing efficient pipelining.
+* Domino is TP optimization technique that achieves **Near-Complete** communication hiding behind computation by decomposing a single batch training iteration into smaller and independent pieces, allowing efficient pipelining.
 
 Domino is the first work that provides a **uniform** Tensor Parallelism (TP) solution for both single-node and **multi-node** cases. Traditional TP solutions (e.g., Megatron-LM) fall short in multi-node cases due to limited cross-node communication bandwidth.
 
 ### Performance
 
-We tested Domino over 1 to 4 DGX-H100 boxes (8-H100 per box). Each node has intra-node NVLink bandwidth of 900GB/s and inter-node IB bandwidth of 400GB/s. Performance results are summarized as follows:
-1. For both GPT and Llama model series, Domino outperforms Megatron-LM by up to **1.3x** and **1.2x** separately in end-to-end training iteration throughput with varied model sizes, sequence lengths and batch sizes, which is summarized as the top Figure 1.
-2. For several cases, Domino achieves **near-optimal** training throughput, where optimal throughput refers to the throughput achieved by disabling all communication in TP training.
+We tested Domino on 1 to 4 DGX-H100 boxes (8xH100 per box). Each node has intra-node NVLink bandwidth of 900GB/s and inter-node IB bandwidth of 400GB/s. We oberved the following performance results:
+1. For both GPT and Llama model series, Domino outperforms Megatron-LM by up to **1.3x** and **1.2x** respectively in end-to-end training iteration throughput for different model sizes, sequence lengths and batch sizes. These results are summarized in Figure 1.
+2. For several cases, Domino achieves **near-optimal** training throughput, where optimal throughput refers to the throughput achieved assuming the communication collectives of TP are disabled.
 
 For more detailed performance results, please refer to our [arxiv paper](https://arxiv.org/abs/2409.15241).
 
 # Design Motivation
 
-In this section, we briefly discuss three topics. First, we discuss on why it is good time to design and implement uniform TP solution for both single node and multi-node cases. Then, we analyze the communication overhead on latest Nvidia DGX-H100 boxes with high cross-node communication interconnects. Last, we describe TP's sequenctial data dependency which causing communication stands out.
+In this section, we briefly discuss three topics. First, we motivate why the time is right is for a uniform TP solution for both single node and multi-node cases. Next, we analyze the communication overhead on latest Nvidia DGX-H100 boxes with high cross-node communication interconnects. Finally, we describe TP's sequential data dependency which causing communication stands out.
 
-### Why it is time for uniform TP for both single and MULTI-node?
+### It is time for a uniform TP for single and multi-node scenarios
 
 Nvidia is pushing hard on breaking communication bandwidth gap between intra-node (i.e., GPUs within a node connected with NVLink) and inter-node (i.e., cross-node connected with Infini-Band(IB)). For example, each DGX-H100 is equipped with eight ConnectX-7 network cards and gets aggregated cross-node bandwidth of 400GB/s, which is at same level of intra-node NVLink (900GB/s). Therefore, it is time for proposing a uniform solution for both single node and multi-node TP training.
 
 ### Communication Overhead in TP
 
-As described in [Megatron-LM paper](https://arxiv.org/pdf/1909.08053), for TP, every transformer block (i.e.,1 Self-Attention layer + 1 MLP layer) would incur 4 AllReduce calls, where two in forward pass and the other two in the backward pass (shown in Figure 3). Given a LLM consists of $N$ stacked transformer blocks, the total communication overhead equals to $4 * N$ AllReduce. Even for small models like GPT-3 2.7B or 6.7B which consists of 32 layers, the total number of AllReduce calls are 128 for every training iteration. For larger models, this communication times grow linearly with number of layers in the model.
+As described in [Megatron-LM paper](https://arxiv.org/pdf/1909.08053), for TP, every transformer block (i.e.,1 Self-Attention layer + 1 MLP layer) incurs 4 AllReduce calls, two in forward pass and two in the backward pass (shown in Figure 3). Given a LLM consisting of $N$ stacked transformer blocks, the number of AllReduce calls required for TP training is $4 * N$. Even for small models like GPT-3 2.7B or 6.7B which consists of 32 layers, the total number of AllReduce calls is 128 for every training iteration. For larger models, the number of AllReduce calls grows linearly with number of layers.
 
 <div align="center">
   <img src="./images/tp-ar.png" width="500"><br>
@@ -78,7 +76,7 @@ As described in [Megatron-LM paper](https://arxiv.org/pdf/1909.08053), for TP, e
 
 </div>
 
-One big issue for TP is that the *communication resides on critical path of every input batch training execution* due to sequential data dependency we described in the following [TP data dependency analysis](#tp-data-dependency-analysis) session. Therefore, all the communication overhead stands out and makes it hard to hide behind computation. In Figure 4, we provide our communication overhead measurement using Megatron-LM training GPT-3 and Lllama-2 model series with varied model sizes and batch sizes across 1 to 4 DGX-H100 nodes (i.e., 8 to 32 H100 GPUs). The communication overhead is up to **47\%** despite using latest Nvidia hardware DGX-H100 with 400GB/s cross-node bandwidth.
+One big issue for TP is that the *communication resides on critical path of every input batch training execution* due to sequential data dependency we described in the following [TP data dependency analysis](#tp-data-dependency-analysis) section. Therefore, the communication overhead stands out and is difficult to hide behind computation. In Figure 4, we provide our communication overhead measurement using Megatron-LM training GPT-3 and Llama-2 model series with different model sizes and batch sizes across 1 to 4 DGX-H100 nodes (i.e., 8 to 32 H100 GPUs). The communication overhead is up to **47\%** despite using latest Nvidia hardware DGX-H100 with 400GB/s cross-node bandwidth.
 
 <div align="center">
   <img src="./images/tp-comm-overhead.png" width="600"><br>
@@ -87,11 +85,11 @@ One big issue for TP is that the *communication resides on critical path of ever
 
 </div>
 
-As Llama-3 405B model training takes 54 days on 16,000 H100 GPUs, the projected communication time can be up to around **25 days on 16,000 H100s**. This finding underscore that, despite using latest high-bandwidth interconnects like NVLink/Infini-Band(IB), the communication overhead still remains as a huge portion of end-to-end training time.
+As Llama-3 405B model training takes 54 days on 16,000 H100 GPUs, the projected communication time can be up to around **25 days on 16,000 H100s**. This finding shows that, despite using latest high-bandwidth interconnects like NVLink/Infini-Band(IB), the communication overheads of TP remains a huge portion of end-to-end training time.
 
 ### TP data dependency analysis
 
-In traditional TP shown as Figure 5, a transformer layer (either Attn or MLP layer) computation can be abstracted into $X\*A\*B=Y$, where $X$ is input. For attention layer, $A$ is attention computation (e.g., multihead-attention) and $B$ is linear layer. For MLP layer, both $A$ and $B$ are linear layers. An AllReduce is conducted on $Y$ after computation. Due to **sequential data dependency on $Y$ between computation (i.e., $X\*A\*B=Y$) and communication (i.e., AllReduce($Y$)), AllReduce($Y$) completely stands out**, thus making TP not efficient in limited communication bandwidth scenarios.
+In traditional TP, shown in Figure 5, a transformer layer (either Attn or MLP layer) computation can be abstracted into $X\*A\*B=Y$, where $X$ is input. For attention layer, $A$ is attention computation (e.g., multihead-attention) and $B$ is linear layer. For MLP layer, both $A$ and $B$ are linear layers. An AllReduce is conducted on $Y$ after computation. Due to **sequential data dependency on $Y$ between computation (i.e., $X\*A\*B=Y$) and communication (i.e., AllReduce($Y$)), AllReduce($Y$) completely stands out**, thus making TP not efficient in limited communication bandwidth scenarios.
 
 <div align="center">
   <img src="./images/design-base.png" width="600"><br>
