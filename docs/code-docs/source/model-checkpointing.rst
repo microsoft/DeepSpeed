@@ -5,11 +5,11 @@ DeepSpeed provides routines for checkpointing model state during training.
 
 Loading Training Checkpoints
 ----------------------------
-.. autofunction:: deepspeed.DeepSpeedEngine.load_checkpoint
+.. autofunction:: DeepSpeedEngine.load_checkpoint
 
 Saving Training Checkpoints
 ---------------------------
-.. autofunction:: deepspeed.DeepSpeedEngine.save_checkpoint
+.. autofunction:: DeepSpeedEngine.save_checkpoint
 
 
 ZeRO Checkpoint fp32 Weights Recovery
