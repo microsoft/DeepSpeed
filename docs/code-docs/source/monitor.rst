@@ -9,9 +9,9 @@ overview of what DeepSpeed will log automatically.
     :header: "Field", "Description", "Condition"
     :widths: 20, 20, 10
 
-    `Train/Samples/train_loss`,"The training loss.", None
-    `Train/Samples/lr`,"The learning rate during training.", None
-    `Train/Samples/loss_scale`,"The loss scale when training using `fp16`.", `fp16` must be enabled.
+    `Train/Samples/train_loss`,"The training loss.",None
+    `Train/Samples/lr`,"The learning rate during training.",None
+    `Train/Samples/loss_scale`,"The loss scale when training using `fp16`.",`fp16` must be enabled.
     `Train/Eigenvalues/ModelBlockParam_{i}`,"Eigen values per param block.,`eigenvalue` must be enabled.
     `Train/Samples/elapsed_time_ms_forward`,"The global duration of the forward pass.,`flops_profiler.enabled` or `wall_clock_breakdown`.
     `Train/Samples/elapsed_time_ms_backward`,"The global duration of the forward pass.,`flops_profiler.enabled` or `wall_clock_breakdown`.
