@@ -514,19 +514,20 @@ def to_torch_tensor(state_dict, return_empty_tensor=False):
     """
     Convert state_dict of GatheredTensor to torch tensor
     """
+    torch_state_dict = {}
     converted_tensors = {}
     for name, tensor in state_dict.items():
         tensor_id = id(tensor)
-        if tensor_id in converted_tensors:
-            shared_tensor = state_dict[converted_tensors[tensor_id]]
-            state_dict[name] = shared_tensor
+        if tensor_id in converted_tensors:  # shared tensors
+            shared_tensor = torch_state_dict[converted_tensors[tensor_id]]
+            torch_state_dict[name] = shared_tensor
         else:
             converted_tensors[tensor_id] = name
             if return_empty_tensor:
-                state_dict[name] = torch.empty(tensor.shape, dtype=tensor.dtype)
+                torch_state_dict[name] = torch.empty(tensor.shape, dtype=tensor.dtype)
             else:
-                state_dict[name] = tensor.contiguous()
-    return state_dict
+                torch_state_dict[name] = tensor.contiguous()
+    return torch_state_dict
 
 
 def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir,
