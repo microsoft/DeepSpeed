@@ -661,8 +661,9 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
         else:
             torch.save(shard_state_dict, output_path)
         # release the memory of current shard
-        for tensor_name in shard_state_dict:
+        for tensor_name in list(shard_state_dict.keys()):
             del state_dict[tensor_name]
+            del shard_state_dict[tensor_name]
         del shard_state_dict
         gc.collect()
 
