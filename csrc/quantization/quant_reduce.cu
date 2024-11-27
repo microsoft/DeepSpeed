@@ -394,8 +394,7 @@ __global__ void __launch_bounds__(1024) loco_dequant_reduce(int8_t* reduced_data
         if (i * stride + elem_offset < elems_per_out_group) {
             // ----------- Begin Error-Feedback Modification -----------
             int8_t local_output[elems_per_load];
-            quantize::_chunk<numBits, quantType>(
-                local_output, iteration_buffer, params);
+            quantize::_chunk<numBits, quantType>(local_output, iteration_buffer, params);
             mem_access::store_global<mem_granularity>(reduced_data + iter_offset, local_output);
 
             // Dequantize the quantized output to compute the dequantized value
