@@ -3616,6 +3616,16 @@ class DeepSpeedEngine(Module):
         get_layer_state_dict(self.module, prefix="")
         return state_dict
 
+    def _consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
+
+        if self.zero_optimization_stage() == ZeroStageEnum.weights:
+            return self._zero3_consolidated_16bit_state_dict(exclude_frozen_parameters)
+        elif self.zero_autotp_size() > 1:
+            return self._replace_module_consolidated_state_dict()
+
+        raise ValueError("consolidated_16bit_state_dict is only applicable to cases where weights are partitioned, "
+                         "including Zero Stage 3 and tensor parallelism (TP).")
+
     def _zero3_consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
         """
         Get a full non-partitioned state_dict with fp16 weights on cpu.

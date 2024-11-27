@@ -142,13 +142,13 @@ class LinearAllreduce(Replaced_Layer):
         world_sz = dist.get_world_size(self.mp_group)
 
         for idx, param in enumerate(params_list):
+            params_list[idx].data_partition = param.data
             param = param.transpose(0, 1).contiguous()
             output_param = torch.empty(world_sz * param.shape[0],
                                        param.shape[1],
                                        dtype=param.dtype,
                                        device=param.device)
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
-            params_list[idx].data_partition = param.data
             params_list[idx].data = output_param.transpose(0, 1).contiguous()
         return
 
@@ -280,13 +280,12 @@ class LinearLayer(Replaced_Layer):
             # TODO: uneven support
             # shape_tensor=torch.tensor(param.shape[0],dtype=param.dtype,device=param.device)
             # dist.all_reduce(shape_tensor, group=self.mp_group)
-
+            params_list[idx].data_partition = param.data
             output_param = torch.empty(world_sz * param.shape[0],
                                        param.shape[1],
                                        dtype=param.dtype,
                                        device=param.device)
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
-            params_list[idx].data_partition = param.data
             params_list[idx].data = output_param.contiguous()
 
 
