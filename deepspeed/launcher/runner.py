@@ -603,9 +603,9 @@ def main(args=None):
             cmd, kill_cmd, env = runner.get_cmd(env, active_resources)
         else:
             cmd = runner.get_cmd(env, active_resources)
-
-    logger.info(f"cmd = {' '.join(cmd)}")
-    result = subprocess.Popen(cmd, env=env)
+    cmd = ' '.join(cmd)
+    logger.info(f"cmd = {cmd}")
+    result = subprocess.Popen(cmd, env=env, shell=True)
 
     def sigkill_handler(signum, frame):
         result.send_signal(signal.SIGINT)
