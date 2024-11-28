@@ -386,7 +386,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                              checkpoint=checkpoint_file)
             pbar.update(1)
             gc.collect()
-        replaced_module = set_lm_head(replaced_module)
         # conv2d tp module replace
         # Now is for yuan model. Add model list and conv policy to decide whether to replace conv.
         if 'Yuan' in str(replaced_module):
@@ -396,6 +395,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                          orig_class=orig_layer_impl,
                                          replace_fn=replace_fn,
                                          _replace_policy=config.injection_policy_tuple)
+    replaced_module = set_lm_head(replaced_module)
 
     quantizer = GroupQuantizer(q_int8=quantize)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
