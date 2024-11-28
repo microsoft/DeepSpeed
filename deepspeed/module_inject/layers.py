@@ -67,7 +67,7 @@ class Replaced_Layer(nn.Module, ABC):
         pass
 
     def partition(self, params_list):
-        for idx, param in params_list:
+        for idx, param in enumerate(params_list):
             params_list[idx].data = param.data_partition
             del param.data_partition
 
