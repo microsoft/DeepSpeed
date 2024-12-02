@@ -76,7 +76,6 @@ from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_cl
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
-from deepspeed.utils import parallel_states
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
@@ -426,11 +425,14 @@ class DeepSpeedEngine(Module):
         assert self.zero_optimization_stage(
         ) == 0, "Currently, the compatibility between 'autotp' and 'zero_stage > 0' has not been validated"
 
-        self.mpu = parallel_states
-
+        # from deepspeed.utils import parallel_states
+        # self.mpu = parallel_states
         # disable self.allreduce_gradients() for dp =1 test.
         self.enable_backward_allreduce = False
-        self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
+        # self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
+        
+        self.mpu = groups
+        self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):

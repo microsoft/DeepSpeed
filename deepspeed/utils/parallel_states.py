@@ -4,7 +4,7 @@
 # DeepSpeed Team
 # taken from Megatron,  decouple mpu and Megatron for test
 """Model and data parallel groups."""
-
+import torch
 import deepspeed.comm as dist
 # Intra-layer model parallel group that the current rank belongs to.
 _TENSOR_MODEL_PARALLEL_GROUP = None
