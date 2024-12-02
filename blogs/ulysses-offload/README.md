@@ -250,7 +250,7 @@ allowing users to focus on their research and development tasks.
 We are excited to release FPDT (aka Ulysses-Offload). FPDT has been
 fully integrated with Megatron-DeepSpeed and accessible through both
 DeepSpeed and Megatron-DeepSpeed GitHub repos. Click here for detailed
-[tutorial](https://www.deepspeed.ai/tutorials/ulysses-offload/) on usage.
+[tutorial](https://www.deepspeed.ai/tutorials/fpdt/) on usage.
 
 We invite the community to explore our implementation, contribute to
 further advancements, and join us in pushing the boundaries of what is
