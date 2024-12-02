@@ -428,11 +428,13 @@ class DeepSpeedEngine(Module):
         # from deepspeed.utils import parallel_states
         # self.mpu = parallel_states
         # disable self.allreduce_gradients() for dp =1 test.
-        self.enable_backward_allreduce = False
         # self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
         
         self.mpu = groups
         self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
+        
+        # self.enable_backward_allreduce = False
+
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -2525,6 +2527,11 @@ class DeepSpeedEngine(Module):
         else:
             dp_group = groups._get_sequence_data_parallel_group()
             dp_world_size = dist.get_world_size(dp_group) / float(self.sequence_parallel_size)
+            
+        # bypass gradient reduction when dp_size equals 1.
+        if dp_world_size == 1:
+            return 
+        
         for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
             if sparse_bucket_tuple:
                 bucket_type, sparse_bucket = sparse_bucket_tuple
