@@ -3,7 +3,7 @@ title: "Fully Pipeliend Distributed Transformer"
 tags: training ultra long context language model with fully pipelined distributed transformer
 ---
 
-Fully Pipeliend Distributed Transformer (FPDT) is a system of chunking and offloading long-context transformer model training scheme built on top of [ZeRO](/tutorials/zero/) and [DeepSpeed-Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). FPDT enables 2M context size training on 8B models with only 4 GPUs, and 4M context size training on 70B models with 32 GPUs. Read our [FPDT blog]() and [paper](https://arxiv.org/pdf/2408.16978) to learn more!
+Fully Pipeliend Distributed Transformer (FPDT) is a system of chunking and offloading long-context transformer model training scheme built on top of [ZeRO](/tutorials/zero/) and [DeepSpeed-Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). FPDT enables 2M context size training on 8B models with only 4 GPUs, and 4M context size training on 70B models with 32 GPUs. Read our [FPDT blog](https://github.com/microsoft/DeepSpeed/blob/master/blogs/ulysses-offload/README.md) and [paper](https://arxiv.org/pdf/2408.16978) to learn more!
 
 We recommend that you read the tutorials on [Getting Started](/getting-started/), [ZeRO](/tutorials/zero/)  and [Megatron-DeepSpeed](/tutorials/megatron/) before stepping through this tutorial.
 
