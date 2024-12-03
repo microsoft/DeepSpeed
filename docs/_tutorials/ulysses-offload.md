@@ -3,15 +3,15 @@ title: "Fully Pipeliend Distributed Transformer"
 tags: training ultra long context language model with fully pipelined distributed transformer
 ---
 
-Fully Pipeliend Distributed Transformer (FPDT) is a system of chunking and offloading long-context transformer model training scheme built on top of [ZeRO](/tutorials/zero/) and [DeepSpeed-Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). FPDT enables 2M context size training on 8B models with only 4 GPUs, and 4M context size training on 70B models with 32 GPUs. Read our [FPDT blog](https://github.com/microsoft/DeepSpeed/blob/master/blogs/ulysses-offload/README.md) and [paper](https://arxiv.org/pdf/2408.16978) to learn more!
+DeepSpeed Ulysses-Offload is a system of chunking and offloading long-context transformer model training scheme built on top of [ZeRO](/tutorials/zero/) and [DeepSpeed-Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). It adopts Fully Pipeliend Distributed Transformer (FPDT) which enables 2M context size training on 8B models with only 4 GPUs, and 4M context size training on 70B models with 32 GPUs. Read our [Ulysses-Offload blog](https://github.com/microsoft/DeepSpeed/blob/master/blogs/ulysses-offload/README.md) and [paper](https://arxiv.org/pdf/2408.16978) to learn more!
 
 We recommend that you read the tutorials on [Getting Started](/getting-started/), [ZeRO](/tutorials/zero/)  and [Megatron-DeepSpeed](/tutorials/megatron/) before stepping through this tutorial.
 
 
-## Design of FPDT
-FPDT is a chunking and offloading-based transformer implementation, which retain the full precision of the vanilla transformer, while significantly reduce the activation memory required during long-context model training. FPDT breaks long sequence input into smaller chunks, moving them among host and GPU memory to achieve the superior memory efficiency while reaching over 50% of MFU. FPDT adopts a double-buffer design, which overlaps the fetching/offloading with the attention computation. FPDT also allows uUsers to configure the chunk size to match the expected memory budget.
+## Design of Ulysses-Offload
+Ulysses-Offload is a chunking and offloading-based transformer implementation, which retain the full precision of the vanilla transformer, while significantly reduce the activation memory required during long-context model training. FPDT breaks long sequence input into smaller chunks, moving them among host and GPU memory to achieve the superior memory efficiency while reaching over 50% of MFU. FPDT adopts a double-buffer design, which overlaps the fetching/offloading with the attention computation. FPDT also allows uUsers to configure the chunk size to match the expected memory budget.
 
-FPDT supports ZeRO and DeepSpeed-Ulysses, which shard the model and tensors among GPU memory, further pushing the limit of long-context model training with state-of-the-art hardware efficiency. 
+Ulysses-Offload supports ZeRO, which shards the model and tensors among GPU memory, further pushing the limit of long-context model training with state-of-the-art hardware efficiency. 
 
 
 ## Training Environment
@@ -19,7 +19,7 @@ FPDT supports ZeRO and DeepSpeed-Ulysses, which shard the model and tensors amon
 For this tutorial, Flash Attention (CUDA) is required. We will configure a 8 billion parameter LLaMA model using the DeepSpeed [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed/tree/master/) code. We will use 1 nodes of 4x [NVIDIA Tesla A100-SXM4 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/a100/).
 
 
-## Training a 6.7B parameter GPT with FPDT
+## Training a 6.7B parameter GPT with Ulysses-Offload
 Users can set the context size at the beginning of the script, for this excercise, we will use 256K context and mini batch of one. 
 ```
 ### Main configs
@@ -35,7 +35,7 @@ For 6.7B model, we will enable ZeRO-3, Ulysses, activation checkpoing with CPU o
 
 ### Megatron-DeepSpeed Configuration Changes
 
-1. An example snippet of megatron-deepspeed configurations with all FPDT features enable is shown below:
+1. An example snippet of megatron-deepspeed configurations with all Ulysses-Offload features enable is shown below:
     ```
     megatron_options="\
     --ds-sequence-parallel-fpdt \
