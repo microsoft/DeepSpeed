@@ -20,13 +20,13 @@ For this tutorial, Flash Attention (CUDA) is required. We will configure a 8 bil
 
 
 ## Training a 6.7B parameter GPT with FPDT
-Users can set the context size at the beginning of the script, for this excercise, we will use 256K context and mini batch of one.
+Users can set the context size at the beginning of the script, for this exercise, we will use 256K context and mini batch of one.
 ```
 ### Main configs
 seq_len=262144 # need to be power of 2
 ```
 
-For 6.7B model, we will enable ZeRO-3, Ulysses, activation checkpoing with CPU offloading first reach a decent GPU memory efficiency, then users can configure the following arguments:
+For 6.7B model, we will enable ZeRO-3, Ulysses, activation checkpointing with CPU offloading first reach a decent GPU memory efficiency, then users can configure the following arguments:
 
  - ds_sequence_parallel_fpdt: Boolean indicating whether to use FPDT, default is false.
  - ds_sequence_parallel_fpdt_chunk_size: Integer indicating the chunk size in FPDT, default is 65536, meaning no matter how long the sequence is, FPDT will always process chunks of 65536 tokens until the entire sequence is all processed.
