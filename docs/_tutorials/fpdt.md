@@ -11,7 +11,7 @@ We recommend that you read the tutorials on [Getting Started](/getting-started/)
 ## Design of FPDT
 FPDT is a chunking and offloading-based transformer implementation, which retain the full precision of the vanilla transformer, while significantly reduce the activation memory required during long-context model training. FPDT breaks long sequence input into smaller chunks, moving them among host and GPU memory to achieve the superior memory efficiency while reaching over 50% of MFU. FPDT adopts a double-buffer design, which overlaps the fetching/offloading with the attention computation. FPDT also allows uUsers to configure the chunk size to match the expected memory budget.
 
-FPDT supports ZeRO and DeepSpeed-Ulysses, which shard the model and tensors among GPU memory, further pushing the limit of long-context model training with state-of-the-art hardware efficiency. 
+FPDT supports ZeRO and DeepSpeed-Ulysses, which shard the model and tensors among GPU memory, further pushing the limit of long-context model training with state-of-the-art hardware efficiency.
 
 
 ## Training Environment
@@ -20,7 +20,7 @@ For this tutorial, Flash Attention (CUDA) is required. We will configure a 8 bil
 
 
 ## Training a 6.7B parameter GPT with FPDT
-Users can set the context size at the beginning of the script, for this excercise, we will use 256K context and mini batch of one. 
+Users can set the context size at the beginning of the script, for this excercise, we will use 256K context and mini batch of one.
 ```
 ### Main configs
 seq_len=262144 # need to be power of 2
