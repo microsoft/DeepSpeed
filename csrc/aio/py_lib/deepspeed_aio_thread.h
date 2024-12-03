@@ -11,6 +11,7 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 #include <memory>
 #include <queue>
 #include "deepspeed_cpu_op.h"
+#include "deepspeed_cuda_op.h"
 
 struct thread_sync_t {
     std::mutex _mutex;

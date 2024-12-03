@@ -13,6 +13,7 @@ Functionality for managing CPU tensors occupying page-locked memory.
 
 #include <map>
 #include "deepspeed_py_aio.h"
+#include <cuda_runtime.h>
 
 struct deepspeed_pin_tensor_t {
     std::map<void*, int64_t> _locked_tensors;

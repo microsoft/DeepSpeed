@@ -66,6 +66,12 @@ struct deepspeed_io_handle_t {
                const bool async,
                const int64_t file_offset);
 
+    int mem_copy(const bool host_copy,
+                 const torch::Tensor& buffer,
+                 const torch::Tensor& dst_buffer,
+                 const bool validate,
+                 const bool async);
+
     int sync_pread(torch::Tensor& buffer, const char* filename, const int64_t file_offset);
 
     int sync_pwrite(const torch::Tensor& buffer, const char* filename, const int64_t file_offset);

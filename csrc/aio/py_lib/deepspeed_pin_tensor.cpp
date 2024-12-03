@@ -13,9 +13,11 @@ using namespace std;
 
 deepspeed_pin_tensor_t::~deepspeed_pin_tensor_t()
 {
+    cudaError_t e;
     for (auto iter = _locked_tensors.begin(); iter != _locked_tensors.end(); ++iter) {
         munlock(iter->first, iter->second);
         std::free((void*)iter->first);
+        e = cudaHostUnregister((void*)iter->first);
     }
     _locked_tensors.clear();
 }
@@ -23,9 +25,11 @@ deepspeed_pin_tensor_t::~deepspeed_pin_tensor_t()
 torch::Tensor deepspeed_pin_tensor_t::alloc(const int64_t num_elem,
                                             const torch::TensorOptions& options)
 {
+    cudaError_t e;
     const auto scalar_dtype = torch::typeMetaToScalarType(options.dtype());
     const auto num_bytes = num_elem * torch::elementSize(scalar_dtype);
     auto pinned_buffer = ds_page_aligned_alloc(num_bytes, true);
+    e = cudaHostRegister(pinned_buffer, num_bytes, cudaHostRegisterPortable);
     assert(nullptr != pinned_buffer);
 
     _locked_tensors[pinned_buffer] = num_bytes;
@@ -41,10 +45,12 @@ torch::Tensor deepspeed_pin_tensor_t::alloc(const int64_t num_elem, const at::Sc
 
 bool deepspeed_pin_tensor_t::free(torch::Tensor& locked_tensor)
 {
+    cudaError_t e;
     auto addr = locked_tensor.data_ptr();
     if (_locked_tensors.find(addr) != _locked_tensors.end()) {
         munlock(addr, _locked_tensors[addr]);
         std::free(addr);
+        e = cudaHostUnregister(addr);
         _locked_tensors.erase(addr);
         return true;
     }

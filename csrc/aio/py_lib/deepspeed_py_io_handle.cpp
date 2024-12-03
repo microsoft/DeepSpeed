@@ -305,6 +305,28 @@ int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
     return wait();
 }
 
+int deepspeed_io_handle_t::mem_copy(const bool host_copy,
+                                    const torch::Tensor& buffer,
+                                    const torch::Tensor& dst_buffer,
+                                    const bool validate,
+                                    const bool async)
+{
+    // buffer can exceed file size to enable 4k alignment
+    const auto buffer_bytes = static_cast<int64_t>(buffer.nbytes());
+    assert((buffer_bytes % _intra_op_parallelism) == 0);
+
+    if (!_is_valid_parallel_aio_op(true, buffer_bytes)) { return -1; }
+
+    // TODO: op id rollover
+    _op_ids++;
+    auto scheduled_op = std::make_shared<cuda_op_desc_t>(host_copy, buffer, dst_buffer, _op_ids, _intra_op_parallelism, validate);
+    _schedule_aio_work(scheduled_op);
+
+    if (async) { return _op_ids; } // Return op number
+
+    return wait();
+}
+
 int deepspeed_io_handle_t::sync_pread(torch::Tensor& buffer,
                                       const char* filename,
                                       const int64_t file_offset)
