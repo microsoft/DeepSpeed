@@ -30,21 +30,21 @@ year={2024}
 In the rapidly evolving field of generative AI and scientific ML, the
 ability to train large (language) models with ultra-long context
 capabilities is becoming increasingly important. These models are
-essential for a variety of complex tasks, ranging from understanding
-lengthy documents to image and video generation to processing extensive
+essential for a variety of complex tasks, such as understanding
+lengthy documents, generating images and videos, and processing extensive
 sequences in computational biology. However, training such models
 efficiently poses significant challenges due to the enormous GPU
-resources and memory required.
+memory required.
 
-Building on our previous project, DeepSpeed Ulysses, which focuses on
+Building DeepSpeed Ulysses, our previous project, which developed
 system optimizations for training extremely long sequence transformer
 models, we are excited to present the Fully Pipelined Distributed
 Transformer (FPDT), also known as Ulysses-Offload, in this release. FPDT
 is an innovative, resource-efficient technique that offers comparable
 benefits to DeepSpeed Ulysses and other previous long-context
-optimization methods, but with a modest hardware budget. FPDT makes
+optimization methods, but with a lower hardware budget. FPDT makes
 ultra long-context large language models (LLM) training and finetuning
-accessible to everyone, regardless of GPU resources. FPDT enables
+accessible to everyone, including those with limited GPU resources. FPDT enables
 training with context lengths of up to 2 million tokens using just 4
 NVIDIA A100-40GB GPUs. FPDT supports 16x longer sequence lengths at 55% 
 Model FLOPs Utilization (MFU) than NVIDIA Megatron-SP and DeepSpeed Ulysses
@@ -75,9 +75,9 @@ forward and backward passes of the training process. By optimizing the
 use of GPU and host CPU memory, we can train larger models with longer
 sequences without running into GPU memory limitations. This optimization
 is crucial for enabling the training of ultra-long context models on a
-limited number of GPUs. It is worth noting that FPDT memory optimization
+limited number of GPUs. It is worth noting that Ulysses-Offload memory optimization
 is orthogonal and complementary to model- parameter-focused memory
-optimization techniques used by DeepSpeed ZeRO and PyTorch FSDP.
+optimization techniques used by DeepSpeed ZeRO and PyTorch FSDP. Ulysses-Offload optimizes memory footprint of activations associated with long sequences while ZeRO and FSDP optimize memory footprint of model parameters.
 
 ### 3. Compatibility and Flexibility
 
