@@ -1,6 +1,6 @@
 ---
 title: DeepSpeed Accelerator Setup Guides
-tags: getting-started
+tags: getting-started training accelerator
 ---
 
 # Contents
@@ -9,6 +9,7 @@ tags: getting-started
 - [Intel Architecture (IA) CPU](#intel-architecture-ia-cpu)
 - [Intel XPU](#intel-xpu)
 - [Huawei Ascend NPU](#huawei-ascend-npu)
+- [Intel Gaudi](#intel-gaudi)
 
 # Introduction
 DeepSpeed supports different accelerators from different companies.   Setup steps to run DeepSpeed on certain accelerators might be different.  This guide allows user to lookup setup instructions for the accelerator family and hardware they are using.
@@ -95,8 +96,9 @@ ipex_model = ipex.llm.optimize(deepspeed_model)
 ```
 to get model optimzied by Intel Extension for PyTorch.
 
-## More example for using DeepSpeed with Intel Extension for PyTorch on Intel Architecture CPU
-Refer to https://github.com/intel/intel-extension-for-pytorch/tree/main/examples/cpu/inference/python/llm for more extensive guide.
+## More examples for using DeepSpeed on Intel CPU
+Refer to [LLM examples](https://github.com/intel/intel-extension-for-pytorch/tree/main/examples/cpu/llm) for more code samples of running inference with DeepSpeed on Intel CPU.
+
 
 # Intel XPU
 DeepSpeed XPU accelerator supports Intel® Data Center GPU Max Series.
@@ -131,8 +133,8 @@ XPU available: True
 accelerator: xpu
 ```
 
-## More example for using DeepSpeed on Intel XPU
-Refer to https://github.com/intel/intel-extension-for-pytorch/tree/release/xpu/2.1.40/examples/gpu/inference/python/llm for more extensive guide.
+## More examples for using DeepSpeed on Intel XPU
+Refer to [LLM examples](https://github.com/intel/intel-extension-for-pytorch/tree/xpu-main/examples/gpu/llm), [Megatron-DeepSpeed training examples](https://github.com/intel/intel-extension-for-deepspeed/tree/main/examples) for more code samples of running LLM with DeepSpeed on Intel XPU.
 
 
 # Huawei Ascend NPU
@@ -245,3 +247,10 @@ accelerator: npu
 ## Multi-card parallel training using Huawei Ascend NPU
 
 To perform model training across multiple Huawei Ascend NPU cards using DeepSpeed, see the examples provided in [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples/blob/master/training/cifar/cifar10_deepspeed.py).
+
+# Intel Gaudi
+PyTorch models can be run on Intel® Gaudi® AI accelerator using DeepSpeed. Refer to the following user guides to start using DeepSpeed with Intel Gaudi:
+* [Getting Started with DeepSpeed](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Getting_Started_with_DeepSpeed/Getting_Started_with_DeepSpeed.html#getting-started-with-deepspeed)
+* [DeepSpeed User Guide for Training](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide/DeepSpeed_User_Guide.html#deepspeed-user-guide)
+* [Optimizing Large Language Models](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Optimizing_LLM.html#llms-opt)
+* [Inference Using DeepSpeed](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html#deepspeed-inference-user-guide)
