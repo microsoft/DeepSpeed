@@ -1,13 +1,13 @@
-# Ulysses-Offload: Democratizing Long Context LLM Training 
+# Ulysses-Offload: Democratizing Long Context LLM Training
 
 <img src="./media/image1.png" style="width:6.5in;height:3.34583in"
 alt="A screenshot of a computer Description automatically generated" />
 
-Figure 1: Ulysses-Offload supports 16x longer sequence lengths at 55% 
+Figure 1: Ulysses-Offload supports 16x longer sequence lengths at 55%
 Model FLOPs Utilization (MFU) than NVIDIA Megatron-SP and DeepSpeed Ulysses.
 
 
-To cite and for more technical in depth of this release, please see 
+To cite and for more technical in depth of this release, please see
 our [arxiv report](https://arxiv.org/abs/2408.16978):
 
 @article{yao2024ulysses,
@@ -46,10 +46,10 @@ optimization methods, but with a lower hardware budget. FPDT makes
 ultra long-context large language models (LLM) training and finetuning
 accessible to everyone, including those with limited GPU resources. FPDT enables
 training with context lengths of up to 2 million tokens using just 4
-NVIDIA A100-40GB GPUs. FPDT supports 16x longer sequence lengths at 55% 
+NVIDIA A100-40GB GPUs. FPDT supports 16x longer sequence lengths at 55%
 Model FLOPs Utilization (MFU) than NVIDIA Megatron-SP and DeepSpeed Ulysses
-(see Figure 1). The next section highlights the key innovations of FPDT, 
-and subsequent sections provide additional details on the design and 
+(see Figure 1). The next section highlights the key innovations of FPDT,
+and subsequent sections provide additional details on the design and
 usability of FPDT, followed by experimental results.
 
 ## Key Innovations
@@ -105,7 +105,7 @@ alt="A screenshot of a computer Description automatically generated" />
 
 Figure 2: FPDT core design
 
-### 
+###
 
 ### Pipelining and Scheduling
 
@@ -238,11 +238,11 @@ and well-documented (see tutorial).
 Our pipeline design and memory optimization techniques are
 straightforward to implement, making FPDT accessible to researchers and
 practitioners aiming to train long-context LLMs efficiently. We provide
-detailed [technical report](https://arxiv.org/abs/2408.16978), 
-documentation and examples to guide users through the setup process, 
-ensuring a smooth transition to using FPDT. Additionally, FPDT, in the 
-tradition of DeepSpeed provides user-friendly API which abstracts the 
-complexities of mixed precision training and memory optimization, 
+detailed [technical report](https://arxiv.org/abs/2408.16978),
+documentation and examples to guide users through the setup process,
+ensuring a smooth transition to using FPDT. Additionally, FPDT, in the
+tradition of DeepSpeed provides user-friendly API which abstracts the
+complexities of mixed precision training and memory optimization,
 allowing users to focus on their research and development tasks.
 
 ## General Availability of DeepSpeed Ulysses-Offload
@@ -256,8 +256,8 @@ We invite the community to explore our implementation, contribute to
 further advancements, and join us in pushing the boundaries of what is
 possible in LLM and AI. This release is part of the bigger DeepSpeed
 ecosystem of large-scale AI training, finetuning and inference. For more
-details on all DeepSpeed technologies and innovations, please visit our 
+details on all DeepSpeed technologies and innovations, please visit our
 [website]((https://www.deepspeed.ai/)) and follow us
-on X, formerly Twitter, ([English](https://twitter.com/MSFTDeepSpeed), 
-[Japanese](https://twitter.com/MSFTDeepSpeedJP)) and 
+on X, formerly Twitter, ([English](https://twitter.com/MSFTDeepSpeed),
+[Japanese](https://twitter.com/MSFTDeepSpeedJP)) and
 [Chinese Zhihu](https://www.zhihu.com/people/deepspeed).
