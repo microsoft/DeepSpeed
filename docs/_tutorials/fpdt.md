@@ -61,7 +61,7 @@ For 6.7B model, we will enable ZeRO-3, Ulysses, activation checkpoing with CPU o
     fi
     ```
 
-You can find the full script [here]().
+You can find the full script [here](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples_deepspeed/sequence_parallel/ds_pretrain_gpt_6.7B_fpdt_32k.sh).
 
 See more details on Megatron-DeepSpeed [tutorial](/tutorials/megatron/) examples on how to launch a Megatron-DeepSpeed job.
 
