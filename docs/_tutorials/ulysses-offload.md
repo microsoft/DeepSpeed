@@ -65,4 +65,4 @@ You can find the full script [here](https://github.com/microsoft/Megatron-DeepSp
 
 See more details on Megatron-DeepSpeed [tutorial](/tutorials/megatron/) examples on how to launch a Megatron-DeepSpeed job.
 
-Congratulations! You have completed the FPDT tutorial.
+Congratulations! You have completed the Ulysses-Offload tutorial.
