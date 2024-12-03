@@ -1,5 +1,5 @@
 ---
-title: "Fully Pipeliend Distributed Transformer"
+title: "DeepSpeed Ulysses-Offload"
 tags: training ultra long context language model with fully pipelined distributed transformer
 ---
 
@@ -11,11 +11,7 @@ We recommend that you read the tutorials on [Getting Started](/getting-started/)
 ## Design of Ulysses-Offload
 Ulysses-Offload is a chunking and offloading-based transformer implementation, which retain the full precision of the vanilla transformer, while significantly reduce the activation memory required during long-context model training. FPDT breaks long sequence input into smaller chunks, moving them among host and GPU memory to achieve the superior memory efficiency while reaching over 50% of MFU. FPDT adopts a double-buffer design, which overlaps the fetching/offloading with the attention computation. FPDT also allows uUsers to configure the chunk size to match the expected memory budget.
 
-<<<<<<< HEAD:docs/_tutorials/ulysses-offload.md
 Ulysses-Offload supports ZeRO, which shards the model and tensors among GPU memory, further pushing the limit of long-context model training with state-of-the-art hardware efficiency. 
-=======
-FPDT supports ZeRO and DeepSpeed-Ulysses, which shard the model and tensors among GPU memory, further pushing the limit of long-context model training with state-of-the-art hardware efficiency.
->>>>>>> 681a83f450f0b1ac3f1c28885e2cc4f1145aa2af:docs/_tutorials/fpdt.md
 
 
 ## Training Environment
@@ -23,13 +19,8 @@ FPDT supports ZeRO and DeepSpeed-Ulysses, which shard the model and tensors amon
 For this tutorial, Flash Attention (CUDA) is required. We will configure a 8 billion parameter LLaMA model using the DeepSpeed [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed/tree/master/) code. We will use 1 nodes of 4x [NVIDIA Tesla A100-SXM4 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/a100/).
 
 
-<<<<<<< HEAD:docs/_tutorials/ulysses-offload.md
 ## Training a 6.7B parameter GPT with Ulysses-Offload
 Users can set the context size at the beginning of the script, for this excercise, we will use 256K context and mini batch of one. 
-=======
-## Training a 6.7B parameter GPT with FPDT
-Users can set the context size at the beginning of the script, for this exercise, we will use 256K context and mini batch of one.
->>>>>>> 681a83f450f0b1ac3f1c28885e2cc4f1145aa2af:docs/_tutorials/fpdt.md
 ```
 ### Main configs
 seq_len=262144 # need to be power of 2
