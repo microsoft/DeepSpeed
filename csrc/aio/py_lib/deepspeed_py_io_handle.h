@@ -22,7 +22,9 @@ struct deepspeed_io_handle_t {
     std::vector<std::thread> _threads;
     std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>> _thread_pools;
     std::vector<std::shared_ptr<struct deepspeed_aio_pool_t>>::iterator _pool_it;
-    std::queue<std::shared_ptr<struct deepspeed_aio_pool_t>> _work_queue;
+
+    std::queue<std::shared_ptr<struct io_op_desc_t>> _complete_queue;
+    struct thread_sync_t _complete_queue_sync;
 
     int _num_pending_ops;
     int _op_ids;

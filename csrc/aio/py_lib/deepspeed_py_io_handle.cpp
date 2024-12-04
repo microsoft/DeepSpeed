@@ -32,9 +32,12 @@ deepspeed_io_handle_t::deepspeed_io_handle_t(const int block_size,
       _pinned_tensor_mgr(new deepspeed_pin_tensor_t())
 {
     for (auto n = 0; n < inter_op_parallelism; ++n) {
-        auto pool = std::make_shared<deepspeed_aio_pool_t>(n, intra_op_parallelism);
+        auto pool = std::make_shared<deepspeed_aio_pool_t>(n);
         for (auto i = 0; i < intra_op_parallelism; ++i) {
-            auto ctxt = std::make_shared<deepspeed_aio_thread_t>(i, _aio_config);
+            auto ctxt = std::make_shared<deepspeed_aio_thread_t>(i, intra_op_parallelism,
+                                                                 pool->_complete_map, pool->_complete_map_mutex,
+                                                                 _complete_queue, _complete_queue_sync,
+                                                                 _aio_config);
             pool->_thread_contexts.push_back(ctxt);
             _threads.push_back(std::thread(_start_aio_thread, ctxt));
         }
@@ -151,18 +154,18 @@ void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc
 {
     auto& ctxt = *_pool_it;
     ctxt->submit_pool_work(scheduled_op);
-    _work_queue.push(ctxt);
     _pool_it =( _pool_it == _thread_pools.end()-1 ) ? _thread_pools.begin() : _pool_it+1;
     _num_pending_ops++;
 }
 
 std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
 {
-    assert(!_work_queue.empty());
     std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
-    auto ctxt = _work_queue.front();
-    _work_queue.pop();
-    completed_op = ctxt->pool_work_done();
+    std::unique_lock<std::mutex> lock(_complete_queue_sync._mutex);
+    _complete_queue_sync._cond_var.wait(lock,
+                                        [this] { return !_complete_queue.empty(); });
+    completed_op = _complete_queue.front();
+    _complete_queue.pop();
     return completed_op;
 }
 
@@ -268,7 +271,7 @@ int deepspeed_io_handle_t::pread(const torch::Tensor& buffer,
     const auto fd = open_file(filename, true);
     if (fd == -1) { return -1; }
 
-    // TODO: op id rollover
+    // TODO: op id rollover, use op pointer value?
     _op_ids++;
     auto scheduled_op =
         _create_io_op_desc(true, buffer, _op_ids, fd, filename, num_file_bytes, validate, file_offset);
@@ -317,7 +320,7 @@ int deepspeed_io_handle_t::mem_copy(const bool host_copy,
 
     if (!_is_valid_parallel_aio_op(true, buffer_bytes)) { return -1; }
 
-    // TODO: op id rollover
+    // TODO: op id rollover, use op pointer value?
     _op_ids++;
     auto scheduled_op = std::make_shared<cuda_op_desc_t>(host_copy, buffer, dst_buffer, _op_ids, _intra_op_parallelism, validate);
     _schedule_aio_work(scheduled_op);
