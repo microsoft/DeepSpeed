@@ -75,7 +75,7 @@ from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallCl
 from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_clear_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
-from deepspeed.runtime.utils import clip_grad_norm_
+from deepspeed.runtime.utils import clip_grad_norm_, compare_tensors_in_structures
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
@@ -230,7 +230,6 @@ class DeepSpeedEngine(Module):
         self._step_applied = False
         self._global_grad_norm = None
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
-
         self.checkpoint_engine = None
 
         self._is_gradient_accumulation_boundary = None
@@ -248,7 +247,7 @@ class DeepSpeedEngine(Module):
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
         if self.zero_autotp_size() > 0:
-            self._configure_tensor_parallel_states()
+            self._configure_tensor_parallel_states(model)
         see_memory_usage(f"DeepSpeed Engine: After args sanity test", force=self.memory_breakdown())
         if mpu is not None:
             if self.elasticity_enabled():
@@ -413,12 +412,14 @@ class DeepSpeedEngine(Module):
                 else:
                     p.ds_offload = False
 
-    def _configure_tensor_parallel_states(self):
+    def _configure_tensor_parallel_states(self, model):
         # It should have a unified group initialization function,
         # Like Megatron-LM, including tp, sp, pp, dp, ep, and so on
 
         # The compatibility has only been validated for 'gpus==autotp_size' at the moment.
-        # Sanity check
+        # Sanity check]
+        #to do, remove this line.
+        self._set_client_model(model)
 
         assert self.zero_autotp_size() == dist.get_world_size_from_launcher(
         ), "Currently, the compatibility between 'autotp' and 'zero' has not been validated"
@@ -431,9 +432,37 @@ class DeepSpeedEngine(Module):
         # self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
         
         self.mpu = groups
+        
         self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
         
         # self.enable_backward_allreduce = False
+        self.first_dataloader_check=None
+        def check_dataloader_inputs_same_across_ranks(module, args, kwargs):
+
+            def broadcast_and_check(args, bcast_rank, bcast_group):
+                if len(args) >0:
+                    if self.mpu.get_tensor_model_parallel_rank()==0:
+                        _src_args=[args]
+                        torch.distributed.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+
+                    else:
+                        _src_args=[None]
+                        torch.distributed.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+                        assert compare_tensors_in_structures(args, _src_args[0]), f"RANK[{dist.get_rank()}]:Data inconsistency within the TP group. Please check the Dataloader implementation to ensure consistency."
+            
+            bcast_rank=self.mpu.get_tensor_model_parallel_src_rank()
+            bcast_group=self.mpu.get_tensor_model_parallel_group()
+            
+            broadcast_and_check(args, bcast_rank, bcast_group)
+            broadcast_and_check(kwargs, bcast_rank, bcast_group)
+
+            print("The Dataloader has passed the TP group consistency check.")
+
+            self.first_dataloader_check.remove()
+            
+        self.first_dataloader_check= self.module.register_forward_pre_hook(check_dataloader_inputs_same_across_ranks,prepend=True, with_kwargs=True)
+        
+        
 
 
     def destroy(self):

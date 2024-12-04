@@ -223,6 +223,10 @@ def broadcast(tensor, src, group=None, async_op=False, prof=False, log_name='bro
     global cdb
     return cdb.broadcast(tensor=tensor, src=src, group=group, async_op=async_op)
 
+@timed_op
+def broadcast_object_list(object_list, src, group=None, device=None):
+    global cdb
+    return cdb.broadcast_object_list(object_list=object_list, src=src, group=group, device=device)
 
 @timed_op
 def all_gather(tensor_list,
@@ -350,6 +354,7 @@ def all_to_all_single(output,
 def all_to_all(output_tensor_list, input_tensor_list, group=None, async_op=False):
     global cdb
     return cdb.all_to_all(output_tensor_list, input_tensor_list, group=group, async_op=async_op)
+
 
 
 @timed_op
