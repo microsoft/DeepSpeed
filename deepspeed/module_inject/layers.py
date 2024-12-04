@@ -12,8 +12,19 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
 from typing import Iterable
+from deepspeed.utils import groups
+from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp
 
-
+def move(tensor, device):
+    #TODO: the data parallelism (DP) is greater than 2,
+    # we need to consider when to delete the CPU data.
+    if tensor.is_meta:
+        return torch.empty_like(tensor, device=device)
+    else:
+        # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
+        # Using copy=True instead of clone() will help in case of cpu --> cpu.
+        # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
+        return tensor.to(device, copy=True)
 class RowParallel(torch.autograd.Function):
 
     @staticmethod
@@ -50,11 +61,14 @@ class ColumnParallel(torch.autograd.Function):
 
 #Parent class handling common logic
 class Replaced_Layer(nn.Module, ABC):
-
-    def __init__(self):
+    mode = "INFERENCE" 
+    def __init__(self, mp_group, name=None):
         super().__init__()
         self.support_training = False
-
+        self.mp_group = mp_group
+        self.tp_world_sz = dist.get_world_size(self.mp_group)
+        self.tp_index = dist.get_rank(mp_group)
+        self.name=name
     @abstractmethod
     def forward(self, input):
         """
@@ -66,7 +80,7 @@ class Replaced_Layer(nn.Module, ABC):
     def gather_params(self, params_list):
         pass
 
-    def partition(self, params_list):
+    def partition(self, params_list, move_to_device=False):
         for idx, param in enumerate(params_list):
             params_list[idx].data = param.data_partition
             del param.data_partition
@@ -120,16 +134,16 @@ class GatherReplacedLayerParams:
 
 class LinearAllreduce(Replaced_Layer):
 
-    def __init__(self, weight, bias=None, mp_group=None):
-        super(LinearAllreduce, self).__init__()
-        self.weight = weight
-        self.bias = bias
+    def __init__(self, module, mp_group, name=None):
+        super(LinearAllreduce, self).__init__(mp_group, name)
+        self.weight = module.weight
+        self.bias = module.bias
+        
+        self.partition([self.weight, self.bias], move_to_device=True)
         self.support_training = True
         self.config_tp_training(self.weight)
         if self.bias is not None:
             self.config_tp_training(self.bias)
-
-        self.mp_group = mp_group
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
@@ -139,20 +153,164 @@ class LinearAllreduce(Replaced_Layer):
         return output
 
     def gather_params(self, params_list):
-        world_sz = dist.get_world_size(self.mp_group)
 
         for idx, param in enumerate(params_list):
             params_list[idx].data_partition = param.data
             param = param.transpose(0, 1).contiguous()
-            output_param = torch.empty(world_sz * param.shape[0],
+            output_param = torch.empty(self.tp_world_sz * param.shape[0],
                                        param.shape[1],
                                        dtype=param.dtype,
                                        device=param.device)
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
             params_list[idx].data = output_param.transpose(0, 1).contiguous()
         return
+    def partition(self, params_list, move_to_device=False):
+        for idx, param in enumerate(params_list):
+            if param is None:
+                return 
+            _partition=torch.chunk(param, self.tp_world_sz, dim=1)[self.tp_index]
+
+            if move_to_device:
+                partition=move(_partition, get_accelerator().current_device())
+                del _partition
+                _partition=partition
+            
+            params_list[idx].data = _partition
+
+class LinearLayer(Replaced_Layer):
+
+    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None, mp_group=None):
+        super(LinearLayer, self).__init__(mp_group)
+        self.support_training = True
+
+        self.mp_group = mp_group
+        if weight is not None:
+            self.weight = weight
+            self.bias = bias
+        else:
+            self.weight = Parameter(
+                torch.empty(weight_shape, dtype=dtype, device=get_accelerator().current_device_name()))
+
+            self.bias = Parameter(
+                torch.empty(weight_shape[0],
+                            dtype=dtype,
+                            device=get_accelerator().current_device_name())) \
+                if bias is not None else None
+        self.config_tp_training(self.weight)
+        self.config_tp_training(self.bias)
+
+    def forward(self, input):
+        input = ColumnParallel.apply(self.mp_group, input)
+        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        if self.bias is not None:
+            output += self.bias
+        return output
+
+    def gather_params(self, params_list):
+
+        for idx, param in enumerate(params_list):
+            # TODO: uneven support
+            # shape_tensor=torch.tensor(param.shape[0],dtype=param.dtype,device=param.device)
+            # dist.all_reduce(shape_tensor, group=self.mp_group)
+            params_list[idx].data_partition = param.data
+            output_param = torch.empty(self.tp_world_sz * param.shape[0],
+                                       param.shape[1],
+                                       dtype=param.dtype,
+                                       device=param.device)
+            dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
+            params_list[idx].data = output_param.contiguous()
+    def partition(self, params_list, move_to_device=False):
+        
+        for idx, param in enumerate(params_list):
+            if param is None:
+                return 
+            _partition=torch.chunk(param, self.tp_world_sz, dim=1)[self.tp_index]
+
+            if move_to_device:
+                partition=move(_partition, get_accelerator().current_device())
+                del _partition
+                _partition=partition
+            
+            params_list[idx].data = _partition
 
 
+class bwc_LinearLayer(nn.Module):
+
+    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None):
+        super(LinearLayer, self).__init__()
+        if weight is not None:
+            self.weight = weight
+            self.bias = bias
+        else:
+            self.weight = Parameter(
+                torch.empty(weight_shape, dtype=dtype, device=get_accelerator().current_device_name()))
+
+            self.bias = Parameter(
+                torch.empty(weight_shape[0],
+                            dtype=dtype,
+                            device=get_accelerator().current_device_name())) \
+                if bias is not None else None
+
+    def forward(self, input):
+        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        if self.bias is not None:
+            output += self.bias
+        return output
+
+
+
+
+#override the subclasses related to weight splitting.
+def Yuan_LinearALlreduce(LinearAllreduce):
+    def partition(self, params_list, move_to_device=False):
+        params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
+
+def Yuan_LinearLayer(LinearLayer):
+    def partition(self, params_list, move_to_device=False):
+        params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
+
+def GLM_LinearLayer(LinearLayer):
+    def partition(self, params_list, move_to_device=False):
+        params_list[0], params_list[1]=shard_chunk_mlp(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
+
+def Conv_LinearALlreduce(LinearALlreduce):
+    def partition(self, params_list, move_to_device=False):            
+        for idx, param in enumerate(params_list):
+            if param is None:
+                return 
+            param.data= param.data.transpose(-1, -2).contiguous()
+            
+            _partition=param.split(get_shard_size_list(
+                param.shape[0] , self.tp_world_size, self.name),
+                                           dim=1)
+
+            if move_to_device:
+                partition=move(_partition, get_accelerator().current_device())
+                del _partition
+                _partition=partition
+            
+            params_list[idx].data = _partition
+        
+        
+    
+
+#override the subclasses related to reward.
+class LmHeadLinearAllreduce(LinearAllreduce):
+
+    def forward(self, input):
+        input_shard_size = get_shard_size(input.shape[-1], self.tp_world_sz, "lm_head")
+        input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.world_size, "lm_head")[0:self.tp_index])
+        output = torch.matmul(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
+                              self.weight.transpose(-1, -2))
+        if self.mp_group is not None:
+            dist.inference_all_reduce(output, group=self.mp_group)
+        if self.bias is not None:
+            output += self.bias
+        return output
+        
+        
+        
+        
 class TensorParallelConv2d(nn.Module):
 
     def __init__(self, conv, rank, world_size, shard_by_oc):
@@ -213,80 +371,6 @@ class TensorParallelIcShardConv2d(TensorParallelConv2d):
         if self.world_size > 1:
             dist.inference_all_reduce(out)
         return out
-
-
-class LmHeadLinearAllreduce(nn.Module):
-
-    def __init__(
-        self,
-        weight,
-        rank,
-        world_size,
-        bias=None,
-        mp_group=None,
-    ):
-        super(LmHeadLinearAllreduce, self).__init__()
-        self.weight = weight
-        self.bias = bias
-        self.mp_group = mp_group
-        self.rank = rank
-        self.world_size = world_size
-
-    def forward(self, input):
-        input_shard_size = get_shard_size(input.shape[-1], self.world_size, "lm_head")
-        input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.world_size, "lm_head")[0:self.rank])
-        output = torch.matmul(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
-                              self.weight.transpose(-1, -2))
-        if self.mp_group is not None:
-            dist.inference_all_reduce(output, group=self.mp_group)
-        if self.bias is not None:
-            output += self.bias
-        return output
-
-
-class LinearLayer(Replaced_Layer):
-
-    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None, mp_group=None):
-        super(LinearLayer, self).__init__()
-        self.support_training = True
-
-        self.mp_group = mp_group
-        if weight is not None:
-            self.weight = weight
-            self.bias = bias
-        else:
-            self.weight = Parameter(
-                torch.empty(weight_shape, dtype=dtype, device=get_accelerator().current_device_name()))
-
-            self.bias = Parameter(
-                torch.empty(weight_shape[0],
-                            dtype=dtype,
-                            device=get_accelerator().current_device_name())) \
-                if bias is not None else None
-        self.config_tp_training(self.weight)
-        self.config_tp_training(self.bias)
-
-    def forward(self, input):
-        input = ColumnParallel.apply(self.mp_group, input)
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.bias is not None:
-            output += self.bias
-        return output
-
-    def gather_params(self, params_list):
-        world_sz = dist.get_world_size(self.mp_group)
-
-        for idx, param in enumerate(params_list):
-            # TODO: uneven support
-            # shape_tensor=torch.tensor(param.shape[0],dtype=param.dtype,device=param.device)
-            # dist.all_reduce(shape_tensor, group=self.mp_group)
-            params_list[idx].data_partition = param.data
-            output_param = torch.empty(world_sz * param.shape[0],
-                                       param.shape[1],
-                                       dtype=param.dtype,
-                                       device=param.device)
-            dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
-            params_list[idx].data = output_param.contiguous()
 
 
 class Normalize(nn.Module):

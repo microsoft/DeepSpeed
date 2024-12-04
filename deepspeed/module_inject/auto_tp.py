@@ -11,7 +11,7 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, Yuan_LinearALlreduce, Yuan_LinearLayer, GLM_LinearLayer, Conv_LinearALlreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw, shard_value_with_share_qk, shard_chunk_mlp
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
@@ -339,42 +339,36 @@ class AutoTP():
         # For Yuan model
         if 'Yuan' in str(self.module):
             if 'v_proj' in name:
-                weight, bias = shard_value_with_share_qk(child.weight.data, child.bias, dist.get_rank(),
-                                                         dist.get_world_size(), True)
-                return LinearLayer(weight=weight, bias=bias)
+
+                # should we use a factory?
+                return Yuan_LinearLayer(child, self.mp_group)
             elif 'o_proj' in name:
-                weight, bias = shard_value_with_share_qk(child.weight.data, child.bias, dist.get_rank(),
-                                                         dist.get_world_size(), False)
-                return LinearAllreduce(weight, bias, self.mp_group)
+
+                return Yuan_LinearALlreduce(child, self.mp_group)
         # For MLP including chunk layer.
         if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
-            weight, bias = shard_chunk_mlp(child.weight.data, child.bias, dist.get_rank(), dist.get_world_size())
-            return LinearLayer(weight=weight, bias=bias)
+            return GLM_LinearLayer(child, self.mp_group)
         if name in self.all_reduce_linears:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0], weight_shape[1] // mp_size]
+            # if self.conv_linear_layer:
+            #     child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
 
-            if self.conv_linear_layer:
-                child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-
-            data = torch.chunk(child.weight.data, self.mp_size, dim=1)
+            # data = torch.chunk(child.weight.data, self.mp_size, dim=1)
 
             # data = child.weight.data.split(get_shard_size_list(
             #     weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
             #                                dim=1)
-
-            data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
-            del data
-
             setattr(child, "replaced", True)
+            if self.conv_linear_layer:
+                return Conv_LinearALlreduce(child, self.mp_group, name)
             if name == "lm_head" or name == 'embed_out':
-                return LmHeadLinearAllreduce(
-                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
-                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                        move(child.bias,
-                             get_accelerator().current_device_name())), self.mp_group)
-            return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
-                        torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name())), self.mp_group)
+                return LmHeadLinearAllreduce(child, self.mp_group)
+
+            return LinearAllreduce(child, self.mp_group)
+        
+            # return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
+            #             torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name())), self.mp_group)
         else:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0] // mp_size, weight_shape[1]]
