@@ -110,14 +110,14 @@ Figure 2: Core design
 
 Ulysses-Offload employs a pipelined sequence chunking design to manage the memory
 and computational load efficiently. In traditional Transformer model,
-input (hidden state) tensor are projected to q, k, v tensors. Each of these tensors can be denoted *\[B, S, H, D\]*, where *B* is batch
+input (hidden state) tensor is projected to q, k, v tensors. Each of these tensors can be denoted *\[B, S, H, D\]*, where *B* is batch
 size, *S* is sequence length, *H* is number of heads and *D* is hidden
 dimension per head. With sequence parallelism such as DeepSpeed Ulysses,
 input tensor is partitioned along sequence dimension across sequence
 parallel group P, that is *\[B, S/P, H, D\]* prior to alltoall collective
 communication. The alltoall collective communication gathers partitioned tensors
 along sequence dimension and scatter them along head dimension essentially
-transforming tensor from *\[B, S/P, H, D\]* to *\[B,S, H/P, D\]*. Post attention computation, a second alltoall communication transforms *\[B,S,H/P,D\]* back to *\[B,S/P,H,D\]*
+transforming tensor from *\[B, S/P, H, D\]* to *\[B, S, H/P, D\]*. Post attention computation, a second alltoall communication transforms *\[B, S, H/P, D\]* back to *\[B, S/P, H, D\]*
 
 In our Ulysses-Offload design, input sequence are partitioned at a much finer granularity than DeepSpeed Ulysses. In other words, we made changes to sequence partitioning such that we further subdivide per GPU *S/P* sequence into smaller *u*
 chunks. Thus, the input tensors are now represented as \[*B, S/uP, H,
