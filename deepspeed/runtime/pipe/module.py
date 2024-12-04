@@ -665,5 +665,8 @@ class PipelineModule(nn.Module):
 
     def compile(self, *args, **kwargs):
         for idx, layer in enumerate(self.forward_funcs):
-            new_layer = torch.compile(layer, *args, **kwargs)
-            self.forward_funcs[idx] = new_layer
+            if isinstance(layer, nn.Module):
+                layer.compile(*args, **kwargs)
+            else:
+                new_layer = torch.compile(layer, *args, **kwargs)
+                self.forward_funcs[idx] = new_layer
