@@ -119,7 +119,7 @@ communication. The alltoall collective communication gathers partitioned tensors
 along sequence dimension and scatter them along head dimension essentially
 transforming tensor from *\[B, S/P, H, D\]* to *\[B,S, H/P, D\]*. Post attention computation, a second alltoall communication transforms *\[B,S,H/P,D\]* back to *\[B,S/P,H,D\]*
 
-In our Ulysses-Offload design, input sequence are partitioned at a much finer grain than DeepSpeed Ulysses. In order words, we made changes to sequence partitioning such that we further subdivide per GPU *S/P* sequence into *u*
+In our Ulysses-Offload design, input sequence are partitioned at a much finer granularity than DeepSpeed Ulysses. In other words, we made changes to sequence partitioning such that we further subdivide per GPU *S/P* sequence into smaller *u*
 chunks. Thus, the input tensors are now represented as \[*B, S/uP, H,
 D*\]. We denote these chunks as *T<sub>i</sub>*,
 where$\ i\  \in \ 0,1,\ldots,\ u - 1.$ As shown in Figure 1,
