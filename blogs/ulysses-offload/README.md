@@ -38,19 +38,18 @@ memory required.
 
 Building DeepSpeed Ulysses, our previous project, which developed
 system optimizations for training extremely long sequence transformer
-models, we are excited to present the Fully Pipelined Distributed
-Transformer (FPDT), also known as Ulysses-Offload, in this release. FPDT
+models, we are excited to present Ulysses-Offload, in this release. Ulysses-Offload
 is an innovative, resource-efficient technique that offers comparable
 benefits to DeepSpeed Ulysses and other previous long-context
-optimization methods, but with a lower hardware budget. FPDT makes
+optimization methods, but with a lower hardware budget. Ulysses-Offload makes
 ultra long-context large language models (LLM) training and finetuning
-accessible to everyone, including those with limited GPU resources. FPDT enables
+accessible to everyone, including those with limited GPU resources. Ulysses-Offload enables
 training with context lengths of up to 2 million tokens using just 4
-NVIDIA A100-40GB GPUs. FPDT supports 16x longer sequence lengths at 55%
+NVIDIA A100-40GB GPUs. Ulysses-Offload supports 16x longer sequence lengths at 55%
 Model FLOPs Utilization (MFU) than NVIDIA Megatron-SP and DeepSpeed Ulysses
-(see Figure 1). The next section highlights the key innovations of FPDT,
+(see Figure 1). The next section highlights the key innovations of Ulysses-Offload,
 and subsequent sections provide additional details on the design and
-usability of FPDT, followed by experimental results.
+usability of Ulysses-Offload, followed by experimental results.
 
 ## Key Innovations
 
@@ -61,7 +60,7 @@ Transformer (FPDT). This approach leverages a pipelined sequence
 chunking, which allows for the training of LLMs with sequence lengths up
 to 2 million tokens on just 4 A100-40GB GPUs. By breaking down the
 sequence into manageable chunks and processing them in a pipelined
-manner, FPDT significantly reduces the memory footprint while
+manner, Ulysses-Offload significantly reduces the memory footprint while
 maintaining high computational efficiency. This method ensures that the
 GPUs are utilized effectively, even when dealing with extremely long
 sequences.
@@ -81,20 +80,20 @@ optimization techniques used by DeepSpeed ZeRO and PyTorch FSDP. Ulysses-Offload
 
 ### 3. Compatibility and Flexibility
 
-FPDT is designed to be agnostic to existing training techniques and
+Ulysses-Offload is designed to be agnostic to existing training techniques and
 works efficiently across different LLM models, including popular
 architecture like GPT and Llama. This flexibility ensures that our
 approach can be easily integrated into various training workflows.
-Additionally, FPDT is compatible with advanced memory optimization
+Additionally, Ulysses-Offload is compatible with advanced memory optimization
 techniques such as DeepSpeed ZeRO and PyTorch FSDP, further enhancing
 its usability and performance.
 
-## Core Design of Fully Pipelined Distributed Transformer
+## Core Design of Ulysses-Offload
 
-Figure 2 illustrates the core structure of FPDT. FPDT leverages multiple
+Figure 2 illustrates the core structure of Ulysses-Offload. Ulysses-Offload leverages multiple
 memory hierarchies in modern GPU clusters, thus boosting hardware
 efficiency and cost-effectiveness while achieving very high model FLOP
-utilization (MFU). The design of FPDT centers around pipelining,
+utilization (MFU). The design of Ulysses-Offload centers around pipelining,
 scheduling, and memory management. These well-known optimization
 techniques are essential for scaling LLM context length to a million
 scale with a few GPUs and will be discussed in the subsequent
@@ -103,36 +102,37 @@ subsections.
 <img src="./media/image2.png" style="width:6.5in;height:2.68634in"
 alt="A screenshot of a computer Description automatically generated" />
 
-Figure 2: FPDT core design
+Figure 2: Core design
 
 ###
 
 ### Pipelining and Scheduling
 
-FPDT employs a pipelined sequence chunking design to manage the memory
+Ulysses-Offload employs a pipelined sequence chunking design to manage the memory
 and computational load efficiently. In traditional Transformer model,
-input QKV tensor can be denoted *\[B, S, H, D\]*, where *B* is batch
+input (hidden state) tensor are projected to q, k, v tensors. Each of these tensors can be denoted *\[B, S, H, D\]*, where *B* is batch
 size, *S* is sequence length, *H* is number of heads and *D* is hidden
 dimension per head. With sequence parallelism such as DeepSpeed Ulysses,
 input tensor is partitioned along sequence dimension across sequence
-parallel group P, that is *\[B, S/P, H,D\]* prior to alltoall collective
-communication. The alltoall communication gathers partitioned tensor
-along sequence dimension and scatter them along head dimension essential
-transforming tensor from *\[B, S/P, H, D\]* to *\[B,S, H/P, D\]*. In our
-FPDT design, we further subdivide per GPU *S/P* sequence into *u*
-chunks. Thus, the input tensor is now represented as \[*B, S/uP, H,
+parallel group P, that is *\[B, S/P, H, D\]* prior to alltoall collective
+communication. The alltoall collective communication gathers partitioned tensors
+along sequence dimension and scatter them along head dimension essentially
+transforming tensor from *\[B, S/P, H, D\]* to *\[B,S, H/P, D\]*. Post attention computation, a second alltoall communication transforms *\[B,S,H/P,D\]* back to *\[B,S/P,H,D\]*
+
+In our Ulysses-Offload design, input sequence are partitioned at a much finer grain than DeepSpeed Ulysses. In order words, we made changes to sequence partitioning such that we further subdivide per GPU *S/P* sequence into *u*
+chunks. Thus, the input tensors are now represented as \[*B, S/uP, H,
 D*\]. We denote these chunks as *T<sub>i</sub>*,
 where$\ i\  \in \ 0,1,\ldots,\ u - 1.$ As shown in Figure 1,
 *T<sub>i</sub>* is projected to query *q<sub>i</sub>*, key
-*k<sub>i</sub>*, and value *v<sub>i</sub>*. Then, we perform the
-alltoall communication among the sequence parallel group. In our chunk
+*k<sub>i</sub>*, and value *v<sub>i</sub>*. Then, similar to DeepSpeed Ulysses, an alltoall collective communication gathers partitioned tensor
+along sequence dimension and scatter them along head dimension. In our chunk
 design, the sequence length for each chunk is reduced by a factor of *u*
-compared to Ulysses.
+compared to Ulysses. Please note that our Ulysses-Offload chunking procedure is generally applicable to other sequence parallelism techniques.
 
 <img src="./media/image3.png" style="width:6.5in;height:5.36042in"
 alt="A screenshot of a computer Description automatically generated" />
 
-Figure 3: FDPT with Offload
+Figure 3: Core design with offload description
 
 Figure 3 gives an example of how to perform the computation of chunk
 *T<sub>m</sub>*. After the alltoall collective communication,
@@ -142,14 +142,14 @@ previous sequence chunk by chunk from the host memory to
 GPU<sub>j</sub>, and perform online attention with the current
 $\widehat{q}m$ and update the output chunk accordingly. Note that, in a
 strict manner, at any given time, only one set of chunks
-$\widehat{k}i,\ and\ \widehat{v}i\ $is placed on GPU's HBM, reducing the
+$\widehat{k}i,\ and\ \widehat{v}i$ is placed on GPU's HBM, reducing the
 memory footprint to $\frac{1}{u}$ compared to the non-offloading version
 without double buffering. With double buffering, memory footprint is
 reduced by *2/u*.
 
 ### Memory Management
 
-FPDT optimizes memory usage by carefully managing the allocation and
+Ulysses-Offload optimizes memory usage by carefully managing the allocation and
 deallocation of buffers during training. This involves:
 
 1.  Double Buffering:
@@ -169,10 +169,10 @@ deallocation of buffers during training. This involves:
 
 ## Integration with Existing Frameworks
 
-FPDT is designed to integrate seamlessly with popular deep learning
-frameworks such as PyTorch. FPDT provides user-friendly APIs that
+Ulysses-Offload is designed to integrate seamlessly with popular deep learning
+frameworks such as PyTorch. Ulysses-Offload provides user-friendly APIs that
 abstract the complexities of pipelined training and memory management.
-Users can adopt FPDT with minimal changes to existing codebases.
+Users can adopt Ulysses-Offload with minimal changes to existing codebases.
 
 ## Experimental Results
 
@@ -180,41 +180,41 @@ Users can adopt FPDT with minimal changes to existing codebases.
 alt="A collage of graphs Description automatically generated" />
 
 Figure 4: Supported sequence lengths and corresponding Model FLOPs
-Utilization (MFU) using Megatron-SP, Ulysses, and our proposed FPDT. OOM
+Utilization (MFU) using Megatron-SP, Ulysses, and our proposed Ulysses-Offload (FPDT). OOM
 denotes the point where increasing sequence length will cause memory
-issues. We show FPDT's performance when the sequence length is larger
+issues. We show Ulysses-Offload's performance when the sequence length is larger
 than 128K, as shorter sequences can be properly handled by existing
 strategies.
 
 ### Extended Sequence Lengths
 
-In our experimental setup, we compare FPDT with two existing methods:
+In our experimental setup, we compare Ulysses-Offload with two existing methods:
 Microsoft DeepSpeed Ulysses and NVIDIA Megatron-SP. Both DeepSpeed
 Ulysses and Megatron-SP employ similar approaches to sequence
 parallelism but differ in the collective communication used for
 gathering sequences before the attention block. The former utilizes
-alltoall communication, whereas the latter employs allgather. FPDT
+alltoall communication, whereas the latter employs allgather. Ulysses-Offload
 builds upon the DeepSpeed Ulysses approach. The primary advantage of
-FPDT is its capability to support the training of large language models
+Ulysses-Offload is its capability to support the training of large language models
 (LLMs) with ultra-long sequence lengths using fewer GPUs. As shown in
 Figure 4, our method enables the training of 8B parameter models with
 sequence lengths of 2 million tokens using only 4 GPUs. For even larger
-models, such as GPT-30B and Llama-70B parameter models, FPDT supports
+models, such as GPT-30B and Llama-70B parameter models, Ulysses-Offload supports
 sequence lengths up to 3 million and 4 million tokens using 16 GPUs and
 32 GPUs respectively. This represents a 16x increase in sequence length
 compared to current state-of-the-art solutions (see Figure 5), making
-FPDT a game-changer for tasks that require processing long sequences.
+Ulysses-Offload a game-changer for tasks that require processing long sequences.
 
 ### High Hardware Efficiency
 
 As shown in Figure 4 with different model sizes ranging from GPT-2.7B to
-Llama-80B parameters, FPDT achieves over 55% Model FLOPs Utilization
+Llama-80B parameters, Ulysses-Offload achieves over 55% Model FLOPs Utilization
 (MFU), ensuring that the hardware resources are utilized effectively.
 This high level of efficiency is maintained even when dealing with
-extremely long sequences (up to 4 million context length), making FPDT
+extremely long sequences (up to 4 million context length), making Ulysses-Offload
 an ideal solution for training large-scale LLMs. By maximizing the use
-of available hardware, FPDT reduces the overall cost and complexity of
-training long-context models. Our technical report ({https://arxiv.org/abs/2408.16978) offers
+of available hardware, Ulysses-Offload reduces the overall cost and complexity of
+training long-context models. Our [technical report](https://arxiv.org/abs/2408.16978) offers
 further insights into optimizing sequence chunks to balance the
 trade-off between memory usage and MFU.
 
@@ -223,11 +223,11 @@ trade-off between memory usage and MFU.
 Figure 5: A comprehensive analysis on long-context LLM training with
 different training techniques: tensor parallelism (TP), activation
 checkpoint (AC), activation checkpoint with CPU offloading (OC), Ulysses
-(UL), and our approach FPDT.
+(UL), and our approach Ulysses-Offload (FPDT).
 
 ## Implementation and Usability
 
-FPDT is designed to be easily integrated with popular deep learning
+Ulysses-Offload is designed to be easily integrated with popular deep learning
 frameworks such as DeepSpeed, Megatron-DeepSpeed and PyTorch. Users can
 adopt our approach with minimal changes to their existing training
 pipeline, making it accessible to a broad audience. The integration
@@ -236,18 +236,18 @@ the memory optimization techniques, both of which are straightforward
 and well-documented (see tutorial).
 
 Our pipeline design and memory optimization techniques are
-straightforward to implement, making FPDT accessible to researchers and
+straightforward to implement, making Ulysses-Offload accessible to researchers and
 practitioners aiming to train long-context LLMs efficiently. We provide
 detailed [technical report](https://arxiv.org/abs/2408.16978),
 documentation and examples to guide users through the setup process,
-ensuring a smooth transition to using FPDT. Additionally, FPDT, in the
+ensuring a smooth transition to using Ulysses-Offload. Additionally, Ulysses-Offload, in the
 tradition of DeepSpeed provides user-friendly API which abstracts the
 complexities of mixed precision training and memory optimization,
 allowing users to focus on their research and development tasks.
 
 ## General Availability of DeepSpeed Ulysses-Offload
 
-We are excited to release FPDT (aka Ulysses-Offload). FPDT has been
+We are excited to release Ulysses-Offload. Ulysses-Offload has been
 fully integrated with Megatron-DeepSpeed and accessible through both
 DeepSpeed and Megatron-DeepSpeed GitHub repos. Click here for detailed
 [tutorial](https://www.deepspeed.ai/tutorials/fpdt/) on usage.
