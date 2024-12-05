@@ -13,7 +13,7 @@ from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
 from typing import Iterable
 from deepspeed.utils import groups
-from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp
+from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 
 def move(tensor, device):
     #TODO: the data parallelism (DP) is greater than 2,
@@ -65,10 +65,12 @@ class Replaced_Layer(nn.Module, ABC):
     def __init__(self, mp_group, name=None):
         super().__init__()
         self.support_training = False
-        self.mp_group = mp_group
-        self.tp_world_sz = dist.get_world_size(self.mp_group)
-        self.tp_index = dist.get_rank(mp_group)
-        self.name=name
+        if mp_group is not None:
+            self.mp_group = mp_group
+            self.tp_world_sz = dist.get_world_size(self.mp_group)
+            self.tp_index = dist.get_rank(mp_group)
+        if name is not None:
+            self.name=name
     @abstractmethod
     def forward(self, input):
         """
@@ -171,7 +173,7 @@ class LinearAllreduce(Replaced_Layer):
             _partition=torch.chunk(param, self.tp_world_sz, dim=1)[self.tp_index]
 
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device())
+                partition=move(_partition, get_accelerator().current_device()).detach()
                 del _partition
                 _partition=partition
             
@@ -179,23 +181,16 @@ class LinearAllreduce(Replaced_Layer):
 
 class LinearLayer(Replaced_Layer):
 
-    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None, mp_group=None):
-        super(LinearLayer, self).__init__(mp_group)
+    def __init__(self, module, mp_group, name=None, skip_partition=False):
+        super(LinearLayer, self).__init__(mp_group, name)
+        self.weight = module.weight
+        self.bias = module.bias
+        if not skip_partition:
+            self.partition([self.weight, self.bias], move_to_device=True)
         self.support_training = True
-
-        self.mp_group = mp_group
-        if weight is not None:
-            self.weight = weight
-            self.bias = bias
-        else:
-            self.weight = Parameter(
-                torch.empty(weight_shape, dtype=dtype, device=get_accelerator().current_device_name()))
-
-            self.bias = Parameter(
-                torch.empty(weight_shape[0],
-                            dtype=dtype,
-                            device=get_accelerator().current_device_name())) \
-                if bias is not None else None
+        self.config_tp_training(self.weight)
+        if self.bias is not None:
+            self.config_tp_training(self.bias)
         self.config_tp_training(self.weight)
         self.config_tp_training(self.bias)
 
@@ -224,16 +219,70 @@ class LinearLayer(Replaced_Layer):
         for idx, param in enumerate(params_list):
             if param is None:
                 return 
-            _partition=torch.chunk(param, self.tp_world_sz, dim=1)[self.tp_index]
+            _partition=torch.chunk(param, self.tp_world_sz, dim=0)[self.tp_index]
 
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device())
+                partition=move(_partition, get_accelerator().current_device()).detach()
                 del _partition
                 _partition=partition
             
             params_list[idx].data = _partition
+    # for bwc
+    @classmethod
+    def from_weights(cls, weight_shape=None, dtype=torch.half, weight=None, bias=None):
+        if weight is not None:
+            in_features = weight.shape[1] 
+            out_features = weight.shape[0]  
+            linear = nn.Linear(in_features, out_features, bias=(bias is not None))
+            linear.weight.data = weight
+            if bias is not None:
+                linear.bias.data = bias
+        else:
+            in_features = weight_shape[1] 
+            out_features = weight_shape[0]  
+            linear = nn.Linear(in_features, out_features, bias=(bias is not None))
+        return cls(linear, skip_partition=True)
+        
 
+class fused_LinearLayer(LinearLayer):
+    def partition(self, params_list, move_to_device=False): 
+        def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
+            
+            for idx, param in params_list:
+                if param is None:
+                    return 
+                _partition=prepare_tp_fused_qkvw(self.name, param, self.tp_world_sz, self.tp_index )
+            if move_to_device:
+                partition=move(_partition, get_accelerator().current_device()).detach()
+                del _partition
+                _partition=partition
+            params_list[idx].data = _partition
 
+class conv_LinearLayer(LinearLayer):
+    def partition(self, params_list, move_to_device=False):
+        weight = None
+        bias = None
+        if len(params_list)==1:
+            weight=params_list[0]
+        elif len(params_list)==2:
+            weight, bias=params_list[0], params_list[1]
+        _partition = weight.data.split(get_shard_size_list(weight.shape[0],  self.tp_world_sz, self.name), dim=1)
+        partition=move(_partition, get_accelerator().current_device()).detach()
+        del _partition
+        weight.data=partition
+        
+        if bias is not None:
+            _partition = bias.data.split(get_shard_size_list(
+                        weight.shape[1] ,self.tp_world_sz, self.name),
+                                                      dim=0)
+            partition=move(_partition, get_accelerator().current_device()).detach()
+            del _partition
+            bias.data=partition
+
+            
+        
+    
+            
 class bwc_LinearLayer(nn.Module):
 
     def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None):
