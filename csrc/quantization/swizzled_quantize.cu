@@ -212,7 +212,8 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     // Indexing offsets, same as normal quantization for in-case
-    const int block_rank_data = blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y;
+    const int block_rank_data =
+        blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y;
     const int block_offset_data = block_rank_data * elems_per_group;
     const int elem_offset = tb.thread_index().x * quantize::h_per_load;
     const int base_offset_data = block_offset_data + elem_offset;
@@ -307,8 +308,9 @@ __global__ void loco_swizzled_quant_kernel(int8_t* quantized_data,
                 // float2 back to __half2
                 iter_err_buffer[k] = __float22half2_rn(iter_err_buf_f);
             }
-             __half2* error_feedback_base_h2 = reinterpret_cast<__half2*>(error_feedback_base);
-            mem_access::store_global<quantize::granularity>(error_feedback_base_h2 + i_stride / 2, iter_err_buffer);
+            __half2* error_feedback_base_h2 = reinterpret_cast<__half2*>(error_feedback_base);
+            mem_access::store_global<quantize::granularity>(error_feedback_base_h2 + i_stride / 2,
+                                                            iter_err_buffer);
         }
     }
 }

@@ -262,8 +262,6 @@ void launch_dequant_reduce(int8_t* reduced_data,
     }
 }
 
-
-
 /*
 Modified loco_dequant_reduce function that performs dequantization and reduction,
 and incorporates error-feedback by updating the error_feedback tensor in-place.
@@ -303,13 +301,12 @@ __global__ void __launch_bounds__(1024) loco_dequant_reduce(int8_t* reduced_data
     __half2 local_buffer[totalChunks * storage_values];
     __half2 err_buffer[totalChunks * storage_values];
 
-    quantize::GroupStats<quantType>  stats;
+    quantize::GroupStats<quantType> stats;
 
 #pragma unroll
     for (int i = 0; i < totalChunks; i++) {
         __half2* iteration_buffer = local_buffer + i * storage_values;
         __half2* iter_err_buffer = err_buffer + i * storage_values;
-
 
 #pragma unroll
         for (int j = 0; j < storage_values; j++) {
@@ -367,7 +364,7 @@ __global__ void __launch_bounds__(1024) loco_dequant_reduce(int8_t* reduced_data
             }
         }
         mem_access::load_global<quantize::granularity>(
-                    iter_err_buffer, error_feedback + iter_offset_err, do_loads);
+            iter_err_buffer, error_feedback + iter_offset_err, do_loads);
 #pragma unroll
         for (int k = 0; k < storage_values; k++) {
             iteration_buffer[k] = __hadd2(iteration_buffer[k], iter_err_buffer[k]);
@@ -383,7 +380,7 @@ __global__ void __launch_bounds__(1024) loco_dequant_reduce(int8_t* reduced_data
     if constexpr (quantType == quantize::Type::Asymmetric) { de_params.offset = params.offset; }
 
     if (tb.thread_index().x == 0) { params.store(reduced_scales, tb.group_index().x); }
-    
+
 #pragma unroll
     for (int i = 0; i < totalChunks; i++) {
         const int iter_offset = i * stride + base_offset;
@@ -420,8 +417,9 @@ __global__ void __launch_bounds__(1024) loco_dequant_reduce(int8_t* reduced_data
                 // float2 back to __half2
                 iter_err_buffer[k] = __float22half2_rn(iter_err_buf_f);
             }
-            mem_access::store_global<quantize::granularity>(error_feedback + iter_offset_err, iter_err_buffer);
-        }   
+            mem_access::store_global<quantize::granularity>(error_feedback + iter_offset_err,
+                                                            iter_err_buffer);
+        }
     }
 }
 
@@ -488,19 +486,19 @@ void launch_loco_dequant_reduce_impl(int8_t* reduced_data,
     }
 }
 
-#define LAUNCH_LOCO_DEQUANT_REDUCE_IMPL(NUM_BITS, NUM_GPUS, QUANT_TYPE)                    \
-    launch_loco_dequant_reduce_impl<NUM_BITS, NUM_GPUS, QUANT_TYPE>(reduced_data,          \
-                                                                    reduced_scales,        \
-                                                                    input_data,            \
-                                                                    input_scales,          \
-                                                                    out_groups,            \
-                                                                    elems_per_out_group,   \
-                                                                    elems_per_in_tensor,   \
-                                                                    groups_per_in_tensor,  \
-                                                                    elems_per_in_group,    \
-                                                                    num_gpus,              \
-                                                                    error_feedback,        \
-                                                                    err_beta,              \
+#define LAUNCH_LOCO_DEQUANT_REDUCE_IMPL(NUM_BITS, NUM_GPUS, QUANT_TYPE)                   \
+    launch_loco_dequant_reduce_impl<NUM_BITS, NUM_GPUS, QUANT_TYPE>(reduced_data,         \
+                                                                    reduced_scales,       \
+                                                                    input_data,           \
+                                                                    input_scales,         \
+                                                                    out_groups,           \
+                                                                    elems_per_out_group,  \
+                                                                    elems_per_in_tensor,  \
+                                                                    groups_per_in_tensor, \
+                                                                    elems_per_in_group,   \
+                                                                    num_gpus,             \
+                                                                    error_feedback,       \
+                                                                    err_beta,             \
                                                                     stream);
 
 void launch_loco_dequant_reduce(int8_t* reduced_data,
@@ -557,4 +555,3 @@ void launch_loco_dequant_reduce(int8_t* reduced_data,
         }
     }
 }
-
