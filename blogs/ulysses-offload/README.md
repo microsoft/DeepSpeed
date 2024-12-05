@@ -108,7 +108,7 @@ Figure 2: Core design
 
 ### Pipelining and Scheduling
 
-Ulysses-Offload employs a pipelined sequence chunking design to manage the memory
+Ulysses-Offload employs sequence chunking and pipelined computation design to manage the memory
 and computational load efficiently. In traditional Transformer model,
 input (hidden state) tensor is projected to q, k, v tensors. Each of these tensors can be denoted *\[B, S, H, D\]*, where *B* is batch
 size, *S* is sequence length, *H* is number of heads and *D* is hidden
