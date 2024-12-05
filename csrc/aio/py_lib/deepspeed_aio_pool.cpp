@@ -43,18 +43,3 @@ void deepspeed_aio_pool_t::stop_threads()
         ctxt->_work_sync._cond_var.notify_one();
     }
 }
-
-/*
-std::shared_ptr<struct io_op_desc_t> pool_work_done();
-std::shared_ptr<struct io_op_desc_t> deepspeed_aio_pool_t::pool_work_done() {
-    std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
-    for (auto& ctxt : _thread_contexts) {
-        std::unique_lock<std::mutex> lock(ctxt->_complete_sync._mutex);
-        ctxt->_complete_sync._cond_var.wait(lock,
-                                            [ctxt] { return !ctxt->_complete_queue.empty(); });
-        completed_op = ctxt->_complete_queue.front();
-        ctxt->_complete_queue.pop();
-    }
-    return completed_op;
-};
- */

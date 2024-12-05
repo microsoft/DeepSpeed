@@ -41,10 +41,8 @@ deepspeed_io_handle_t::deepspeed_io_handle_t(const int block_size,
             pool->_thread_contexts.push_back(ctxt);
             _threads.push_back(std::thread(_start_aio_thread, ctxt));
         }
-        _thread_pools.push_back(pool);
+        _pool_work_map[pool] = 0;
     }
-    // iterator to thread pool
-    _pool_it = _thread_pools.begin();
 }
 
 deepspeed_io_handle_t::~deepspeed_io_handle_t()
@@ -152,9 +150,14 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
 
 void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc_t> scheduled_op)
 {
-    auto& ctxt = *_pool_it;
+    auto minIt = *std::min_element(_pool_work_map.begin(), _pool_work_map.end(), 
+                [](const auto& p1, const auto& p2) {
+                        return p1.second < p2.second;
+                            });
+    auto& ctxt = minIt.first;
     ctxt->submit_pool_work(scheduled_op);
-    _pool_it =( _pool_it == _thread_pools.end()-1 ) ? _thread_pools.begin() : _pool_it+1;
+    _pool_work_map[ctxt]++;
+    _op_pool_map[scheduled_op] = ctxt;
     _num_pending_ops++;
 }
 
@@ -166,14 +169,18 @@ std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
                                         [this] { return !_complete_queue.empty(); });
     completed_op = _complete_queue.front();
     _complete_queue.pop();
+    assert(completed_op != nullptr);
+    auto& pool = _op_pool_map[completed_op];
+    _pool_work_map[pool]--;
+    _op_pool_map.erase(completed_op);
     return completed_op;
 }
 
 void deepspeed_io_handle_t::_stop_threads()
 {
     assert(0 == _num_pending_ops);
-    for (auto& ctxt : _thread_pools) {
-        ctxt->stop_threads();
+    for (const auto& [pool, work] : _pool_work_map) {
+        pool->stop_threads();
     }
 }
 
