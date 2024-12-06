@@ -161,19 +161,23 @@ void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc
     _num_pending_ops++;
 }
 
-std::shared_ptr<struct io_op_desc_t> deepspeed_io_handle_t::_wait_for_aio_work()
+std::vector<std::shared_ptr<struct io_op_desc_t>> deepspeed_io_handle_t::_wait_for_aio_work()
 {
-    std::shared_ptr<struct io_op_desc_t> completed_op = nullptr;
+    std::vector<std::shared_ptr<struct io_op_desc_t>> completed_ops;
+    std::shared_ptr<struct io_op_desc_t> op = nullptr;
     std::unique_lock<std::mutex> lock(_complete_queue_sync._mutex);
     _complete_queue_sync._cond_var.wait(lock,
                                         [this] { return !_complete_queue.empty(); });
-    completed_op = _complete_queue.front();
-    _complete_queue.pop();
-    assert(completed_op != nullptr);
-    auto& pool = _op_pool_map[completed_op];
-    _pool_work_map[pool]--;
-    _op_pool_map.erase(completed_op);
-    return completed_op;
+    while (!_complete_queue.empty()) {
+        op = _complete_queue.front();
+        _complete_queue.pop();
+        assert(op != nullptr);
+        auto& pool = _op_pool_map[op];
+        _pool_work_map[pool]--;
+        _op_pool_map.erase(op);
+        completed_ops.push_back(op);
+    }
+    return completed_ops;
 }
 
 void deepspeed_io_handle_t::_stop_threads()
@@ -188,38 +192,37 @@ int deepspeed_io_handle_t::wait()
 {
     assert(_num_pending_ops > 0);
     auto num_completed_ops = 0;
-
     while (_num_pending_ops > 0) {
-        auto completed_op = _wait_for_aio_work();
-        assert(completed_op != nullptr);
-
-        if (completed_op->_validate) { completed_op->validate(); }
-
-        completed_op->finish();
-
-        close(completed_op->_fd);
-
-        --_num_pending_ops;
-        ++num_completed_ops;
+        auto completed_ops = _wait_for_aio_work();
+        for (auto& op : completed_ops){
+            if (op->_validate) { op->validate(); }
+            op->finish();
+            close(op->_fd);
+            --_num_pending_ops;
+            ++num_completed_ops;
+        }
     }
-
     return num_completed_ops;
 }
 
-int deepspeed_io_handle_t::get_completion()
+std::vector<int> deepspeed_io_handle_t::get_completion()
 {
     assert(_num_pending_ops > 0);
-    auto start = std::chrono::high_resolution_clock::now();
-    auto completed_op = _wait_for_aio_work();
-    assert(completed_op != nullptr);
-	auto end = std::chrono::high_resolution_clock::now();
-    auto time = std::chrono::duration<double, std::milli>(end - start).count();
-    std::cout << "Wait Time for " << completed_op->_op_id << ": " << time << " ms" << std::endl;
-    if (completed_op->_validate) { completed_op->validate(); }
-    completed_op->finish();
-    close(completed_op->_fd);
-    --_num_pending_ops;
-    return completed_op->_op_id;
+    //auto start = std::chrono::high_resolution_clock::now();
+	//auto end = std::chrono::high_resolution_clock::now();
+    //auto time = std::chrono::duration<double, std::milli>(end - start).count();
+    //std::cout << "Wait Time for " << completed_op->_op_id << ": " << time << " ms" << std::endl;
+
+    std::vector<int> completed_ids;
+    auto completed_ops = _wait_for_aio_work();
+    for (auto& op : completed_ops){
+        if (op->_validate) { op->validate(); }
+        op->finish();
+        close(op->_fd);
+        --_num_pending_ops;
+        completed_ids.push_back(op->_op_id);
+    }
+    return completed_ids;
 }
 
 bool deepspeed_io_handle_t::_is_valid_parallel_aio_op(const bool read_op, const int64_t num_bytes)

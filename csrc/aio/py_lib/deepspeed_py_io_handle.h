@@ -90,13 +90,13 @@ struct deepspeed_io_handle_t {
 
     int wait();
 
-    int get_completion();
+    std::vector<int> get_completion();
 
     void _stop_threads();
 
     void _schedule_aio_work(std::shared_ptr<struct io_op_desc_t> scheduled_op);
 
-    std::shared_ptr<struct io_op_desc_t> _wait_for_aio_work();
+    std::vector<std::shared_ptr<struct io_op_desc_t>> _wait_for_aio_work();
 
     bool _is_valid_parallel_aio_op(const bool read_op, const int64_t num_bytes);
 
