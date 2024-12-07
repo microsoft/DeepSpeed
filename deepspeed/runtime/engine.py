@@ -76,6 +76,7 @@ from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_cl
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
+from deepspeed.utils import parallel_states
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
@@ -247,6 +248,8 @@ class DeepSpeedEngine(Module):
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
+        if self.zero_autotp_size() > 0:
+            self._configure_tensor_parallel_states()
         see_memory_usage(f"DeepSpeed Engine: After args sanity test", force=self.memory_breakdown())
         if mpu is not None:
             if self.elasticity_enabled():
@@ -410,6 +413,24 @@ class DeepSpeedEngine(Module):
                     p.offload()
                 else:
                     p.ds_offload = False
+
+    def _configure_tensor_parallel_states(self):
+        # It should have a unified group initialization function,
+        # Like Megatron-LM, including tp, sp, pp, dp, ep, and so on
+
+        # The compatibility has only been validated for 'gpus==autotp_size' at the moment.
+        # Sanity check
+
+        assert self.zero_autotp_size() == dist.get_world_size_from_launcher(
+        ), "Currently, the compatibility between 'autotp' and 'zero' has not been validated"
+        assert self.zero_optimization_stage(
+        ) == 0, "Currently, the compatibility between 'autotp' and 'zero_stage > 0' has not been validated"
+
+        self.mpu = parallel_states
+
+        # disable self.allreduce_gradients() for dp =1 test.
+        self.enable_backward_allreduce = False
+        self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -834,6 +855,9 @@ class DeepSpeedEngine(Module):
     def zero_ignore_unused_parameters(self):
         return self._config.zero_config.ignore_unused_parameters
 
+    def zero_autotp_size(self):
+        return self._config.zero_config.autotp_size
+
     def graph_harvesting(self):
         return self._config.graph_harvesting
 
@@ -1107,6 +1131,11 @@ class DeepSpeedEngine(Module):
                 f'Client Optimizer (type = {type(self.client_optimizer)} is not instantiated but Client LR Scheduler is instantiated'
 
     def _broadcast_model(self):
+        if self.zero_autotp_size() > 0:
+            # At present, only the 'tp' has been validated with 'dp=1', where the 'seq_data_parallel_group'
+            # will execute an incorrect broadcast. Hard code skip for test.
+            # Unified group creation function is needed
+            return
 
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
@@ -2205,8 +2234,8 @@ class DeepSpeedEngine(Module):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
-        assert not self.inside_no_sync_ctxt, \
-        "It is illegal to call Engine.step() inside no_sync context manager"
+        # assert not self.inside_no_sync_ctxt, \
+        # "It is illegal to call Engine.step() inside no_sync context manager"
 
         see_memory_usage("Engine before step", force=self.memory_breakdown())
 
@@ -3565,6 +3594,37 @@ class DeepSpeedEngine(Module):
             self._copy_recovery_script(save_path)
         ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
         logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
+
+    def _replace_module_consolidated_state_dict(self):
+        from deepspeed.module_inject.layers import GatherReplacedLayerParams
+        state_dict = OrderedDict() if dist.get_rank() == 0 else None
+
+        def get_layer_state_dict(module, prefix=""):
+            with GatherReplacedLayerParams(list(module.parameters(recurse=False)), module, enabled=True):
+                for name, param in module.named_parameters(recurse=False):
+                    if param is None:
+                        continue
+                    key = prefix + name
+                    if (dist.get_rank() == 0):
+                        state_dict[key] = param.detach().cpu()
+                        # print(key,module, param.detach().cpu().shape)
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_state_dict(child, prefix + name + ".")
+
+        get_layer_state_dict(self.module, prefix="")
+        return state_dict
+
+    def _consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
+
+        if self.zero_optimization_stage() == ZeroStageEnum.weights:
+            return self._zero3_consolidated_16bit_state_dict(exclude_frozen_parameters)
+        elif self.zero_autotp_size() > 1:
+            return self._replace_module_consolidated_state_dict()
+
+        raise ValueError("consolidated_16bit_state_dict is only applicable to cases where weights are partitioned, "
+                         "including Zero Stage 3 and tensor parallelism (TP).")
 
     def _zero3_consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
         """

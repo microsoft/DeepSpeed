@@ -356,9 +356,13 @@ class AutoTP():
 
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            data = child.weight.data.split(get_shard_size_list(
-                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
-                                           dim=1)
+
+            data = torch.chunk(child.weight.data, self.mp_size, dim=1)
+
+            # data = child.weight.data.split(get_shard_size_list(
+            #     weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
+            #                                dim=1)
+
             data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
             del data
 
@@ -372,7 +376,6 @@ class AutoTP():
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name())), self.mp_group)
         else:
-
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0] // mp_size, weight_shape[1]]
             if self.conv_linear_layer:
@@ -389,8 +392,9 @@ class AutoTP():
                     prepare_tp_fused_qkvw(self.module, child.bias.data, self.mp_size, mp_replace.gpu_index),
                     get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
-                                               dim=1 if self.conv_linear_layer else 0)
+                data = torch.chunk(child.weight.data, self.mp_size, dim=1 if self.conv_linear_layer else 0)
+                # data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
+                #                                dim=1 if self.conv_linear_layer else 0)
                 data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
                 del data
 
@@ -405,7 +409,9 @@ class AutoTP():
                     bias_data_dc = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False), bias=bias_data_dc)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
+                               bias=bias_data_dc,
+                               mp_group=self.mp_group)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
