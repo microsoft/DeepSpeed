@@ -68,7 +68,7 @@ void deepspeed_aio_thread_t::run()
                 std::lock_guard<std::mutex> lock(_complete_queue_sync._mutex);
                 _complete_queue.push(next_io_op);
             }
-            _complete_queue_sync._cond_var.notify_all();
+            _complete_queue_sync._cond_var.notify_one();
         }
 
         if (_time_to_exit) { break; }

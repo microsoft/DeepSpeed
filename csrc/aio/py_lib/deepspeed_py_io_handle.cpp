@@ -148,8 +148,17 @@ int deepspeed_io_handle_t::write(const torch::Tensor& buffer,
     return 0;
 }
 
+void deepspeed_io_handle_t::_stop_threads()
+{
+    assert(0 == _num_pending_ops);
+    for (const auto& [pool, work] : _pool_work_map) {
+        pool->stop_threads();
+    }
+}
+
 void deepspeed_io_handle_t::_schedule_aio_work(std::shared_ptr<struct io_op_desc_t> scheduled_op)
 {
+    // find pool w/least number of outstanding jobs
     auto minIt = *std::min_element(_pool_work_map.begin(), _pool_work_map.end(), 
                 [](const auto& p1, const auto& p2) {
                         return p1.second < p2.second;
@@ -180,14 +189,6 @@ std::vector<std::shared_ptr<struct io_op_desc_t>> deepspeed_io_handle_t::_wait_f
     return completed_ops;
 }
 
-void deepspeed_io_handle_t::_stop_threads()
-{
-    assert(0 == _num_pending_ops);
-    for (const auto& [pool, work] : _pool_work_map) {
-        pool->stop_threads();
-    }
-}
-
 int deepspeed_io_handle_t::wait()
 {
     assert(_num_pending_ops > 0);
@@ -208,11 +209,6 @@ int deepspeed_io_handle_t::wait()
 std::vector<int> deepspeed_io_handle_t::get_completion()
 {
     assert(_num_pending_ops > 0);
-    //auto start = std::chrono::high_resolution_clock::now();
-	//auto end = std::chrono::high_resolution_clock::now();
-    //auto time = std::chrono::duration<double, std::milli>(end - start).count();
-    //std::cout << "Wait Time for " << completed_op->_op_id << ": " << time << " ms" << std::endl;
-
     std::vector<int> completed_ids;
     auto completed_ops = _wait_for_aio_work();
     for (auto& op : completed_ops){
@@ -318,27 +314,47 @@ int deepspeed_io_handle_t::pwrite(const torch::Tensor& buffer,
     return wait();
 }
 
-int deepspeed_io_handle_t::mem_copy(const bool host_copy,
-                                    const torch::Tensor& buffer,
-                                    const torch::Tensor& dst_buffer,
-                                    const bool validate,
-                                    const bool async)
+int deepspeed_io_handle_t::pcopy(bool read_op,
+                                 torch::Tensor& cpu_buffer,
+                                 const torch::Tensor& gpu_buffer,
+                                 const char* filename,
+                                 const bool validate,
+                                 const bool async,
+                                 const int64_t file_offset)
 {
+    if (read_op) {
+        int64_t num_file_bytes;
+        if (-1 == get_file_size(filename, num_file_bytes)) {
+            const auto error_code = errno;
+            report_file_error(filename, " fstat for read", error_code);
+            return -1;
+        }
+    }
     // buffer can exceed file size to enable 4k alignment
-    const auto buffer_bytes = static_cast<int64_t>(buffer.nbytes());
+    const auto buffer_bytes = static_cast<int64_t>(cpu_buffer.nbytes());
     assert((buffer_bytes % _intra_op_parallelism) == 0);
 
     if (!_is_valid_parallel_aio_op(true, buffer_bytes)) { return -1; }
 
-    // TODO: op id rollover, use op pointer value?
-    _op_ids++;
-    auto scheduled_op = std::make_shared<cuda_op_desc_t>(host_copy, buffer, dst_buffer, _op_ids, _intra_op_parallelism, validate);
-    _schedule_aio_work(scheduled_op);
+    const auto fd = open_file(filename, true);
+    if (fd == -1) { return -1; }
 
-    if (async) { return _op_ids; } // Return op number
+    _op_ids++;
+
+    auto sub_op =
+        _create_io_op_desc(read_op, cpu_buffer, _op_ids, fd, filename, buffer_bytes, validate, file_offset);
+
+    auto cuda_op = 
+        std::make_shared<cuda_op_desc_t>(sub_op, gpu_buffer, _op_ids, _intra_op_parallelism, validate);
+
+    _schedule_aio_work(cuda_op);
+
+    if (async) { return _op_ids; }
 
     return wait();
 }
+
+
 
 int deepspeed_io_handle_t::sync_pread(torch::Tensor& buffer,
                                       const char* filename,

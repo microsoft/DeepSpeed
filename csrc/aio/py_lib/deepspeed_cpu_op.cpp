@@ -79,6 +79,9 @@ void cpu_op_desc_t::run(const int tid,
     const auto buffer_base_offset = _num_bytes_per_thread * tid;
     const auto file_base_offset = _file_offset + (_num_bytes_per_thread * tid);
 
+    //assert((file_base_offset % 512) == 0);
+    //assert((_num_bytes_per_thread % 512) == 0);
+
     std::unique_ptr<io_xfer_ctxt> xfer_ctxt(new io_xfer_ctxt(
         _fd, file_base_offset, buffer_base_offset, _num_bytes_per_thread, data_ptr()));
 
