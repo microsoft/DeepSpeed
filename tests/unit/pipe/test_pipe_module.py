@@ -60,6 +60,8 @@ def batch_input():
 
 class TestPipeModuleSequential(DistributedTest):
     world_size = 2
+    # needs to be set for torch.compile: running torch.compile with daemonic process causes an error
+    non_daemonic_procs = True
 
     @pytest.mark.parametrize("activation_checkpoints", [False, True])
     @pytest.mark.parametrize("use_compile", [False, True])
