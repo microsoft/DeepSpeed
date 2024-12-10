@@ -289,6 +289,8 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
                                       "deprecated": True,
                                       "new_param": "moe.type"
                                   })
+    tp_grain_size: int = 64
+    "Desired MLP/lm_head tp size granularity. DNN library favors tensor size in granularity of power of 2, we pick 64 as a default size."
 
     @field_validator("dtype", mode="before")
     def validate_dtype(cls, field_value, values):
