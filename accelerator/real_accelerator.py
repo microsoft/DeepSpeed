@@ -127,8 +127,8 @@ def get_accelerator():
                 import intel_extension_for_pytorch as ipex
                 if ipex._C._has_xpu():
                     accelerator_name = "xpu"
-                else:
-                    accelerator_name = "cpu"
+                # else:
+                #     accelerator_name = "cpu"
             except ImportError as e:
                 pass
         if accelerator_name is None:
