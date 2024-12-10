@@ -191,8 +191,7 @@ class LinearLayer(Replaced_Layer):
         self.config_tp_training(self.weight)
         if self.bias is not None:
             self.config_tp_training(self.bias)
-        self.config_tp_training(self.weight)
-        self.config_tp_training(self.bias)
+
 
     def forward(self, input):
         input = ColumnParallel.apply(self.mp_group, input)

@@ -1123,11 +1123,13 @@ def compare_tensors_in_structures(
     if isinstance(inputs1, list) and isinstance(inputs2, list):
         if len(inputs1) != len(inputs2):
             return False
-        for a, b in zip(inputs1, inputs2):
-            if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
-                if not torch.equal(a, b): 
+        for val1, val2 in zip(inputs1, inputs2):
+            if isinstance(val1, torch.Tensor) and isinstance(val2, torch.Tensor):
+                val1=val1.to(get_accelerator().current_device())
+                val2=val2.to(get_accelerator().current_device())
+                if not torch.equal(val1, val2): 
                     return False
-            elif a != b:  
+            elif val1 != val2:  
                 return False
         return True
 
