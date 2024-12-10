@@ -22,10 +22,11 @@
 
 struct cuda_op_desc_t : io_op_desc_t {
     cudaMemcpyKind _xfer_type;
-    std::shared_ptr<struct io_op_desc_t> _sub_op;
+    torch::Tensor _gpu_buffer;
     const int64_t _device;
 
-    cuda_op_desc_t(std::shared_ptr<struct io_op_desc_t> sub_op,
+    cuda_op_desc_t(bool host_copy,
+                   const torch::Tensor& cpu_buffer,
                    const torch::Tensor& gpu_buffer,
                    const int op_id,
                    const int intra_op_parallelism,

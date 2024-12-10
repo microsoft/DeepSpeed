@@ -65,13 +65,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("pcopy",
              &deepspeed_aio_handle_t::pcopy,
              "Parallel file read with option of parallelism. Returns count of completed read ops",
-             "read_op"_a,
+             "host_copy"_a,
              "cpu_buffer"_a,
              "gpu_buffer"_a,
-             "filename"_a,
              "validate"_a,
-             "async"_a,
-             "file_offset"_a = 0)
+             "async"_a)
 
         .def("pwrite",
              &deepspeed_aio_handle_t::pwrite,
