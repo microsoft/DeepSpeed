@@ -14,6 +14,8 @@ from unit.simple_model import SimpleModel, random_dataloader
 from deepspeed.utils import groups
 from contextlib import contextmanager
 from torch import nn
+from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer
+
 # test group         done
 # test daloader check      done
 # test fwd/ bwd
@@ -112,8 +114,10 @@ class TestTpDataloaderCorrectness(DistributedTest):
             model(batch[0], batch[1])
 
 class TestTpLayerfwdandbwd(DistributedTest):
-    def testLinearAllreduce():
-        world_size = 4
+    world_size = 4
+    reuse_dist_env = True
+    
+    def test1(self):
         tp_size=4
         hidden_dim = 128
         batch_size_per_device=1
@@ -137,11 +141,80 @@ class TestTpLayerfwdandbwd(DistributedTest):
         elif preferred_dtype() is torch.bfloat16:
             config_dict["bf16"] = {"enabled": True}
 
-        input = torch.randn(batch_size_per_device, hidden_dim, dtype=preferred_dtype(), requires_grad=True)
+        torch.manual_seed(42)
+        model = SimpleModel(hidden_dim=hidden_dim)
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        input = torch.randn(batch_size_per_device, hidden_dim, dtype=preferred_dtype(), requires_grad=True,device="cpu")
 
-        torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(),device=get_accelerator().current_device())
+        torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(),device="cpu", bias=None)
         torch_out = torch_linear(input)
+        torch_loss=torch_out.sum()
+        torch_loss.backward()
+        torch_norm =  torch.norm(torch_linear.weight.grad)
+        torch_linear.zero_grad()
+
+        linear = LinearAllreduce(torch_linear, groups.get_tensor_model_parallel_group())
+        input.to(get_accelerator().current_device())
         
-        loss=
-    # def testLinearLayer():
+        input_=torch.chunk(input, tp_size, dim=-1)[groups.get_tensor_model_parallel_rank()]
+        out = linear(input_.to(get_accelerator().current_device()))
+        loss = out.sum()
+        loss.backward()
+        norm = torch.norm(linear.weight.grad)
+        norm_pow =norm**2
+        dist.all_reduce(norm_pow,group=groups.get_tensor_model_parallel_group())
+        norm=torch.sqrt(norm_pow)
+        assert torch.equal(norm, torch_norm.to(get_accelerator().current_device()))
+        assert torch.equal(out, torch_out.to(get_accelerator().current_device()))
+    def test2(self):
+        
+        tp_size=4
+        hidden_dim = 128
+        batch_size_per_device=1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-6
+                }
+            },
+            "zero_optimization": {
+                "stage": 0,
+                "autotp_size":tp_size
+          
+            }
+        }
+        if preferred_dtype() is torch.float16:
+            config_dict["fp16"] = {"enabled": True}
+        elif preferred_dtype() is torch.bfloat16:
+            config_dict["bf16"] = {"enabled": True}
+
+        torch.manual_seed(42)
+        model = SimpleModel(hidden_dim=hidden_dim)
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        input = torch.randn(batch_size_per_device, hidden_dim, dtype=preferred_dtype(), requires_grad=True,device="cpu")
+
+        
+        torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(),device="cpu", bias=None)
+        torch_out = torch_linear(input)
+        torch_loss=torch_out.sum()
+        torch_loss.backward()
+        torch_norm =  torch.norm(torch_linear.weight.grad)
+        torch_linear.zero_grad()
+        
+        
+        linear = LinearLayer(torch_linear, groups.get_tensor_model_parallel_group())
+        
+        out = linear(input.to(get_accelerator().current_device()))
+        
+        loss = out.sum()
+        loss.backward()
+        norm = torch.norm(linear.weight.grad)
+        norm_pow =norm**2
+        dist.all_reduce(norm_pow,group=groups.get_tensor_model_parallel_group())
+        
+        
+
         
