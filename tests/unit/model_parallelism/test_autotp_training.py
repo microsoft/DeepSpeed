@@ -18,11 +18,11 @@ from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer
 
 # test group         done
 # test daloader check      done
-# test fwd/ bwd
-# test gather/partition
-# test save/load ckpt
-# test save model
-# test grad_norm
+# test fwd/ bwd   done
+# test gather/partition done
+# test save/load ckpt 
+# test save model done 
+# test grad_norm  done , need to refine.
 
 
 @contextmanager
@@ -196,7 +196,6 @@ class TestTpLayerfwdandbwd(DistributedTest):
         model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
         input = torch.randn(batch_size_per_device, hidden_dim, dtype=preferred_dtype(), requires_grad=True,device="cpu")
 
-        
         torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(),device="cpu", bias=None)
         torch_out = torch_linear(input)
         torch_loss=torch_out.sum()
@@ -204,17 +203,257 @@ class TestTpLayerfwdandbwd(DistributedTest):
         torch_norm =  torch.norm(torch_linear.weight.grad)
         torch_linear.zero_grad()
         
-        
         linear = LinearLayer(torch_linear, groups.get_tensor_model_parallel_group())
         
         out = linear(input.to(get_accelerator().current_device()))
-        
+
         loss = out.sum()
         loss.backward()
         norm = torch.norm(linear.weight.grad)
         norm_pow =norm**2
         dist.all_reduce(norm_pow,group=groups.get_tensor_model_parallel_group())
+        norm=torch.sqrt(norm_pow)   
+        assert torch.equal(norm, torch_norm.to(get_accelerator().current_device()))
+        cur_device_out = torch.chunk(torch_out, tp_size, dim=-1)[groups.get_tensor_model_parallel_rank()]
         
+        assert  torch.allclose(cur_device_out.to(get_accelerator().current_device()).contiguous(), out.contiguous(),atol=1e-6)
+
+class TestparamsGather(DistributedTest):
+    world_size = 4
+    reuse_dist_env = True
+    def test(self):
+        tp_size=4
+        hidden_dim = 128
+        batch_size_per_device=1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-6
+                }
+            },
+            "zero_optimization": {
+                "stage": 0,
+                "autotp_size":tp_size
+          
+            }
+        }
+        if preferred_dtype() is torch.float16:
+            config_dict["fp16"] = {"enabled": True}
+        elif preferred_dtype() is torch.bfloat16:
+            config_dict["bf16"] = {"enabled": True}
+
+        torch.manual_seed(42)
+        model = SimpleModel(hidden_dim=hidden_dim)
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        input = torch.randn(batch_size_per_device, hidden_dim, dtype=preferred_dtype(), requires_grad=True,device="cpu")
+
+        torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(),device="cpu", bias=None)
+        total_params0 = sum(p.numel() for p in torch_linear.parameters())
+
+        
+        # TODO : make it to param
+        linear = None
+        type = "linearallreduce"
+        if type == "linear":
+            linear = LinearLayer(torch_linear, groups.get_tensor_model_parallel_group())
+        elif type == "linearallreduce":
+            linear = LinearAllreduce(torch_linear, groups.get_tensor_model_parallel_group())
+        else:
+            raise ValueError(f"Invalid linear type: {config_dict['linear_type']}")
+        
+        
+        params0 = sum(p.numel() for p in linear.parameters())
+        
+        assert total_params0//tp_size==params0
+        for name, param in linear.named_parameters(recurse=False):
+            param.gather_params([param])
+
+        same_weights = all(torch.equal(param1, param2) 
+                   for param1, param2 in zip(linear.parameters(), torch_linear.parameters()))
+        
+        assert same_weights
+         
+        params1 = sum(p.numel() for p in linear.parameters())
+        assert total_params0==params1
+
+        for name, param in linear.named_parameters(recurse=False):
+            param.partition([param])
+        
+        params2 = sum(p.numel() for p in linear.parameters())
+
+        assert total_params0//tp_size==params2
+
+
+class TestSave(DistributedTest):
+        
+    world_size = 4
+    reuse_dist_env = True
+    def test(self):
+        tp_size=4
+        hidden_dim = 64
+        batch_size_per_device=1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-6
+                }
+            },
+            "zero_optimization": {
+                "stage": 0,
+                "autotp_size":tp_size
+          
+            }
+        }
+        if preferred_dtype() is torch.float16:
+            config_dict["fp16"] = {"enabled": True}
+        elif preferred_dtype() is torch.bfloat16:
+            config_dict["bf16"] = {"enabled": True}
+
+        torch.manual_seed(42)
+        model = SimpleModel(hidden_dim=hidden_dim , nlayers=8)
+        from copy import deepcopy
+        base = deepcopy(model)
+
+        modelt = SimpleModel(hidden_dim=hidden_dim)
+        modelt, _, _, _ = deepspeed.initialize(model=modelt, model_parameters=modelt.parameters(), config=config_dict)
+        #2,3   5,6 
+        
+
+        for i in ([2,5]):
+            model.linears[i]=LinearLayer(model.linears[i], groups.get_tensor_model_parallel_group())
+
+        for i in ([3,6]):
+            model.linears[i]=LinearAllreduce(model.linears[i], groups.get_tensor_model_parallel_group())
+
+        del modelt
+
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+
+        
+        cur_params_numel = sum(p.numel() for p in model.parameters())
+        base_params_numel =  sum(p.numel() for p in base.parameters())
+        assert cur_params_numel<base_params_numel
+        
+        tp_state_dict = model._consolidated_16bit_state_dict()
+        def compare_state_dicts(state_dict1, state_dict2):
+            if state_dict1.keys() != state_dict2.keys():
+                print("The state_dicts have different keys!")
+                return False
+            
+            for key in state_dict1:
+                if not torch.equal(state_dict1[key], state_dict2[key]):
+                    print(f"Parameters for {key} are different!")
+                    return False
+            
+            return True
+        base_state_dict = base.state_dict()
+        
+        assert(base_state_dict, tp_state_dict)
+        
+class TestNorm(DistributedTest):
+    
+    world_size = 4
+    reuse_dist_env = True
+    def test(self):
+        tp_size=4
+        hidden_dim = 64
+        batch_size_per_device=1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-6
+                }
+            },
+            "zero_optimization": {
+                "stage": 0,
+                "autotp_size":tp_size
+          
+            }
+        }
+        if preferred_dtype() is torch.float16:
+            config_dict["fp16"] = {"enabled": True}
+        elif preferred_dtype() is torch.bfloat16:
+            config_dict["bf16"] = {"enabled": True}
+
+        torch.manual_seed(42)
+        model_base = SimpleModel(hidden_dim=hidden_dim , nlayers=8)
+        from copy import deepcopy
+
+        model_base, optimizer ,_,_ = deepspeed.initialize(model=model_base, model_parameters=model_base.parameters(), config=config_dict)
+
+        data_loader = random_dataloader(model=model_base,
+                                total_samples=2,
+                                hidden_dim=hidden_dim,
+                                device=model_base.device,
+                                dtype=preferred_dtype())
+
+        for i, batch in enumerate(data_loader):
+            batch[0].requires_grad = True
+            loss = model_base(batch[0], batch[1])
+            loss = loss
+            model_base.backward(loss)
+            optimizer.step()
+            
+            
+    
+        grad_norm_base =  optimizer._global_grad_norm
+
+        torch.manual_seed(42)
+
+                
+                
+        modelt = SimpleModel(hidden_dim=hidden_dim)
+        modelt, optimizer, _, _ = deepspeed.initialize(model=modelt, model_parameters=modelt.parameters(), config=config_dict)
+        #2,3   5,6 
+        
+        model = SimpleModel(hidden_dim=hidden_dim , nlayers=8)
+
+        
+
+        for i in ([2,5]):
+            model.linears[i]=LinearLayer(model.linears[i], groups.get_tensor_model_parallel_group())
+
+        for i in ([3,6]):
+            model.linears[i]=LinearAllreduce(model.linears[i], groups.get_tensor_model_parallel_group())
+
+
+        for param in model.parameters():
+            if param.grad is not None:
+                param.grad.data.fill_(0.01)
+        model, optimizer, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+
+
+        
+        for i, batch in enumerate(data_loader):
+            batch[0].requires_grad = True
+            loss = model(batch[0], batch[1])
+            loss = loss
+            model.backward(loss)
+            optimizer.step()
+
+        
+        # optimizer.step()
+        norm = optimizer._global_grad_norm
+        
+
+        norm_diff_percent = abs(norm - grad_norm_base) / grad_norm_base * 100
+        assert norm_diff_percent<5
+        cur_params_numel = sum(p.numel() for p in model.parameters())
+        base_params_numel =  sum(p.numel() for p in model_base.parameters())
+        assert cur_params_numel<base_params_numel
+        
+       
+        
+    
         
 
         
