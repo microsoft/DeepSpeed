@@ -304,7 +304,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             set_num_attention_heads(getattr(model_config, 'num_attention_heads'))
 
         # 4.4 set tp_grain_size
-        set_tp_grain_size(config.tp_grain_size)
+        set_tp_grain_size(config.tensor_parallel.tp_grain_size)
 
         # 5. Set linear policies
         _autotp.update_linear_policies()
