@@ -1069,6 +1069,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             process_group = self.dp_process_group
             # count = 0
             for i, param_idx_in_group, param_id in self.params_in_ipg_bucket:
+                 param = self.bit16_groups[group_idx][param_idx_in_group]
 
                 process_group = self.dp_process_group
 
