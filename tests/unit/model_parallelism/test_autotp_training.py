@@ -30,7 +30,6 @@ def should_assert_with_msg(expected_message):
     try:
         yield  
     except AssertionError as e:
-        # ignoe blank
         if dist.get_rank()==0:
             print(expected_message)
             print(str(e))
@@ -373,6 +372,14 @@ class TestSave(DistributedTest):
                 "stage": 0,
                 "autotp_size":tp_size
           
+            },
+            "scheduler": {
+            "type": "WarmupLR",
+                "params": {
+                    "warmup_min_lr": 0,
+                    "warmup_max_lr": 0.001,
+                    "warmup_num_steps": 1000
+                }
             }
         }
   
@@ -421,15 +428,11 @@ class TestSave(DistributedTest):
         
         model2,_,_,_ = deepspeed.initialize(model=model2, model_parameters=model2.parameters(),config=config_dict)
         model2.load_checkpoint(ckpt_path,load_optimizer_states=True,load_lr_scheduler_states=True)
-        from unit.checkpoint.common import compare_opt_state_dicts, compare_state_dicts,compare_optimizer_states
-        
-        compare_optimizer_states(model,  model2,   preferred_dtype())
-       
-
-
-
-      
-        
+        from unit.checkpoint.common import compare_lr_scheduler_states,compare_optimizer_states
+        is_fp16= (preferred_dtype()==torch.float16)
+        compare_optimizer_states(model,  model2, 0,  fp16=is_fp16)
+        compare_lr_scheduler_states(model, model2)
+        b=0
         
 class TestNorm(DistributedTest):
     
