@@ -125,7 +125,7 @@ def get_accelerator():
         if accelerator_name is None:
             try:
                 import intel_extension_for_pytorch as ipex
-                
+
                 if ipex._C._has_xpu():
                     accelerator_name = "xpu"
             except ImportError as e:
@@ -174,11 +174,10 @@ def get_accelerator():
             # borrow this log from PR#5084
             if accel_logger is not None:
                 accel_logger.warn(
-                    "Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it."
-                )
+                    "Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it.")
             # cpu added as catch-all when accelerator detection fails
             accelerator_name = "cpu"
-            
+
         ds_set_method = "auto detect"
 
     # 3. Set ds_accelerator accordingly
