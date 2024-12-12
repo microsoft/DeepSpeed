@@ -65,6 +65,8 @@ __git_branch__ = git_branch
 # Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
 dist = None
 
+# Set to True if DeepSpeed is initialized
+_deepspeed_initialized = False
 
 def initialize(args=None,
                model: torch.nn.Module = None,
@@ -135,6 +137,15 @@ def initialize(args=None,
 
     # Disable zero.Init context if it's currently enabled
     zero.partition_parameters.shutdown_init_context()
+    
+    # Check if DeepSpeed is already initialized
+    global _deepspeed_initialized
+    
+    if _deepspeed_initialized:
+        raise RuntimeError("DeepSpeed is already initialized. Please ensure that you are not calling deepspeed.initialize() multiple times.")
+    
+    # Set DeepSpeed initialized flag
+    _deepspeed_initialized = True
 
     assert model is not None, "deepspeed.initialize requires a model"
 
