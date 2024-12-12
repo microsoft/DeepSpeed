@@ -10,7 +10,7 @@ import torch
 from unit.common import DistributedTest, preferred_dtype
 import deepspeed
 from deepspeed.accelerator import get_accelerator
-from unit.simple_model import SimpleModel, random_dataloader
+from unit.simple_model import SimpleModel, random_dataloader, sequence_dataloader
 from deepspeed.utils import groups
 from contextlib import contextmanager
 from torch import nn
@@ -20,10 +20,10 @@ from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer
 # test daloader check      done
 # test fwd/ bwd   done
 # test gather/partition done
-# test save/load ckpt 
+# test save/load ckpt  done
 # test save model done 
 # test grad_norm  done , need to refine.
-
+# test compatibility with zero.etc.?
 
 @contextmanager
 def should_assert_with_msg(expected_message):
@@ -355,6 +355,81 @@ class TestSave(DistributedTest):
         base_state_dict = base.state_dict()
         
         assert(base_state_dict, tp_state_dict)
+    
+    def test_ckpt_save(self):    
+        tp_size=4
+        hidden_dim = 64
+        batch_size_per_device=1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-3
+                }
+            },
+            "zero_optimization": {
+                "stage": 0,
+                "autotp_size":tp_size
+          
+            }
+        }
+  
+        if preferred_dtype() is torch.float16:
+            config_dict["fp16"] = {"enabled": True}
+        elif preferred_dtype() is torch.bfloat16:
+            config_dict["bf16"] = {"enabled": True}
+
+        # for group
+        modelt = SimpleModel(hidden_dim=hidden_dim)
+        modelt, optimizer, _, _ = deepspeed.initialize(model=modelt, model_parameters=modelt.parameters(), config=config_dict)
+        
+        
+        model = SimpleModel(hidden_dim=hidden_dim , nlayers=8)
+        model2 = SimpleModel(hidden_dim=hidden_dim , nlayers=8)
+        
+        for i in ([2,5]):
+            model.linears[i]=LinearLayer(model.linears[i], groups.get_tensor_model_parallel_group())
+            model2.linears[i]=LinearLayer(model2.linears[i], groups.get_tensor_model_parallel_group())
+        for i in ([3,6]):
+            model.linears[i]=LinearAllreduce(model.linears[i], groups.get_tensor_model_parallel_group())
+            model2.linears[i]=LinearAllreduce(model2.linears[i], groups.get_tensor_model_parallel_group())
+
+        model,_,_,_= deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        torch.manual_seed(42)
+
+        data_loader = random_dataloader(model=model,
+                                total_samples=3,
+                                hidden_dim=hidden_dim,
+                                device=model.device,
+                                dtype=preferred_dtype())
+        test_batch=None
+        ckpt_path = "./test_ckpt/"
+        for i, batch in enumerate(data_loader):
+            batch[0].requires_grad = True
+            loss = model(batch[0], batch[1])
+            loss = loss
+            model.backward(loss)
+            model.step()
+        model.save_checkpoint(ckpt_path)
+     
+
+            
+  
+        # base_loss = model(test_batch[0],test_batch[1])
+        
+        model2,_,_,_ = deepspeed.initialize(model=model2, model_parameters=model2.parameters(),config=config_dict)
+        model2.load_checkpoint(ckpt_path,load_optimizer_states=True,load_lr_scheduler_states=True)
+        from unit.checkpoint.common import compare_opt_state_dicts, compare_state_dicts,compare_optimizer_states
+        
+        compare_optimizer_states(model,  model2,   preferred_dtype())
+       
+
+
+
+      
+        
         
 class TestNorm(DistributedTest):
     
@@ -452,7 +527,7 @@ class TestNorm(DistributedTest):
         assert cur_params_numel<base_params_numel
         
        
-        
+
     
         
 
