@@ -274,7 +274,15 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _autotp.set_tensor_parallel_config(config.tensor_parallel.tp_size, config.tensor_parallel.tp_group)
 
         # 3. Try to get num_key_heads from model_config.num_key_value_heads
-        num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
+        if hasattr(model_config, "vision_config"):
+            if "MllamaVisionEncoderLayer" in str(module):
+                num_kv_heads = _autotp.get_model_num_kv_heads(model_config.vision_config)
+            elif hasattr(model_config, "text_config"):
+                num_kv_heads = _autotp.get_model_num_kv_heads(model_config.text_config)
+            else:
+                num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
+        else:
+            num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
 
         # 4. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
         set_num_kv_heads(num_kv_heads)
@@ -339,6 +347,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                                       "weight") and not module.embed_out.weight.is_meta and isinstance(
                                                           module.embed_out, torch.nn.Linear):
             module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
+        elif hasattr(module, "language_model") and hasattr(module.language_model, "lm_head"):
+            module = replace_wo_policy(module.language_model, ("lm_head", ), 0, "lm_head")
         return module
 
     def conv2d_parallel_shard_weights(model, rank, world_size):
@@ -405,7 +415,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
 
             for i in range(len(checkpoint)):
-                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu')]
+                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu', weights_only=False)]
                 load_model_with_checkpoint(replaced_module,
                                            sd,
                                            mp_replace,
@@ -427,7 +437,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     os.path.join(base_dir1, ckpt_list[ckpt_index + j]) if base_dir1 else ckpt_list[ckpt_index + j]
                     for j in range(sd_count)
                 ]
-                sds = [torch.load(ckpt_file, map_location='cpu') for ckpt_file in ckpt_files]
+                sds = [torch.load(ckpt_file, map_location='cpu', weights_only=False) for ckpt_file in ckpt_files]
                 load_model_with_checkpoint(replaced_module,
                                            sds,
                                            mp_replace,
@@ -447,7 +457,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     pbar.update(1)
                     ckpt_file = os.path.join(base_dir1,
                                              checkpoint["non_tp"][i]) if base_dir1 else checkpoint["non_tp"][i]
-                    sds = [torch.load(ckpt_file, map_location='cpu')]
+                    sds = [torch.load(ckpt_file, map_location='cpu', weights_only=False)]
                     load_model_with_checkpoint(replaced_module,
                                                sds,
                                                mp_replace,
@@ -486,9 +496,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
-                OrderedDict({k: v
-                             for k, v in dict(replaced_module.state_dict()).items()
-                             if transformer_name not in k}), f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
+                OrderedDict({
+                    k: v
+                    for k, v in dict(replaced_module.state_dict()).items() if transformer_name not in k
+                }), f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
 
             dtype_reprs = {
                 torch.float32: 'float32',
@@ -613,7 +624,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
             from safetensors.torch import load_file
             sd = load_file(checkpoint)
         else:
-            sd = torch.load(checkpoint, map_location='cpu')
+            sd = torch.load(checkpoint, map_location='cpu', weights_only=False)
 
     policy = {}
     if orig_class is not None:

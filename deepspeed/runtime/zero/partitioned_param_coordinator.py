@@ -18,6 +18,7 @@ from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedP
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 from deepspeed.accelerator import get_accelerator
 import deepspeed.runtime.compiler as compiler
+from deepspeed.runtime.compiler import is_compiling
 
 import logging
 
@@ -92,7 +93,7 @@ class PartitionedParameterCoordinator:
         # keeps track of the number of submodules invoked so far.
         self.__step_id: int = 0
         # network tracing mode
-        self.__trace_mode: ZeRoTraceMode = ZeRoTraceMode.RECORD
+        self.__trace_mode: ZeRoTraceMode = ZeRoTraceMode.INVALID
         # sequence of submodules/parameters in forward pass + backward pass
         self.__submodule_order: Iterable[Module] = []
         self.__param_order: Iterable[__class__.__ParamInTrace] = []
@@ -153,11 +154,18 @@ class PartitionedParameterCoordinator:
     def is_record_trace(self) -> bool:
         return self.__trace_mode == ZeRoTraceMode.RECORD
 
+    def _clean_inflight_param_registry(self) -> None:
+        for param, handle in self.__inflight_param_registry.items():
+            handle.wait()
+            self.__release_param(param)
+        self.__inflight_param_registry.clear()
+
     def _invalidate_trace(self) -> None:
         if self.is_invalid_trace():
             raise RuntimeError("attempted to invalidate already invalid trace")
         self.__trace_mode = ZeRoTraceMode.INVALID
         self._clear_trace_structures()
+        self._clean_inflight_param_registry()
 
     def trace_prologue(self, sub_module: Module) -> None:
         if self.is_complete_trace():
@@ -181,6 +189,9 @@ class PartitionedParameterCoordinator:
     @compiler.disable
     def record_module(self, sub_module: Module) -> None:
         """adds sub module to trace"""
+        if is_compiling():
+            return
+
         if not self.is_record_trace():
             raise RuntimeError(f"attempted to record trace when status = {self.__trace_mode}")
 
@@ -188,6 +199,8 @@ class PartitionedParameterCoordinator:
         self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
 
     def record_parameters(self, sub_module: Module) -> None:
+        if is_compiling():
+            return
         """adds sub module to trace"""
         if not self.is_record_trace():
             raise RuntimeError(f"attempted to record trace when status = {self.__trace_mode}")
@@ -202,11 +215,13 @@ class PartitionedParameterCoordinator:
         for sub_module in self.__submodule_order:
             self.record_parameters(sub_module)
 
+    @compiler.disable
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
-        if self.__inflight_param_registry:
-            raise RuntimeError(f"still have inflight params "
-                               f"{[p.ds_summary() for p in self.__inflight_param_registry.keys()]}")
+        if is_compiling():
+            return
+
+        self._clean_inflight_param_registry()
 
         if not self.is_complete_trace():  # not self.trace_complete:
             # Make sure that recorded submodule orders are identical across ranks
@@ -237,7 +252,6 @@ class PartitionedParameterCoordinator:
         self.__most_recent_step_id_param_fetched_for = collections.defaultdict(lambda: int(-1e10))
         self.__step_id_module_fetched_for = collections.defaultdict(lambda: collections.deque())
         self.__step_id = 0
-        self.__n_available_params = 0
         self.__profiler.reset_events()
 
     def _dump_params(self, tag, sub_module, params, step_id=None):
@@ -409,13 +423,13 @@ class PartitionedParameterCoordinator:
         """release all module parameters"""
         for param in iter_params(module, recurse=True):
             if param in self.__inflight_param_registry:
-                raise RuntimeError(f"param {param.ds_summary()} still in flight")
+                self.__inflight_param_registry.pop(param).wait()
 
             # TODO. make this throw if if there are still active submodules. currently
             # there's a hook execution issue
             param.ds_active_sub_modules.clear()
             self.__release_param(param)
-
+        self.__n_available_params = 0
         for param in iter_params(module, recurse=True):
             if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
                 raise RuntimeError(f"{param.ds_summary()} expected to be released")
