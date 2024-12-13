@@ -105,7 +105,7 @@ class PDSHRunner(MultiNodeRunner):
         if self.args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         if self.args.enable_each_rank_log:
-            deepspeed_launch.append(f"--enable_each_rank_log={args.enable_each_rank_log}")
+            deepspeed_launch.append(f"--enable_each_rank_log={self.args.enable_each_rank_log}")
         if self.args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
             deepspeed_launch.append(f"--max_elastic_nodes={self.args.max_elastic_nodes}")
