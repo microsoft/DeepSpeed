@@ -53,6 +53,7 @@ jobs:
         pip install torchvision==0.18.1 -f https://pytorch-extension.intel.com/release-whl/stable/xpu/us/torchvision/
         pip install py-cpuinfo numpy
         pip install .[dev,autotuning]
+        pwd
 
     - name: Check container state
       run: |
