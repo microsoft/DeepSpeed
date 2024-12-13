@@ -20,7 +20,7 @@ try:
 except ImportError as e:
     dsa2 = None
 
-SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu']
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu', 'mlu']
 
 ds_accelerator = None
 
@@ -94,6 +94,11 @@ def get_accelerator():
             except ImportError as e:
                 raise ValueError(
                     f"HPU_Accelerator requires habana_frameworks.torch.hpu, which is not installed on this system.")
+        elif accelerator_name == "mlu":
+            try:
+                import torch_mlu  # noqa: F401
+            except ImportError as e:
+                raise ValueError(f"MLU_Accelerator requires torch_mlu, which is not installed on this system.")
         elif accelerator_name not in SUPPORTED_ACCELERATOR_LIST:
             raise ValueError(f'DS_ACCELERATOR must be one of {SUPPORTED_ACCELERATOR_LIST}. '
                              f'Value "{accelerator_name}" is not supported')
@@ -150,12 +155,24 @@ def get_accelerator():
             except ImportError as e:
                 pass
         if accelerator_name is None:
+            try:
+                import torch_mlu  # noqa: F401,F811
+
+                accelerator_name = "mlu"
+            except ImportError as e:
+                pass
+        if accelerator_name is None:
             # borrow this log from PR#5084
             try:
                 import torch
 
                 # Determine if we are on a GPU or x86 CPU with torch.
-                if torch.cuda.is_available():  #ignore-cuda
+                # "torch.cuda.is_available()" provides a stronger guarantee,     #ignore-cuda
+                # ensuring that we are free from CUDA initialization errors.
+                # While "torch.cuda.device_count() > 0" check ensures that       #ignore-cuda
+                # we won't try to do any CUDA calls when no device is available
+                # For reference: https://github.com/microsoft/DeepSpeed/pull/6810
+                if torch.cuda.device_count() > 0 and torch.cuda.is_available():  #ignore-cuda
                     accelerator_name = "cuda"
                 else:
                     if accel_logger is not None:
@@ -198,6 +215,10 @@ def get_accelerator():
         from .hpu_accelerator import HPU_Accelerator
 
         ds_accelerator = HPU_Accelerator()
+    elif accelerator_name == 'mlu':
+        from .mlu_accelerator import MLU_Accelerator
+
+        ds_accelerator = MLU_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
         accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")

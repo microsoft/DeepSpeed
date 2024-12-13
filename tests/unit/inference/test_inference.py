@@ -10,6 +10,7 @@ import pickle
 import os
 import time
 import requests
+import fcntl
 
 from dataclasses import dataclass
 from typing import List
@@ -95,9 +96,12 @@ def _hf_model_list() -> List[ModelInfo]:
     if os.path.isfile(cache_file_path):
         with open(cache_file_path, 'rb') as f:
             try:
+                fcntl.flock(f, fcntl.LOCK_SH)
                 model_data = pickle.load(f)
             except Exception as e:
                 print(f"Error loading cache file {cache_file_path}: {e}")
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
 
     current_time = time.time()
 
@@ -125,7 +129,11 @@ def _hf_model_list() -> List[ModelInfo]:
         # Save the updated cache
         os.makedirs(cache_dir, exist_ok=True)
         with open(cache_file_path, 'wb') as f:
-            pickle.dump(model_data, f)
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                pickle.dump(model_data, f)
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
 
     return model_data["model_list"]
 
@@ -296,6 +304,12 @@ def check_injection(model):
                 verify_injection(child)
 
     verify_injection(model)
+
+
+# Used to Get Device name
+def getDeviceId(local_rank):
+    device = torch.device(f"{get_accelerator().device_name(local_rank)}")
+    return device
 
 
 # Verify that test is valid
@@ -484,8 +498,8 @@ class TestLowCpuMemUsage(DistributedTest):
             pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
-
-        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
+        device = getDeviceId(local_rank)
+        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=device, framework="pt")
         bs_output = pipe(query, **inf_kwargs)
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=self.world_size,

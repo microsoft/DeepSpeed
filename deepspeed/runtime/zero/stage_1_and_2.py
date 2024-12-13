@@ -39,6 +39,7 @@ OPTIMIZER_ALLGATHER_TIMER = 'optimizer_allgather'
 OPTIMIZER_GRADIENTS_TIMER = 'optimizer_gradients'
 OPTIMIZER_STEP_TIMER = 'optimizer_step'
 OPTIMIZER_TIMERS = [OPTIMIZER_ALLGATHER_TIMER, OPTIMIZER_GRADIENTS_TIMER, OPTIMIZER_STEP_TIMER]
+INITIAL_MICRO_STEP_ID = -1
 
 
 def input(msg):
@@ -224,7 +225,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.micro_step_id = 0
+        self.micro_step_id = INITIAL_MICRO_STEP_ID
         self.ignore_unused_parameters = ignore_unused_parameters
         self.round_robin_gradients = round_robin_gradients
 
@@ -1069,14 +1070,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for i, param, param_id in self.params_in_ipg_bucket:
 
                 process_group = self.dp_process_group
-                grad_reduc = self.get_gradient_for_reduction(param)
-                #Averages gradients at parameter level if ipg has a moe param
-                #Otherwise averaging is done at the entire buffer level at the end of the loop
-                # MoE param have different groups
+
                 if self.ipg_bucket_has_moe_params:
                     process_group = self.expert_dp_process_group[param.group_name] if is_moe_param(
                         param) else self.dp_process_group
-                    grad_reduc.data.div_(dist.get_world_size(group=process_group) / float(self.sequence_parallel_size))
 
                 partition_ids = self.param_to_partition_ids[i][param_id]
                 assert all([p_id < dist.get_world_size(group=process_group) for p_id in partition_ids
@@ -1115,8 +1112,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     curr_size += numel
                     prev_id, prev_process_group = partition_id, process_group
 
-            if not self.ipg_bucket_has_moe_params:
-                tensor.div_(dist.get_world_size(group=self.dp_process_group) / float(self.sequence_parallel_size))
+            tensor.div_(dist.get_world_size(group=self.dp_process_group) / float(self.sequence_parallel_size))
 
             buckets = {}
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
@@ -1231,9 +1227,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         if self.micro_step_id > 0:
             accumulate_gradients()
-
-        # at the boundary we will send 32bit directly
-        if not self.is_gradient_accumulation_boundary:
+        else:
             copy_gradients_to_cpu()
 
     def set_norm_for_param_grad(self, param):
@@ -1824,7 +1818,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         """
         Not supporting closure.
         """
-        self.micro_step_id = -1
+        self.micro_step_id = INITIAL_MICRO_STEP_ID
 
         see_memory_usage(f"In step before checking overflow")
 
@@ -2302,11 +2296,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
         self.load_hp_checkpoint_state_from_checkpoint_dir("bit16_groups", checkpoint_folder)
-
-    @property
-    def param_groups(self):
-        """Forward the wrapped optimizer's parameters."""
-        return self.optimizer.param_groups
 
     def _load_global_state(self, sd):
         self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)
