@@ -11,7 +11,7 @@ from torch.nn.parameter import Parameter
 from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
-from typing import Iterable
+from typing import Iterable, Any, Optional, List
 from deepspeed.utils import groups
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 
@@ -26,70 +26,128 @@ def move(tensor, device):
         # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
         return tensor.to(device, copy=True)
 class RowParallel(torch.autograd.Function):
-
+    """
+    A custom autograd function for performing row-wise parallelism.
+    """
     @staticmethod
-    def forward(ctx, group: dist.ProcessGroup, input_):
+    def symbolic(graph, input):
+        """Symbolic function for tracing."""
+        return input
+    
+    @staticmethod
+    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor)-> torch.Tensor:
+        """
+        Forward pass.
+        """
         ctx.group = group
         if group == None:
-            return input_
+            return input
         # for debug ,will apply dist.inference_all_reduce
-        dist.all_reduce(input_, group=group)
-        return input_
+        dist.all_reduce(input.contiguous(), group=group)
+        return input
 
     @staticmethod
-    def backward(ctx, grad_output):
-
+    def backward(ctx:Any, grad_output: torch.Tensor)-> tuple[None, torch.Tensor]:
+        """
+        Backward pass.
+        """
         return None, grad_output
 
 
 class ColumnParallel(torch.autograd.Function):
-
+    """
+    Custom autograd function for column-wise parallelism.
+    """
     @staticmethod
-    def forward(ctx, group, input_):
+    def symbolic(graph, input):
+        """Symbolic function for tracing."""
+        return dist.all_reduce(input.contiguous(), dist.get_tensor_model_parallel_group())
+    
+    @staticmethod
+    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor)-> torch.Tensor:
+        """
+        Forward pass.
+        """
         ctx.group = group
-        return input_
+        return input
 
     @staticmethod
-    def backward(ctx, grad_output):
-
+    def backward(ctx: Any, grad_output: torch.Tensor)-> tuple[None, torch.Tensor]:
+        """
+        Backward pass.
+        """
         if ctx.group == None:
             return None, grad_output
         # for debug ,will apply dist.inference_all_reduce
-        dist.all_reduce(grad_output, group=ctx.group)
+        dist.all_reduce(grad_output.contiguous(), group=ctx.group)
         return None, grad_output
 
 
-#Parent class handling common logic
 class Replaced_Layer(nn.Module, ABC):
+    """
+    A base class for model layers with  tensor parallelism support. 
+    This class is designed to be extended by specific layers that require distributed 
+    operations and parameter gather/partitioning during inference or training.
+
+    Attributes:
+        mode (str): The mode of operation[INFERENCE or Training], default is "INFERENCE".
+        mp_group (Optional[dist.ProcessGroup]): The process group used for model parallelism.
+        tp_world_sz (int): The world size of tensor parallelism, i.e., the number of parallel workers.
+        tp_index (int): The rank (ID) of the current worker in tensor parallelism.
+        support_training (bool): Flag indicating whether the layer supports training (default: False).
+        name (Optional[str]): The name of the layer, if provided.
+    """
+    
     mode = "INFERENCE" 
-    def __init__(self, mp_group, name=None):
+    def __init__(self, mp_group: Optional[dist.ProcessGroup], name: Optional[str] = None):
+        """
+        Initializes the Replaced_Layer with optional model parallelism group and layer name.
+        
+        Args:
+            mp_group (Optional[dist.ProcessGroup]): The process group for model parallelism. 
+                                                    If None, no model parallelism is set.
+            name (Optional[str]): The optional name for the layer.
+        """
         super().__init__()
-        self.support_training = False
+        self.support_training: bool = False
         if mp_group is not None:
             self.mp_group = mp_group
-            self.tp_world_sz = dist.get_world_size(self.mp_group)
-            self.tp_index = dist.get_rank(mp_group)
+            self.tp_world_sz: int  = dist.get_world_size(self.mp_group)
+            self.tp_index: int  = dist.get_rank(mp_group)
         if name is not None:
-            self.name=name
+            self.name=name # Set the layer name if provided.
     @abstractmethod
     def forward(self, input):
         """
-        Forward pass method. Must be implemented by subclasses.
+        Forward pass method. Must be implemented by subclasses to define layer-specific operations.
         """
         pass
 
     @abstractmethod
     def gather_params(self, params_list):
+        """
+        Gathers parameters across devices for distributed training. Must be implemented by subclasses in "TRAINING" mode.
+        """
         pass
 
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list:List[torch.Tensor], move_to_device:bool=False):
+        """
+        Partitions the parameters for tensor parallelism. 
+        """
+        
         for idx, param in enumerate(params_list):
             params_list[idx].data = param.data_partition
             del param.data_partition
 
-        # for param in params_list:
-        #     param.data=torch.empty(0, dtype=param.dtype, device=param.device)
     def config_tp_training(self, weight):
+        """
+        Configures the weight tensor for training with tensor parallelism. This includes enabling gradients 
+        and associating necessary methods for parameter gathering and partitioning.
+
+        Args:
+            weight (Optional[torch.Tensor]): The weight tensor to configure for tensor parallelism. 
+                                              If None, no action is taken.
+        """
         assert self.support_training, "No implementation of backward."
         if weight is not None:
             weight.requires_grad = True
