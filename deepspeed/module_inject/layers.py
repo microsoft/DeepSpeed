@@ -135,9 +135,9 @@ class Replaced_Layer(nn.Module, ABC):
         Partitions the parameters for tensor parallelism. 
         """
         
-        for idx, param in enumerate(params_list):
-            params_list[idx].data = param.data_partition
-            del param.data_partition
+        # for idx, param in enumerate(params_list):
+        #     params_list[idx].data = param.data_partition
+        #     del param.data_partition
 
     def config_tp_training(self, weight):
         """
@@ -159,34 +159,59 @@ class Replaced_Layer(nn.Module, ABC):
 
 class GatherReplacedLayerParams:
 
-    def __init__(self, params, module, enabled=True):
+    """
+    A context manager for gathering parameters of a replaced layer, enabling partitioning and gathering functionality
+    based on the configuration of the model. 
+    """
+    def __init__(self, params:Iterable[torch.Tensor] | torch.Tensor, module: torch.nn.Module, enabled: bool=True):
+        """
+        Initialize the context manager to handle parameter gathering and partitioning for a replaced layer.
+
+        Args:
+            params (Iterable or torch.Tensor): A collection or single parameter to manage.
+            module (torch.nn.Module): The module that these parameters belong to.
+            enabled (bool): Flag indicating whether the parameter management is enabled (default: True).
+        """
         self.enabled = enabled
         self.module = module
         if not enabled:
             return
+        
+        # Ensure params is a list, whether it's a single param or iterable (e.g., model.parameters())
         if isinstance(params, Iterable) and not isinstance(params, torch.Tensor):
-            # deal with generators like model.parameters()
-            # must convert to list to be able to iterate more than once if we get a generator
-            params = list(params)
+            self.params: List[torch.Tensor] = list(params) # Convert generators to a list for multiple iterations
         else:
-            # single param
-            params = [params]
+            self.params: List[torch.Tensor] = [params] # Wrap single parameter in a list for uniform processing
 
-        self.params = params
 
+        # Check if the parameters belong to a replaced layer (indicated by a specific attribute)
         if not any(self._is_replaced_module_weight(p) for p in params):
             self.enabled = False
             return
 
-    def _is_replaced_module_weight(self, param):
+    def _is_replaced_module_weight(self, param: torch.Tensor)-> bool:
+        """
+        Helper function to determine if a parameter belongs to a replaced module.
+
+        Args:
+            param (torch.Tensor): The parameter to check.
+        
+        Returns:
+            bool: True if the parameter belongs to a replaced module, False otherwise.
+        """
         return getattr(param, 'ds_is_preleace_module', False)
 
-    def __enter__(self):
-
+    def __enter__(self)-> None:
+        """
+        Enter the context manager. If enabled, gather parameters for the replaced module.
+        """
         if self.enabled:
             self.params[0].gather_params(self.params)
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback)-> None:
+        """
+        Exit the context manager. If enabled, partition the parameters for the replaced module.
+        """
         #TODO : Check whether there are any missing attributes.
         if self.enabled:
             self.params[0].partition(self.params)
@@ -211,7 +236,7 @@ class LinearAllreduce(Replaced_Layer):
         if self.bias is not None:
             output += self.bias
         return output
-
+    @torch.no_grad()
     def gather_params(self, params_list):
 
         for idx, param in enumerate(params_list):
@@ -224,6 +249,7 @@ class LinearAllreduce(Replaced_Layer):
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
             params_list[idx].data = output_param.transpose(0, 1).contiguous()
         return
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         for idx, param in enumerate(params_list):
             if param is None:
@@ -257,7 +283,7 @@ class LinearLayer(Replaced_Layer):
         if self.bias is not None:
             output += self.bias
         return output
-
+    @torch.no_grad()
     def gather_params(self, params_list):
 
         for idx, param in enumerate(params_list):
@@ -271,6 +297,7 @@ class LinearLayer(Replaced_Layer):
                                        device=param.device)
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
             params_list[idx].data = output_param.contiguous()
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         
         for idx, param in enumerate(params_list):
@@ -302,6 +329,7 @@ class LinearLayer(Replaced_Layer):
         
 
 class fused_LinearLayer(LinearLayer):
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False): 
         def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
             
@@ -316,6 +344,7 @@ class fused_LinearLayer(LinearLayer):
             params_list[idx].data = _partition
 
 class conv_LinearLayer(LinearLayer):
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         weight = None
         bias = None
@@ -368,18 +397,22 @@ class bwc_LinearLayer(nn.Module):
 
 #override the subclasses related to weight splitting.
 def Yuan_LinearALlreduce(LinearAllreduce):
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
 
 def Yuan_LinearLayer(LinearLayer):
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
 
 def GLM_LinearLayer(LinearLayer):
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         params_list[0], params_list[1]=shard_chunk_mlp(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
 
 def Conv_LinearALlreduce(LinearALlreduce):
+    @torch.no_grad()
     def partition(self, params_list, move_to_device=False):            
         for idx, param in enumerate(params_list):
             if param is None:
