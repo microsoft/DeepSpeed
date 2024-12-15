@@ -200,7 +200,7 @@ class TorchBackend(Backend):
             return torch.distributed.broadcast(tensor=tensor, src=src, group=group, async_op=async_op)
 
     @compiler.disable
-    def broadcast_object_list(object_list, src, group=None, device=None):
+    def broadcast_object_list(self, object_list, src, group=None, device=None):
         return torch.distributed.broadcast_object_list(object_list=object_list, src=src, group=group, device=device)
     
     @compiler.disable

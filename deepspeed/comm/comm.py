@@ -228,6 +228,7 @@ def broadcast_object_list(object_list, src, group=None, device=None):
     global cdb
     return cdb.broadcast_object_list(object_list=object_list, src=src, group=group, device=device)
 
+
 @timed_op
 def all_gather(tensor_list,
                tensor,

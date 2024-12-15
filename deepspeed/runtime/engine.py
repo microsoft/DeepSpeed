@@ -445,12 +445,13 @@ class DeepSpeedEngine(Module):
                 if len(args) >0:
                     if self.mpu.get_tensor_model_parallel_rank()==0:
                         _src_args=[args]
-                        torch.distributed.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+                        dist.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
                         # Rank 0 does not need to compare with itself
                         is_equal=True
                     else:
                         _src_args=[None]
-                        torch.distributed.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+                        dist.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+
                         print(f"RANK[{dist.get_rank()}],bcast finished")
                         is_equal=compare_tensors_in_structures(args, _src_args[0])
                         
