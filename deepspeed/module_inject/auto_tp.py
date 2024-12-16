@@ -356,7 +356,7 @@ class AutoTP():
             elif name == "lm_head" or name == 'embed_out':
                 return LmHeadLinearAllreduce(child, self.mp_group)
 
-            return LinearAllreduce(child, self.mp_group)
+            return LinearAllreduce(child, self.mp_group,name=name)
         
             
         else:
