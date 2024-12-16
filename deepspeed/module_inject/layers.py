@@ -297,8 +297,8 @@ class LinearAllreduce(Replaced_Layer):
 
 class LinearLayer(Replaced_Layer):
 
-    def __init__(self, module, mp_group , name=None, skip_partition=False, **kwargs):
-        super(LinearLayer, self).__init__(mp_group,name)
+    def __init__(self, module, mp_group , skip_partition=False, **kwargs):
+        super(LinearLayer, self).__init__(mp_group)
         self.weight = module.weight
         self.bias = module.bias
         if not skip_partition:
@@ -350,8 +350,8 @@ class LinearLayer(Replaced_Layer):
     def uneven_partition(self, params_list, move_to_device=False, **kwargs):
         
         for idx, param in enumerate(params_list):
-            if param is None or idx>0:
-                # don't slipt bias
+            if param is None :
+                #split bias if provide
                 return 
             _partition=params_list[idx].split(get_shard_size_list(params_list[idx].shape[0] ,self.tp_world_size,kwargs.get('name')),dim=0)[self.tp_index]
 

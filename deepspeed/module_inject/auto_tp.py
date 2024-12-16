@@ -368,7 +368,7 @@ class AutoTP():
                 #Check and handle fused qkv for TP
                 return fused_LinearLayer(child,self.mp_group,fused_module=self.module)
             
-            return LinearLayer(child, self.mp_group)
+            return LinearLayer(child, self.mp_group,name=name)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
