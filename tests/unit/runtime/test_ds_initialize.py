@@ -21,6 +21,7 @@ from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import FusedAdamBuilder
+from deepspeed import _assert_trainobjs_not_inited, _is_initialized
 
 
 @pytest.mark.parametrize('zero_stage', [0, 3])
@@ -434,3 +435,41 @@ class TestClientLrSchedulerInit(DistributedTest):
         else:
             # callable
             assert isinstance(ds_lr_scheduler, OneCycleLR)
+
+
+# https://github.com/microsoft/DeepSpeed/issues/6770
+class TestNoRepeatedInitializationAllowed(DistributedTest):
+    world_size = 1
+
+    def test_no_repeated_init(self):
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+        client_optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+        model = SimpleModel()
+        # Initialize DeepSpeed configurations for fp16
+        config_dict = {'train_batch_size': 1}
+
+        client_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3)
+        # Initialize DeepSpeed engine
+        _assert_trainobjs_not_inited(model=model, optimizer=client_optimizer, lr_scheduler=None)
+        model_engine, optim, dataloader, scheduler = deepspeed.initialize(model=model,
+                                                                          optimizer=client_optimizer,
+                                                                          config_params=config_dict)
+
+        # arguments should be marked as initialized now
+        assert _is_initialized(model), "Client model should be marked as initialized"
+        assert _is_initialized(client_optimizer), "Client optimizer should be marked as initialized"
+
+        # return values should also be marked as initialized
+        assert _is_initialized(model_engine), "Model engine should be marked as initialized"
+        assert _is_initialized(optim), "Optimizer should be marked as initialized"
+        assert _is_initialized(scheduler), "Scheduler should be marked as initialized"
+
+        exception_raised = False
+        try:
+            deepspeed.initialize(model=model, optimizer=client_optimizer, config_params=config_dict)
+        except ValueError:
+            exception_raised = True
+
+        assert exception_raised, "Repeated initialization should raise an exception"
