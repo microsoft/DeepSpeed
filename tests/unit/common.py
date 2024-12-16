@@ -264,7 +264,7 @@ class DistributedExec(ABC):
                 f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
             )
 
-        if get_accelerator().device_name() == 'xpu'
+        if get_accelerator().device_name() == 'xpu':
             self.non_daemonic_procs = True
             self.reuse_dist_env = False
 
