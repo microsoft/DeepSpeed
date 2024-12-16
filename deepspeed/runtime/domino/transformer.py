@@ -6,13 +6,13 @@
 import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-import deepspeed
-from deepspeed import comm as dist
+import deepspeed.comm
+from deepspeed.comm.comm import init_distributed
 from deepspeed.accelerator import get_accelerator
 
 
 def is_rank_0():
-    if dist.get_rank() == 0:
+    if deepspeed.comm.get_rank() == 0:
         return True
 
 
@@ -248,6 +248,8 @@ class DominoTransformerLayer(DominoModule):
                  drop_path_rate=0.,
                  output_bias=None):
         super(DominoTransformerLayer, self).__init__()
+
+        init_distributed()
 
         self.llama_model = config.llama_model
         self.layer_number = layer_number
