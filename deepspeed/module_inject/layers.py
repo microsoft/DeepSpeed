@@ -420,8 +420,10 @@ class Yuan_LinearLayer(LinearLayer):
 class GLM_LinearLayer(LinearLayer):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        params_list[0], params_list[1]=shard_chunk_mlp(params_list[0].data,params_list[1],self.tp_index, self.tp_world_size )
-        b=0
+        weight, bias=shard_chunk_mlp(params_list[0].data,params_list[1],self.tp_index, self.tp_world_size )
+        params_list[0].data=weight
+        if bias is not None:  
+            params_list[1].data=bias
 class Conv_LinearALlreduce(LinearAllreduce):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):            
