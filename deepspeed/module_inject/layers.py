@@ -14,6 +14,8 @@ from abc import ABC, abstractmethod
 from typing import Iterable, Any, Optional, List
 from deepspeed.utils import groups
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
+from deepspeed.inference.config import AUTOTP_MODE
+DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.INFERENCE
 
 def move(tensor, device):
     #TODO: the data parallelism (DP) is greater than 2,
@@ -98,7 +100,6 @@ class Replaced_Layer(nn.Module, ABC):
         name (Optional[str]): The name of the layer, if provided.
     """
     
-    mode = "INFERENCE" 
     def __init__(self, mp_group: Optional[dist.ProcessGroup], name: Optional[str] = None):
         """
         Initializes the Replaced_Layer with optional model parallelism group and layer name.
@@ -148,14 +149,21 @@ class Replaced_Layer(nn.Module, ABC):
             weight (Optional[torch.Tensor]): The weight tensor to configure for tensor parallelism. 
                                               If None, no action is taken.
         """
-        assert self.support_training, "No implementation of backward."
+        if self.is_training_mode():
+            assert self.support_training, "No implementation of backward."
         if weight is not None:
-            weight.requires_grad = True
+            if self.is_training_mode():
+                if weight.requires_grad is None:
+                    weight.requires_grad = True
+            else:
+                weight.requires_grad =False
             setattr(weight, 'tensor_model_parallel', True)
             weight.ds_is_preleace_module = True
             weight.gather_params = self.gather_params
             weight.partition = self.partition
-
+    def is_training_mode(self):
+        global DEEPSPEED_AUTOTP_MODE
+        return DEEPSPEED_AUTOTP_MODE==AUTOTP_MODE.TRAINING
 
 class GatherReplacedLayerParams:
 

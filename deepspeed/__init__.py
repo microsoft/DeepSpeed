@@ -32,7 +32,7 @@ from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.hybrid_engine import DeepSpeedHybridEngine
 from .runtime.pipe.engine import PipelineEngine
 from .inference.engine import InferenceEngine
-from .inference.config import DeepSpeedInferenceConfig
+from .inference.config import DeepSpeedInferenceConfig, AUTOTP_MODE
 from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
@@ -364,3 +364,8 @@ def init_inference(model, config=None, **kwargs):
     engine = InferenceEngine(model, config=ds_inference_config)
 
     return engine
+
+def tp_model_training_init(model,tp_size, dtype):
+    global DEEPSPEED_AUTOTP_MODE
+    DEEPSPEED_AUTOTP_MODE =AUTOTP_MODE.TRAINING
+    model=init_inference(model=model, mp_size=tp_size, dtype=dtype, replace_with_kernel_inject=False).module
