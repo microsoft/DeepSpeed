@@ -17,6 +17,14 @@ from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_
 from deepspeed.inference.config import AUTOTP_MODE
 DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.INFERENCE
 
+def set_autotp_mode(training=False):
+    global DEEPSPEED_AUTOTP_MODE
+    if training:
+        DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.TRAINING
+    else:
+        DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.INFERENCE
+
+    
 def move(tensor, device):
     #TODO: the data parallelism (DP) is greater than 2,
     # we need to consider when to delete the CPU data.
@@ -149,6 +157,7 @@ class Replaced_Layer(nn.Module, ABC):
             weight (Optional[torch.Tensor]): The weight tensor to configure for tensor parallelism. 
                                               If None, no action is taken.
         """
+        # # The RNG states have already been synchronized in init_inference.
         if self.is_training_mode():
             assert self.support_training, "No implementation of backward."
         if weight is not None:
@@ -161,6 +170,7 @@ class Replaced_Layer(nn.Module, ABC):
             weight.ds_is_preleace_module = True
             weight.gather_params = self.gather_params
             weight.partition = self.partition
+            
     def is_training_mode(self):
         global DEEPSPEED_AUTOTP_MODE
         return DEEPSPEED_AUTOTP_MODE==AUTOTP_MODE.TRAINING

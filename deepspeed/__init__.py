@@ -37,7 +37,7 @@ from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from .module_inject import replace_transformer_layer, revert_transformer_layer
+from .module_inject import replace_transformer_layer, revert_transformer_layer, set_autotp_mode
 
 from .utils import log_dist, OnDevice, logger
 from .comm.comm import init_distributed
@@ -365,7 +365,8 @@ def init_inference(model, config=None, **kwargs):
 
     return engine
 
-def tp_model_training_init(model,tp_size, dtype):
-    global DEEPSPEED_AUTOTP_MODE
-    DEEPSPEED_AUTOTP_MODE =AUTOTP_MODE.TRAINING
+def tp_model_init(model,tp_size, dtype):
+    
+    set_autotp_mode(training=True)
     model=init_inference(model=model, mp_size=tp_size, dtype=dtype, replace_with_kernel_inject=False).module
+    return model

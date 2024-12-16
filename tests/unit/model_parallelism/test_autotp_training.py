@@ -15,7 +15,7 @@ from unit.simple_model import SimpleModel, random_dataloader, sequence_dataloade
 from deepspeed.utils import groups
 from contextlib import contextmanager
 from torch import nn
-from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer
+from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer, set_autotp_mode
 
 # test group         done
 # test daloader check      done
@@ -62,6 +62,7 @@ def should_assert_with_msg(expected_message):
 class TestTpParallelStates(DistributedTest):
     world_size = 4
     def test(self):
+        set_autotp_mode(training=True)
         tp_size=4
 
         dp_size = 4 / dist.get_world_size()
@@ -87,6 +88,7 @@ class TestTpDataloaderCorrectness(DistributedTest):
     def test(self):
         tp_size=4
         hidden_dim = 128
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -150,6 +152,7 @@ class TestTpLayerFwdBwd(DistributedTest):
         tp_size=4
         hidden_dim = 128
         batch_size_per_device=1
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -197,6 +200,7 @@ class TestTpLayerFwdBwd(DistributedTest):
         tp_size=4
         hidden_dim = 128
         batch_size_per_device=1
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -244,6 +248,7 @@ class TestParamsGather(DistributedTest):
     def test(self, layer_type):
         tp_size=4
         hidden_dim = 128
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "optimizer": {
@@ -327,6 +332,7 @@ class TestSave(DistributedTest):
     def test_save_original_weight(self):
         tp_size=4
         hidden_dim = 64
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -378,6 +384,7 @@ class TestSave(DistributedTest):
     def test_ckpt_save(self):    
         tp_size=4
         hidden_dim = 64
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
@@ -442,6 +449,7 @@ class TestTpGradNorm(DistributedTest):
     def test(self):
         tp_size=4
         hidden_dim = 64
+        set_autotp_mode(training=True)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
