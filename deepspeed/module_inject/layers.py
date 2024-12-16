@@ -94,7 +94,7 @@ class Replaced_Layer(nn.Module, ABC):
     Attributes:
         mode (str): The mode of operation[INFERENCE or Training], default is "INFERENCE".
         mp_group (Optional[dist.ProcessGroup]): The process group used for model parallelism.
-        tp_world_sz (int): The world size of tensor parallelism, i.e., the number of parallel workers.
+        tp_world_size (int): The world size of tensor parallelism, i.e., the number of parallel workers.
         tp_index (int): The rank (ID) of the current worker in tensor parallelism.
         support_training (bool): Flag indicating whether the layer supports training (default: False).
         name (Optional[str]): The name of the layer, if provided.
@@ -113,7 +113,7 @@ class Replaced_Layer(nn.Module, ABC):
         self.support_training: bool = False
         if mp_group is not None:
             self.mp_group = mp_group
-            self.tp_world_sz: int  = dist.get_world_size(self.mp_group)
+            self.tp_world_size: int  = dist.get_world_size(self.mp_group)
             self.tp_index: int  = dist.get_rank(mp_group)
         if name is not None:
             self.name=name # Set the layer name if provided.
@@ -253,7 +253,7 @@ class LinearAllreduce(Replaced_Layer):
                 return
             params_list[idx].data_partition = param.data
             param = param.transpose(0, 1).contiguous()
-            output_param = torch.empty(self.tp_world_sz * param.shape[0],
+            output_param = torch.empty(self.tp_world_size * param.shape[0],
                                        param.shape[1],
                                        dtype=param.dtype,
                                        device=param.device)
@@ -266,7 +266,7 @@ class LinearAllreduce(Replaced_Layer):
             if param is None or idx>0:
                 # don't slipt bias
                 return 
-            _partition=torch.chunk(param, self.tp_world_sz, dim=-1)[self.tp_index]
+            _partition=torch.chunk(param, self.tp_world_size, dim=-1)[self.tp_index]
 
             if move_to_device:
                 partition=move(_partition, get_accelerator().current_device()).detach()
@@ -303,7 +303,7 @@ class LinearLayer(Replaced_Layer):
             # shape_tensor=torch.tensor(param.shape[0],dtype=param.dtype,device=param.device)
             # dist.all_reduce(shape_tensor, group=self.mp_group)
             params_list[idx].data_partition = param.data
-            output_param = torch.empty(self.tp_world_sz * param.shape[0],
+            output_param = torch.empty(self.tp_world_size * param.shape[0],
                                        param.shape[1],
                                        dtype=param.dtype,
                                        device=param.device)
@@ -315,7 +315,7 @@ class LinearLayer(Replaced_Layer):
         for idx, param in enumerate(params_list):
             if param is None:
                 return 
-            _partition=torch.chunk(param, self.tp_world_sz, dim=0)[self.tp_index]
+            _partition=torch.chunk(param, self.tp_world_size, dim=0)[self.tp_index]
 
             if move_to_device:
                 partition=move(_partition, get_accelerator().current_device()).detach()
@@ -346,7 +346,7 @@ class fused_LinearLayer(LinearLayer):
         for idx, param in enumerate(params_list):
             if param is None:
                 return 
-            _partition=prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_sz, self.tp_index )
+            _partition=prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_size, self.tp_index )
             if move_to_device:
                 partition=move(_partition, get_accelerator().current_device()).detach()
                 del _partition
@@ -362,14 +362,14 @@ class conv_LinearLayer(LinearLayer):
             weight=params_list[0]
         elif len(params_list)==2:
             weight, bias=params_list[0], params_list[1]
-        _partition = weight.data.split(get_shard_size_list(weight.shape[0],  self.tp_world_sz, self.name), dim=1)
+        _partition = weight.data.split(get_shard_size_list(weight.shape[0],  self.tp_world_size, self.name), dim=1)
         partition=move(_partition, get_accelerator().current_device()).detach()
         del _partition
         weight.data=partition
         
         if bias is not None:
             _partition = bias.data.split(get_shard_size_list(
-                        weight.shape[1] ,self.tp_world_sz, self.name),
+                        weight.shape[1] ,self.tp_world_size, self.name),
                                                       dim=0)
             partition=move(_partition, get_accelerator().current_device()).detach()
             del _partition
@@ -402,26 +402,27 @@ class bwc_LinearLayer(nn.Module):
             output += self.bias
         return output
 
+class Yuan_LinearALlreduce(LinearAllreduce):
+    
+    @torch.no_grad()
+    def partition(self, params_list, move_to_device=False):
+        params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
 
 
 
 #override the subclasses related to weight splitting.
-def Yuan_LinearALlreduce(LinearAllreduce):
+
+class Yuan_LinearLayer(LinearLayer):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
 
-def Yuan_LinearLayer(LinearLayer):
+class GLM_LinearLayer(LinearLayer):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
-
-def GLM_LinearLayer(LinearLayer):
-    @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
-        params_list[0], params_list[1]=shard_chunk_mlp(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
-
-def Conv_LinearALlreduce(LinearALlreduce):
+        params_list[0], params_list[1]=shard_chunk_mlp(params_list[0].data,params_list[1],self.tp_index, self.tp_world_size )
+        b=0
+class Conv_LinearALlreduce(LinearAllreduce):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):            
         for idx, param in enumerate(params_list):
@@ -447,7 +448,7 @@ def Conv_LinearALlreduce(LinearALlreduce):
 class LmHeadLinearAllreduce(LinearAllreduce):
 
     def forward(self, input):
-        input_shard_size = get_shard_size(input.shape[-1], self.tp_world_sz, "lm_head")
+        input_shard_size = get_shard_size(input.shape[-1], self.tp_world_size, "lm_head")
         input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.world_size, "lm_head")[0:self.tp_index])
         output = torch.matmul(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
                               self.weight.transpose(-1, -2))
