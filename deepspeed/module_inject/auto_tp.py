@@ -366,8 +366,7 @@ class AutoTP():
                 conv_LinearLayer(child, self.mp_group)
             elif require_tp_fused_qkvw(name, self.mp_size):
                 #Check and handle fused qkv for TP
-                #The copy is a regular copy, The shape of dst and src is the same
-                return fused_LinearLayer(child, self.mp_group, str(self.module).strip())
+                return fused_LinearLayer(child,self.mp_group,fused_module=self.module)
             
             return LinearLayer(child, self.mp_group)
 

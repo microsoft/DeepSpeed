@@ -26,9 +26,9 @@ def require_tp_fused_qkvw(name, mp_size):
     return False
 
 
-def prepare_tp_fused_qkvw(name, src, mp_size, gpu_index):
+def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
 
-    module_str = name
+    module_str = str(module).strip()
     if src is None:
         return
     fused_type_dict = {

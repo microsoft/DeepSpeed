@@ -106,7 +106,7 @@ class Replaced_Layer(nn.Module, ABC):
         Args:
             mp_group (Optional[dist.ProcessGroup]): The process group for model parallelism. 
                                                     If None, no model parallelism is set.
-            name (Optional[str]): The optional name for the layer.
+            name (Optional[str]): The optional name for the layer.        
         """
         super().__init__()
         self.support_training: bool = False
@@ -240,6 +240,9 @@ class LinearAllreduce(Replaced_Layer):
     def gather_params(self, params_list):
 
         for idx, param in enumerate(params_list):
+            if param is None or idx>0:
+                # don't gather bias
+                return
             params_list[idx].data_partition = param.data
             param = param.transpose(0, 1).contiguous()
             output_param = torch.empty(self.tp_world_sz * param.shape[0],
@@ -252,9 +255,10 @@ class LinearAllreduce(Replaced_Layer):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         for idx, param in enumerate(params_list):
-            if param is None:
+            if param is None or idx>0:
+                # don't slipt bias
                 return 
-            _partition=torch.chunk(param, self.tp_world_sz, dim=1)[self.tp_index]
+            _partition=torch.chunk(param, self.tp_world_sz, dim=-1)[self.tp_index]
 
             if move_to_device:
                 partition=move(_partition, get_accelerator().current_device()).detach()
@@ -265,12 +269,12 @@ class LinearAllreduce(Replaced_Layer):
 
 class LinearLayer(Replaced_Layer):
 
-    def __init__(self, module, mp_group, name=None, skip_partition=False):
-        super(LinearLayer, self).__init__(mp_group, name)
+    def __init__(self, module, mp_group , name=None, skip_partition=False, **kwargs):
+        super(LinearLayer, self).__init__(mp_group)
         self.weight = module.weight
         self.bias = module.bias
         if not skip_partition:
-            self.partition([self.weight, self.bias], move_to_device=True)
+            self.partition([self.weight, self.bias], move_to_device=True, **kwargs)
         self.support_training = True
         self.config_tp_training(self.weight)
         if self.bias is not None:
@@ -298,7 +302,7 @@ class LinearLayer(Replaced_Layer):
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
             params_list[idx].data = output_param.contiguous()
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list, move_to_device=False, **kwargs):
         
         for idx, param in enumerate(params_list):
             if param is None:
@@ -330,13 +334,11 @@ class LinearLayer(Replaced_Layer):
 
 class fused_LinearLayer(LinearLayer):
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False): 
-        def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
-            
-            for idx, param in params_list:
-                if param is None:
-                    return 
-                _partition=prepare_tp_fused_qkvw(self.name, param, self.tp_world_sz, self.tp_index )
+    def partition(self, params_list, move_to_device=False, **kwargs): 
+        for idx, param in enumerate(params_list):
+            if param is None:
+                return 
+            _partition=prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_sz, self.tp_index )
             if move_to_device:
                 partition=move(_partition, get_accelerator().current_device()).detach()
                 del _partition
