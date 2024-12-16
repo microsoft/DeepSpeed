@@ -68,10 +68,10 @@ dist = None
 
 def _mark_initialized(trainobj: Union[torch.nn.Module, Optimizer, _LRScheduler]):
     """Mark a trainobj as initialized by setting the ds_is_inited attribute to True."""
-    # we shouldn't hit the assert below, but just in case
-    assert not hasattr(
-        trainobj, 'ds_is_inited'
-    ), "Model has already been initialized, please make sure to only call deepspeed.initialize on a model once."
+    if hasattr(trainobj, 'ds_is_inited'):
+        assert trainobj.ds_is_inited, "Not expecting the training object has `ds_is_inited` to be False if it exists, make sure you didn't set it to False or called deepspeed.initialize on the model more than once."
+        return
+
     trainobj.ds_is_inited = True
 
 
@@ -79,7 +79,7 @@ def _is_initialized(trainobj: Union[torch.nn.Module, Optimizer, _LRScheduler]):
     """Check if a trainobj has been initialized by checking the ds_is_inited attribute."""
     if hasattr(trainobj, 'ds_is_inited'):
         # we shouldn't hit the assert below, but just in case
-        assert trainobj.ds_is_inited, "Not expecting the model has `ds_is_inited` to be False if it exists, make sure you didn't set it to False or called deepspeed.initialize on the model more than once."
+        assert trainobj.ds_is_inited, "Not expecting the training object has `ds_is_inited` to be False if it exists, make sure you didn't set it to False or called deepspeed.initialize on the model more than once."
         return True
     return False
 
