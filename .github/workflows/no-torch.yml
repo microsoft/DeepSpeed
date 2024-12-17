@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/no-torch.yml'
       - 'op_builder/**'
+      - 'accelerator/**'
   schedule:
     - cron: "0 0 * * *"
 
