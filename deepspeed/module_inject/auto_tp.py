@@ -11,9 +11,9 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, Yuan_LinearALlreduce, Yuan_LinearLayer, GLM_LinearLayer, Conv_LinearALlreduce, fused_LinearLayer,conv_LinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, Yuan_LinearALlreduce, Yuan_LinearLayer, GLM_LinearLayer, Conv_LinearALlreduce, fused_LinearLayer, conv_LinearLayer
 from deepspeed.accelerator import get_accelerator
-from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw, shard_value_with_share_qk, shard_chunk_mlp
+from .fusedqkv_utils import require_tp_fused_qkvw
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
@@ -328,7 +328,7 @@ class AutoTP():
         self.mp_group = mp_group
 
     def _replace(self, child, name, conv_linear_layer):
-        # This function should clearly define the routing rules for specific layers 
+        # This function should clearly define the routing rules for specific layers
         # and avoid any complex shard-related logic.
         if getattr(child, "replaced", False) == True:
             return
@@ -342,10 +342,10 @@ class AutoTP():
         if 'Yuan' in str(self.module):
             if 'v_proj' in name:
                 return Yuan_LinearLayer(child, self.mp_group)
-            
+
             elif 'o_proj' in name:
                 return Yuan_LinearALlreduce(child, self.mp_group)
-            
+
         # For MLP including chunk layer.
         if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
             return GLM_LinearLayer(child, self.mp_group)
@@ -357,17 +357,17 @@ class AutoTP():
             elif name == "lm_head" or name == 'embed_out':
                 return LmHeadLinearAllreduce(child, self.mp_group)
 
-            return LinearAllreduce(child, self.mp_group,name=name)
+            return LinearAllreduce(child, self.mp_group, name=name)
         else:
-         
+
             setattr(child, "replaced", True)
             if self.conv_linear_layer:
                 conv_LinearLayer(child, self.mp_group)
             elif require_tp_fused_qkvw(name, self.mp_size):
                 #Check and handle fused qkv for TP
-                return fused_LinearLayer(child,self.mp_group,fused_module=self.module)
-            
-            return LinearLayer(child, self.mp_group,name=name)
+                return fused_LinearLayer(child, self.mp_group, fused_module=self.module)
+
+            return LinearLayer(child, self.mp_group, name=name)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:

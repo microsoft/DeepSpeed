@@ -1103,10 +1103,7 @@ def reload_adam_states(optimizer, device, non_blocking: bool = False):
             move_back_key(state, "exp_avg_sq")
 
 
-def compare_tensors_in_structures(
-    inputs1: Union[List, Dict],
-    inputs2: Union[List, Dict]
-) -> bool:
+def compare_tensors_in_structures(inputs1: Union[List, Dict], inputs2: Union[List, Dict]) -> bool:
     """
     Compare two lists or dictionaries for equality, including any tensors they may contain.
 
@@ -1119,17 +1116,17 @@ def compare_tensors_in_structures(
     """
     if type(inputs1) != type(inputs2):  # Ensure types match
         return False
-    
+
     if isinstance(inputs1, list) and isinstance(inputs2, list):
         if len(inputs1) != len(inputs2):
             return False
         for val1, val2 in zip(inputs1, inputs2):
             if isinstance(val1, torch.Tensor) and isinstance(val2, torch.Tensor):
-                val1=val1.to(get_accelerator().current_device())
-                val2=val2.to(get_accelerator().current_device())
-                if not torch.equal(val1, val2): 
+                val1 = val1.to(get_accelerator().current_device())
+                val2 = val2.to(get_accelerator().current_device())
+                if not torch.equal(val1, val2):
                     return False
-            elif val1 != val2:  
+            elif val1 != val2:
                 return False
         return True
 
@@ -1140,9 +1137,9 @@ def compare_tensors_in_structures(
             val1 = inputs1[key].to(get_accelerator().current_device())
             val2 = inputs2[key].to(get_accelerator().current_device())
             if isinstance(val1, torch.Tensor) and isinstance(val2, torch.Tensor):
-                if not torch.equal(val1, val2): 
+                if not torch.equal(val1, val2):
                     return False
-            elif val1 != val2:  
+            elif val1 != val2:
                 return False
         return True
 

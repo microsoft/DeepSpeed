@@ -30,9 +30,11 @@ class MoETypeEnum(str, Enum):
     residual = "residual"
     standard = "standard"
 
+
 class AUTOTP_MODE(Enum):
     TRAINING = "TRAINING"
     INFERENCE = "INFERENCE"
+
 
 class DeepSpeedTPConfig(DeepSpeedConfigModel):
     """ Configure tensor parallelism settings """

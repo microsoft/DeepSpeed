@@ -414,8 +414,8 @@ class DeepSpeedEngine(Module):
 
     def _configure_tensor_parallel_states(self, model):
         """
-        Configures the tensor parallel states for the model. 
-        This includes setting up the tensor parallel groups, initializing the TP mesh, 
+        Configures the tensor parallel states for the model.
+        This includes setting up the tensor parallel groups, initializing the TP mesh,
         and registering a pre-hook to ensure that the Dataloader inputs are consistent across ranks.
         """
         # The compatibility has only been validated for 'gpus==autotp_size' at the moment.
@@ -429,46 +429,57 @@ class DeepSpeedEngine(Module):
 
         self.mpu = groups
         self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
-        
-        self.first_dataloader_check=None
+
+        self.first_dataloader_check = None
+
         def check_dataloader_inputs_same_across_ranks(module, args, kwargs):
 
             def broadcast_and_check(args, bcast_rank, bcast_group):
-                if isinstance(args, tuple): 
-                    args = list(args) 
-                if len(args) >0:
-                    if self.mpu.get_tensor_model_parallel_rank()==0:
-                        _src_args=[args]
-                        dist.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+                if isinstance(args, tuple):
+                    args = list(args)
+                if len(args) > 0:
+                    if self.mpu.get_tensor_model_parallel_rank() == 0:
+                        _src_args = [args]
+                        dist.broadcast_object_list(object_list=_src_args,
+                                                   src=bcast_rank,
+                                                   group=bcast_group,
+                                                   device=get_accelerator().current_device())
                         # Rank 0 does not need to compare with itself
-                        is_equal=True
+                        is_equal = True
                     else:
-                        _src_args=[None]
-                        dist.broadcast_object_list(object_list=_src_args, src=bcast_rank, group=bcast_group, device=get_accelerator().current_device())
+                        _src_args = [None]
+                        dist.broadcast_object_list(object_list=_src_args,
+                                                   src=bcast_rank,
+                                                   group=bcast_group,
+                                                   device=get_accelerator().current_device())
 
                         print(f"RANK[{dist.get_rank()}],bcast finished")
-                        is_equal=compare_tensors_in_structures(args, _src_args[0])
-                        
-                
-                    equal_tensor = torch.tensor(is_equal,dtype=self.communication_data_type,device=get_accelerator().current_device())
-                    dist.all_reduce(equal_tensor,group=bcast_group)
-                    assert torch.equal(equal_tensor, torch.tensor(groups.get_tensor_model_parallel_world_size(), dtype=self.communication_data_type,device=get_accelerator().current_device())), "Data inconsistency within the TP group. Please check the Dataloader implementation to ensure consistency."
-            
-            bcast_rank=self.mpu.get_tensor_model_parallel_src_rank()
-            bcast_group=self.mpu.get_tensor_model_parallel_group()
-            
+                        is_equal = compare_tensors_in_structures(args, _src_args[0])
+
+                    equal_tensor = torch.tensor(is_equal,
+                                                dtype=self.communication_data_type,
+                                                device=get_accelerator().current_device())
+                    dist.all_reduce(equal_tensor, group=bcast_group)
+                    assert torch.equal(
+                        equal_tensor,
+                        torch.tensor(groups.get_tensor_model_parallel_world_size(),
+                                     dtype=self.communication_data_type,
+                                     device=get_accelerator().current_device())
+                    ), "Data inconsistency within the TP group. Please check the Dataloader implementation to ensure consistency."
+
+            bcast_rank = self.mpu.get_tensor_model_parallel_src_rank()
+            bcast_group = self.mpu.get_tensor_model_parallel_group()
+
             broadcast_and_check(args, bcast_rank, bcast_group)
             broadcast_and_check(kwargs, bcast_rank, bcast_group)
-            
 
             print(f"RANK[{dist.get_rank()}]:The Dataloader has passed the TP group consistency check.")
 
             self.first_dataloader_check.remove()
-            
-        self.first_dataloader_check= self.module.register_forward_pre_hook(check_dataloader_inputs_same_across_ranks,prepend=True, with_kwargs=True)
-        
-        
 
+        self.first_dataloader_check = self.module.register_forward_pre_hook(check_dataloader_inputs_same_across_ranks,
+                                                                            prepend=True,
+                                                                            with_kwargs=True)
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -1169,7 +1180,6 @@ class DeepSpeedEngine(Module):
                 f'Client Optimizer (type = {type(self.client_optimizer)} is not instantiated but Client LR Scheduler is instantiated'
 
     def _broadcast_model(self):
-
 
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
@@ -2557,9 +2567,7 @@ class DeepSpeedEngine(Module):
         else:
             dp_group = groups._get_sequence_data_parallel_group()
             dp_world_size = dist.get_world_size(dp_group) / float(self.sequence_parallel_size)
-            
 
-        
         for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
             if sparse_bucket_tuple:
                 bucket_type, sparse_bucket = sparse_bucket_tuple

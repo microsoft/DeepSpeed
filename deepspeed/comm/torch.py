@@ -202,7 +202,7 @@ class TorchBackend(Backend):
     @compiler.disable
     def broadcast_object_list(self, object_list, src, group=None, device=None):
         return torch.distributed.broadcast_object_list(object_list=object_list, src=src, group=group, device=device)
-    
+
     @compiler.disable
     def all_gather(self, tensor_list, tensor, group=None, async_op=False):
         if DS_COMM_ALL_GATHER_OFF:
@@ -295,8 +295,6 @@ class TorchBackend(Backend):
     def all_to_all(self, output_tensor_list, input_tensor_list, group=None, async_op=False):
         return torch.distributed.all_to_all(output_tensor_list, input_tensor_list, group=group, async_op=async_op)
 
-
-    
     @compiler.disable
     def send(self, tensor, dst, group=None, tag=0):
         return torch.distributed.send(tensor=tensor, dst=dst, group=group, tag=tag)

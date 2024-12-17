@@ -21,9 +21,10 @@ class SimpleModel(torch.nn.Module):
 
     def __init__(self, hidden_dim, empty_grad=False, nlayers=1):
         super(SimpleModel, self).__init__()
-        self.linears = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim,bias=None) for i in range(nlayers)])
+        self.linears = torch.nn.ModuleList(
+            [torch.nn.Linear(hidden_dim, hidden_dim, bias=None) for i in range(nlayers)])
         if empty_grad:
-            self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim,bias=None)
+            self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim, bias=None)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
         self.empty_grad = empty_grad
 
@@ -35,7 +36,7 @@ class SimpleModel(torch.nn.Module):
                 x = self.linears[i // 2](x) + l(x)
         return self.cross_entropy_loss(x, y)
 
-    
+
 class SimpleFrozenModel(torch.nn.Module):
 
     def __init__(self, hidden_dim, empty_grad=False):

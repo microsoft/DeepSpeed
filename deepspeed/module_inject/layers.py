@@ -12,21 +12,22 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
 from typing import Iterable, Any, Optional, List
-from deepspeed.utils import groups
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 from deepspeed.inference.config import AUTOTP_MODE
-DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.INFERENCE
+
+DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
+
 
 def set_autotp_mode(training=False):
     global DEEPSPEED_AUTOTP_MODE
     if training:
-        DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.TRAINING
+        DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.TRAINING
     else:
-        DEEPSPEED_AUTOTP_MODE=AUTOTP_MODE.INFERENCE
+        DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 
-    
+
 def move(tensor, device):
-    # TODO: consider the timing of deletion 
+    # TODO: consider the timing of deletion
     # to save host resources when DP > 1。
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
@@ -35,17 +36,20 @@ def move(tensor, device):
         # Using copy=True instead of clone() will help in case of cpu --> cpu.
         # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
         return tensor.to(device, copy=True)
+
+
 class RowParallel(torch.autograd.Function):
     """
     A custom autograd function for performing row-wise parallelism.
     """
+
     @staticmethod
     def symbolic(graph, input):
         """Symbolic function for tracing."""
         return input
-    
+
     @staticmethod
-    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor, is_inference_mode:bool)-> torch.Tensor:
+    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor, is_inference_mode: bool) -> torch.Tensor:
         """
         Forward pass.
         """
@@ -59,7 +63,7 @@ class RowParallel(torch.autograd.Function):
         return input
 
     @staticmethod
-    def backward(ctx:Any, grad_output: torch.Tensor)-> tuple[None, torch.Tensor, None]:
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[None, torch.Tensor, None]:
         """
         Backward pass.
         """
@@ -70,13 +74,14 @@ class ColumnParallel(torch.autograd.Function):
     """
     Custom autograd function for column-wise parallelism.
     """
+
     @staticmethod
     def symbolic(graph, input):
         """Symbolic function for tracing."""
         return dist.all_reduce(input.contiguous(), dist.get_tensor_model_parallel_group())
-    
+
     @staticmethod
-    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor)-> torch.Tensor:
+    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor) -> torch.Tensor:
         """
         Forward pass.
         """
@@ -84,7 +89,7 @@ class ColumnParallel(torch.autograd.Function):
         return input
 
     @staticmethod
-    def backward(ctx: Any, grad_output: torch.Tensor)-> tuple[None, torch.Tensor]:
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[None, torch.Tensor]:
         """
         Backward pass.
         """
@@ -97,8 +102,8 @@ class ColumnParallel(torch.autograd.Function):
 
 class Replaced_Layer(nn.Module, ABC):
     """
-    A base class for model layers with  tensor parallelism support. 
-    This class is designed to be extended by specific layers that require distributed 
+    A base class for model layers with  tensor parallelism support.
+    This class is designed to be extended by specific layers that require distributed
     operations and parameter gather/partitioning during inference or training.
 
     Attributes:
@@ -109,24 +114,25 @@ class Replaced_Layer(nn.Module, ABC):
         support_training (bool): Flag indicating whether the layer supports training (default: False).
         name (Optional[str]): The name of the layer, if provided.
     """
-    
+
     def __init__(self, mp_group: Optional[dist.ProcessGroup], name: Optional[str] = None):
         """
         Initializes the Replaced_Layer with optional model parallelism group and layer name.
-        
+
         Args:
-            mp_group (Optional[dist.ProcessGroup]): The process group for model parallelism. 
+            mp_group (Optional[dist.ProcessGroup]): The process group for model parallelism.
                                                     If None, no model parallelism is set.
-            name (Optional[str]): The optional name for the layer.        
+            name (Optional[str]): The optional name for the layer.
         """
         super().__init__()
         self.support_training: bool = False
         if mp_group is not None:
             self.mp_group = mp_group
-            self.tp_world_size: int  = dist.get_world_size(self.mp_group)
-            self.tp_index: int  = dist.get_rank(mp_group)
+            self.tp_world_size: int = dist.get_world_size(self.mp_group)
+            self.tp_index: int = dist.get_rank(mp_group)
         if name is not None:
-            self.name=name # Set the layer name if provided.
+            self.name = name  # Set the layer name if provided.
+
     @abstractmethod
     def forward(self, input):
         """
@@ -141,21 +147,19 @@ class Replaced_Layer(nn.Module, ABC):
         """
         pass
 
-    def partition(self, params_list:List[torch.Tensor], move_to_device:bool=False):
+    def partition(self, params_list: List[torch.Tensor], move_to_device: bool = False):
         """
-        Partitions the parameters for tensor parallelism. 
+        Partitions the parameters for tensor parallelism.
         It is necessary to ensure that this function only involves the logic of params partitioning.
         """
-        
-
 
     def config_tp_training(self, weight):
         """
-        Configures the weight tensor for training with tensor parallelism. This includes enabling gradients 
+        Configures the weight tensor for training with tensor parallelism. This includes enabling gradients
         and associating necessary methods for parameter gathering and partitioning.
 
         Args:
-            weight (Optional[torch.Tensor]): The weight tensor to configure for tensor parallelism. 
+            weight (Optional[torch.Tensor]): The weight tensor to configure for tensor parallelism.
                                               If None, no action is taken.
         """
         # # The RNG states have already been synchronized in init_inference.
@@ -166,23 +170,24 @@ class Replaced_Layer(nn.Module, ABC):
                 if weight.requires_grad is None:
                     weight.requires_grad = True
             else:
-                weight.requires_grad =False
+                weight.requires_grad = False
             setattr(weight, 'tensor_model_parallel', True)
             weight.ds_is_preleace_module = True
             weight.gather_params = self.gather_params
             weight.partition = self.partition
-            
+
     def is_training_mode(self):
         global DEEPSPEED_AUTOTP_MODE
-        return DEEPSPEED_AUTOTP_MODE==AUTOTP_MODE.TRAINING
+        return DEEPSPEED_AUTOTP_MODE == AUTOTP_MODE.TRAINING
+
 
 class GatherReplacedLayerParams:
-
     """
     A context manager for gathering parameters of a replaced layer, enabling partitioning and gathering functionality
-    based on the configuration of the model. 
+    based on the configuration of the model.
     """
-    def __init__(self, params:Iterable[torch.Tensor] | torch.Tensor, module: torch.nn.Module, enabled: bool=True):
+
+    def __init__(self, params: Iterable[torch.Tensor] | torch.Tensor, module: torch.nn.Module, enabled: bool = True):
         """
         Initialize the context manager to handle parameter gathering and partitioning for a replaced layer.
 
@@ -195,39 +200,38 @@ class GatherReplacedLayerParams:
         self.module = module
         if not enabled:
             return
-        
+
         # Ensure params is a list, whether it's a single param or iterable (e.g., model.parameters())
         if isinstance(params, Iterable) and not isinstance(params, torch.Tensor):
-            self.params: List[torch.Tensor] = list(params) # Convert generators to a list for multiple iterations
+            self.params: List[torch.Tensor] = list(params)  # Convert generators to a list for multiple iterations
         else:
-            self.params: List[torch.Tensor] = [params] # Wrap single parameter in a list for uniform processing
-
+            self.params: List[torch.Tensor] = [params]  # Wrap single parameter in a list for uniform processing
 
         # Check if the parameters belong to a replaced layer (indicated by a specific attribute)
         if not any(self._is_replaced_module_weight(p) for p in params):
             self.enabled = False
             return
 
-    def _is_replaced_module_weight(self, param: torch.Tensor)-> bool:
+    def _is_replaced_module_weight(self, param: torch.Tensor) -> bool:
         """
         Helper function to determine if a parameter belongs to a replaced module.
 
         Args:
             param (torch.Tensor): The parameter to check.
-        
+
         Returns:
             bool: True if the parameter belongs to a replaced module, False otherwise.
         """
         return getattr(param, 'ds_is_preleace_module', False)
 
-    def __enter__(self)-> None:
+    def __enter__(self) -> None:
         """
         Enter the context manager. If enabled, gather parameters for the replaced module.
         """
         if self.enabled:
             self.params[0].gather_params(self.params)
 
-    def __exit__(self, exc_type, exc_value, traceback)-> None:
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         """
         Exit the context manager. If enabled, partition the parameters for the replaced module.
         """
@@ -242,8 +246,8 @@ class LinearAllreduce(Replaced_Layer):
         super(LinearAllreduce, self).__init__(mp_group)
         self.weight = module.weight
         self.bias = module.bias
-        
-        self.partition([self.weight, self.bias], move_to_device=True,**kwargs)
+
+        self.partition([self.weight, self.bias], move_to_device=True, **kwargs)
         self.support_training = True
         self.config_tp_training(self.weight)
         if self.bias is not None:
@@ -255,11 +259,12 @@ class LinearAllreduce(Replaced_Layer):
         if self.bias is not None:
             output += self.bias
         return output
+
     @torch.no_grad()
     def gather_params(self, params_list):
 
         for idx, param in enumerate(params_list):
-            if param is None or idx>0:
+            if param is None or idx > 0:
                 # don't gather bias
                 return
             params_list[idx].data_partition = param.data
@@ -271,44 +276,47 @@ class LinearAllreduce(Replaced_Layer):
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
             params_list[idx].data = output_param.transpose(0, 1).contiguous()
         return
+
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False, **kwargs):
-        
+
         if not self.is_training_mode():
-            self.uneven_partition(params_list, move_to_device,**kwargs)
-            return 
+            self.uneven_partition(params_list, move_to_device, **kwargs)
+            return
 
         else:
             for idx, param in enumerate(params_list):
-                if param is None or idx>0:
+                if param is None or idx > 0:
                     # don't slipt bias
-                    return 
-                _partition=torch.chunk(param, self.tp_world_size, dim=-1)[self.tp_index]
+                    return
+                _partition = torch.chunk(param, self.tp_world_size, dim=-1)[self.tp_index]
 
                 if move_to_device:
-                    partition=move(_partition, get_accelerator().current_device()).detach()
+                    partition = move(_partition, get_accelerator().current_device()).detach()
                     del _partition
-                    _partition=partition
-                
+                    _partition = partition
+
                 params_list[idx].data = _partition
-    def uneven_partition(self, params_list, move_to_device,**kwargs):
+
+    def uneven_partition(self, params_list, move_to_device, **kwargs):
         for idx, param in enumerate(params_list):
-            if param is None or idx>0:
+            if param is None or idx > 0:
                 # don't slipt bias
-                return 
-            _partition=params_list[idx].split(get_shard_size_list(params_list[idx].shape[1] ,self.tp_world_size,kwargs.get('name')),dim=1)[self.tp_index]
+                return
+            _partition = params_list[idx].split(get_shard_size_list(params_list[idx].shape[1], self.tp_world_size,
+                                                                    kwargs.get('name')),
+                                                dim=1)[self.tp_index]
 
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device()).detach()
+                partition = move(_partition, get_accelerator().current_device()).detach()
                 del _partition
-                _partition=partition
+                _partition = partition
             params_list[idx].data = _partition
 
-        
 
 class LinearLayer(Replaced_Layer):
 
-    def __init__(self, module, mp_group , skip_partition=False, **kwargs):
+    def __init__(self, module, mp_group, skip_partition=False, **kwargs):
         super(LinearLayer, self).__init__(mp_group)
         self.weight = module.weight
         self.bias = module.bias
@@ -319,18 +327,18 @@ class LinearLayer(Replaced_Layer):
         if self.bias is not None:
             self.config_tp_training(self.bias)
 
-
     def forward(self, input):
         input = ColumnParallel.apply(self.mp_group, input)
         output = torch.matmul(input, self.weight.transpose(-1, -2))
         if self.bias is not None:
             output += self.bias
         return output
+
     @torch.no_grad()
     def gather_params(self, params_list):
         #  Does not support uneven shard.
         for idx, param in enumerate(params_list):
-        
+
             params_list[idx].data_partition = param.data
             output_param = torch.empty(self.tp_world_size * param.shape[0],
                                        param.shape[1],
@@ -338,131 +346,147 @@ class LinearLayer(Replaced_Layer):
                                        device=param.device)
             dist.all_gather_into_tensor(output_param, param, group=self.mp_group)
             params_list[idx].data = output_param.contiguous()
+
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False, **kwargs):
-        
+
         if not self.is_training_mode():
-            self.uneven_partition(params_list, move_to_device,**kwargs)
-            return 
+            self.uneven_partition(params_list, move_to_device, **kwargs)
+            return
         for idx, param in enumerate(params_list):
             if param is None:
-                return 
+                return
             #split bias if provide
-            _partition=torch.chunk(param, self.tp_world_size, dim=0)[self.tp_index]
+            _partition = torch.chunk(param, self.tp_world_size, dim=0)[self.tp_index]
 
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device()).detach()
+                partition = move(_partition, get_accelerator().current_device()).detach()
                 del _partition
-                _partition=partition
-            
+                _partition = partition
+
             params_list[idx].data = _partition
+
     def uneven_partition(self, params_list, move_to_device=False, **kwargs):
-        
+
         for idx, param in enumerate(params_list):
-            if param is None :
+            if param is None:
                 #split bias if provide
-                return 
-            _partition=params_list[idx].split(get_shard_size_list(params_list[idx].shape[0] ,self.tp_world_size,kwargs.get('name')),dim=0)[self.tp_index]
+                return
+            _partition = params_list[idx].split(get_shard_size_list(params_list[idx].shape[0], self.tp_world_size,
+                                                                    kwargs.get('name')),
+                                                dim=0)[self.tp_index]
 
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device()).detach()
+                partition = move(_partition, get_accelerator().current_device()).detach()
                 del _partition
-                _partition=partition
+                _partition = partition
             params_list[idx].data = _partition
+
     # for bwc
     @classmethod
     def from_weights(cls, weight_shape=None, dtype=torch.half, weight=None, bias=None):
         if weight is not None:
-            in_features = weight.shape[1] 
-            out_features = weight.shape[0]  
+            in_features = weight.shape[1]
+            out_features = weight.shape[0]
             linear = nn.Linear(in_features, out_features, bias=(bias is not None))
             linear.weight.data = weight
             if bias is not None:
                 linear.bias.data = bias
         else:
-            in_features = weight_shape[1] 
-            out_features = weight_shape[0]  
+            in_features = weight_shape[1]
+            out_features = weight_shape[0]
             linear = nn.Linear(in_features, out_features, bias=(bias is not None))
         return cls(linear, skip_partition=True)
-    
-    
+
 
 class fused_LinearLayer(LinearLayer):
+
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False, **kwargs): 
+    def partition(self, params_list, move_to_device=False, **kwargs):
         for idx, param in enumerate(params_list):
             if param is None:
-                return 
-            _partition=prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_size, self.tp_index )
+                return
+            _partition = prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_size, self.tp_index)
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device()).detach()
+                partition = move(_partition, get_accelerator().current_device()).detach()
                 del _partition
-                _partition=partition
+                _partition = partition
             params_list[idx].data = _partition
 
+
 class conv_LinearLayer(LinearLayer):
+
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         weight = None
         bias = None
-        if len(params_list)==1:
-            weight=params_list[0]
-        elif len(params_list)==2:
-            weight, bias=params_list[0], params_list[1]
-        _partition = weight.data.split(get_shard_size_list(weight.shape[0],  self.tp_world_size, self.name), dim=1)[self.tp_index]
-        partition=move(_partition, get_accelerator().current_device()).detach()
+        if len(params_list) == 1:
+            weight = params_list[0]
+        elif len(params_list) == 2:
+            weight, bias = params_list[0], params_list[1]
+        _partition = weight.data.split(get_shard_size_list(weight.shape[0], self.tp_world_size, self.name),
+                                       dim=1)[self.tp_index]
+        partition = move(_partition, get_accelerator().current_device()).detach()
         del _partition
-        weight.data=partition
-        
+        weight.data = partition
+
         if bias is not None:
-            _partition = bias.data.split(get_shard_size_list(
-                        weight.shape[1] ,self.tp_world_size, self.name),
-                                                      dim=0)[self.tp_index]
-            partition=move(_partition, get_accelerator().current_device()).detach()
+            _partition = bias.data.split(get_shard_size_list(weight.shape[1], self.tp_world_size, self.name),
+                                         dim=0)[self.tp_index]
+            partition = move(_partition, get_accelerator().current_device()).detach()
             del _partition
-            bias.data=partition
+            bias.data = partition
 
 
 #override the subclasses related to weight splitting.
 class Yuan_LinearALlreduce(LinearAllreduce):
-    
+
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
+        params_list[0], params_list[1] = shard_value_with_share_qk(params_list[0], params_list[1], self.tp_world_size,
+                                                                   self.tp_index, False)
+
 
 class Yuan_LinearLayer(LinearLayer):
+
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        weight, bias=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
-        params_list[0].data=weight
-        if bias is not None:  
-            params_list[1].data=bias
+        weight, bias = shard_value_with_share_qk(params_list[0], params_list[1], self.tp_world_size, self.tp_index,
+                                                 False)
+        params_list[0].data = weight
+        if bias is not None:
+            params_list[1].data = bias
+
+
 class GLM_LinearLayer(LinearLayer):
+
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        weight, bias=shard_chunk_mlp(params_list[0].data,params_list[1],self.tp_index, self.tp_world_size )
-        params_list[0].data=weight
-        if bias is not None:  
-            params_list[1].data=bias
+        weight, bias = shard_chunk_mlp(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size)
+        params_list[0].data = weight
+        if bias is not None:
+            params_list[1].data = bias
+
+
 class Conv_LinearALlreduce(LinearAllreduce):
+
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):            
+    def partition(self, params_list, move_to_device=False):
         for idx, param in enumerate(params_list):
             if param is None:
-                return 
-            param.data= param.data.transpose(-1, -2).contiguous()
-            
-            _partition=param.split(get_shard_size_list(
-                param.shape[0] , self.tp_world_size, self.name),
-                                           dim=1)[self.tp_index]
+                return
+            param.data = param.data.transpose(-1, -2).contiguous()
+
+            _partition = param.split(get_shard_size_list(param.shape[0], self.tp_world_size, self.name),
+                                     dim=1)[self.tp_index]
 
             if move_to_device:
-                partition=move(_partition, get_accelerator().current_device())
+                partition = move(_partition, get_accelerator().current_device())
                 del _partition
-                _partition=partition
-            
+                _partition = partition
+
             params_list[idx].data = _partition
-        
+
 
 #override the subclasses related to fwd/bwd.
 class LmHeadLinearAllreduce(LinearAllreduce):
@@ -477,10 +501,8 @@ class LmHeadLinearAllreduce(LinearAllreduce):
         if self.bias is not None:
             output += self.bias
         return output
-        
-        
-        
-        
+
+
 class TensorParallelConv2d(nn.Module):
 
     def __init__(self, conv, rank, world_size, shard_by_oc):
