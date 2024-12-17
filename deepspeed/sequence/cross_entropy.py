@@ -9,9 +9,8 @@ import deepspeed.comm as dist
 
 
 class _VocabSequenceParallelCrossEntropy(torch.autograd.Function):
-
     @staticmethod
-    def forward(ctx, vocab_seq_parallel_logits, target, sp_group):
+    def forward(ctx, vocab_seq_parallel_logits, target, sp_group, ignore_index=-100):
         # vocab_seq_parallel_logits: [S/P, B, V]
         # target: [S/P, B]
         # return: [S, B]
@@ -19,7 +18,12 @@ class _VocabSequenceParallelCrossEntropy(torch.autograd.Function):
         # Need softmax for backward
         softmax = torch.nn.functional.softmax(vocab_seq_parallel_logits, dim=-1)
         ctx.vocab_size = vocab_seq_parallel_logits.size(2)
-        loss = torch.nn.functional.nll_loss(softmax.log().view(-1, ctx.vocab_size), target.view(-1), reduction='none')
+        loss = torch.nn.functional.nll_loss(
+            softmax.log().view(-1, ctx.vocab_size),
+            target.view(-1),
+            ignore_index=ignore_index,
+            reduction="none",
+        )
 
         sp_world_size = dist.get_world_size(sp_group)
         sp_rank = dist.get_rank(sp_group)
@@ -56,5 +60,9 @@ class _VocabSequenceParallelCrossEntropy(torch.autograd.Function):
         return grad_input, None, None, None
 
 
-def vocab_sequence_parallel_cross_entropy(vocab_parallel_logits, target, sp_group):
-    return _VocabSequenceParallelCrossEntropy.apply(vocab_parallel_logits, target, sp_group)
+def vocab_sequence_parallel_cross_entropy(
+    vocab_parallel_logits, target, sp_group, ignore_index=-100
+):
+    return _VocabSequenceParallelCrossEntropy.apply(
+        vocab_parallel_logits, target, sp_group, ignore_index
+    )
