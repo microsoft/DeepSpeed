@@ -246,7 +246,7 @@ class DeepSpeedEngine(Module):
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
-        if self.zero_autotp_size() > 0:
+        if self.zero_autotp_size() > 1:
             self._configure_tensor_parallel_states(model)
         see_memory_usage(f"DeepSpeed Engine: After args sanity test", force=self.memory_breakdown())
         if mpu is not None:
@@ -460,7 +460,6 @@ class DeepSpeedEngine(Module):
             broadcast_and_check(args, bcast_rank, bcast_group)
             broadcast_and_check(kwargs, bcast_rank, bcast_group)
             
-            # assert , "Data inconsistency within the TP group. Please check the Dataloader implementation to ensure consistency."
 
             print(f"RANK[{dist.get_rank()}]:The Dataloader has passed the TP group consistency check.")
 
@@ -1170,11 +1169,7 @@ class DeepSpeedEngine(Module):
                 f'Client Optimizer (type = {type(self.client_optimizer)} is not instantiated but Client LR Scheduler is instantiated'
 
     def _broadcast_model(self):
-        if self.zero_autotp_size() > 0:
-            # At present, only the 'tp' has been validated with 'dp=1', where the 'seq_data_parallel_group'
-            # will execute an incorrect broadcast. Hard code skip for test.
-            # Unified group creation function is needed
-            return
+
 
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
@@ -2563,9 +2558,7 @@ class DeepSpeedEngine(Module):
             dp_group = groups._get_sequence_data_parallel_group()
             dp_world_size = dist.get_world_size(dp_group) / float(self.sequence_parallel_size)
             
-        # bypass gradient reduction when dp_size equals 1.
-        if dp_world_size == 1:
-            return 
+
         
         for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
             if sparse_bucket_tuple:

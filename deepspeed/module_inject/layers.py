@@ -274,7 +274,7 @@ class LinearAllreduce(Replaced_Layer):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False, **kwargs):
         
-        if DEEPSPEED_AUTOTP_MODE ==AUTOTP_MODE.INFERENCE:
+        if not self.is_training_mode():
             self.uneven_partition(params_list, move_to_device,**kwargs)
             return 
 
@@ -341,7 +341,7 @@ class LinearLayer(Replaced_Layer):
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False, **kwargs):
         
-        if DEEPSPEED_AUTOTP_MODE==AUTOTP_MODE.INFERENCE:
+        if not self.is_training_mode():
             self.uneven_partition(params_list, move_to_device,**kwargs)
             return 
         for idx, param in enumerate(params_list):
