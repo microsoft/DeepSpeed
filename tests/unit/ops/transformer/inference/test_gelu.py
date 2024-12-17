@@ -9,6 +9,7 @@ import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
 from deepspeed.ops.transformer import DeepSpeedInferenceConfig
 from deepspeed.ops.transformer.inference.op_binding.bias_gelu import BiasGeluOp
+from deepspeed.utils.torch import required_torch_version
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
@@ -23,15 +24,11 @@ def allclose(x, y):
 
 
 def version_appropriate_gelu(activations):
-    global torch_minor_version
-    if torch_minor_version is None:
-        torch_minor_version = int(torch.__version__.split('.')[1])
-    # If torch version = 1.12
-    if torch_minor_version < 12:
-        return torch.nn.functional.gelu(activations)
-    else:
+    # gelu behavior changes (correctly) in torch 1.12
+    if required_torch_version(min_version=1.12):
         return torch.nn.functional.gelu(activations, approximate='tanh')
-
+    else:
+        return torch.nn.functional.gelu(activations)
 
 def run_gelu_reference(activations):
     # Expected behavior is that of casting to float32 internally and using the tanh approximation
