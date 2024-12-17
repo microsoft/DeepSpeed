@@ -34,7 +34,7 @@ def run_bias_gelu_ds(activations, bias):
 @pytest.mark.parametrize("channels", [512, 1232, 4096])
 @pytest.mark.parametrize("dtype", get_dtypes())
 def test_bias_gelu(batch, sequence, channels, dtype):
-    if not required_torch_version(min_version=1.12):
+    if required_torch_version(min_version=1.12):
         pytest.skip("gelu implementation matches only after torch 1.12")
 
     activations_ds = torch.randn((batch, sequence, channels), dtype=dtype, device=get_accelerator().device_name())
