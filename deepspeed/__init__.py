@@ -368,7 +368,7 @@ def init_inference(model, config=None, **kwargs):
 def tp_model_init(model,tp_size, dtype):
     
     # avoid re-entry
-    assert not hasattr(model, 'autotp_pds_autotp_parsedarsed'), "Model already has 'autotp_parsed' attribute, preventing re-entry"
+    assert not hasattr(model, 'ds_autotp_parsed'), "Model already has 'autotp_parsed' attribute, preventing re-entry"
 
     set_autotp_mode(training=True)
     model=init_inference(model=model, mp_size=tp_size, dtype=dtype, replace_with_kernel_inject=False).module
