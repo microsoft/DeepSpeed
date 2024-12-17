@@ -12,6 +12,8 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 
+inference_module = None
+
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = {torch.float32: (5e-4, 5e-5), torch.float16: (5e-2, 2e-3)}[x.dtype]
@@ -39,8 +41,8 @@ def run_matmul_ds(a, b, use_triton_ops=False):
 @pytest.mark.parametrize("dtype", [torch.float16])
 @pytest.mark.parametrize("use_triton_ops", [True])
 def test_matmul_4d(B, H, M, K, N, dtype, use_triton_ops):
-    if not deepspeed.HAS_TRITON and use_triton_ops:
-        pytest.skip("triton has to be installed for the test")
+    if not deepspeed.get_accelerator().is_triton_supported():
+        pytest.skip("triton is not supported on this system")
 
     # skip autotune in testing
     from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
