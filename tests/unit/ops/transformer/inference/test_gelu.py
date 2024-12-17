@@ -23,7 +23,10 @@ def allclose(x, y):
 
 def version_appropriate_gelu(activations):
     # gelu behavior changes (correctly) in torch 1.12
-    return torch.nn.functional.gelu(activations)
+    if required_torch_version(min_version=1.12):
+        return torch.nn.functional.gelu(activations, approximate='tanh')
+    else:
+        return torch.nn.functional.gelu(activations)
 
 def run_gelu_reference(activations):
     # Expected behavior is that of casting to float32 internally and using the tanh approximation
