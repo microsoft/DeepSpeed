@@ -176,7 +176,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
 
     keep_module_on_host: bool = False
     """
-    When loading checkpoints to model parameters, they are moved to the device. In large very models
+    When loading checkpoints to model parameters, they are moved to the device. In very large models
     this might fill the device and cause OOM. Setting this flag to true, will keep checkpoints on
     host and not move them directly to the device (giving an option to quantize checkpoint data before
     moving it to the device for example).

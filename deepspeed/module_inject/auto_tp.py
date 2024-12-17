@@ -17,16 +17,14 @@ from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw, shard_
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
-def move(tensor, device, keep_module_on_host=False):
+def move(tensor, device, copy=True):
     if tensor.is_meta:
-        return torch.empty_like(tensor, device='cpu' if keep_module_on_host else device)
-    elif keep_module_on_host:
-        return tensor.to('cpu') if device != 'cpu' else tensor
+        return torch.empty_like(tensor, device=device)
     else:
         # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
         # Using copy=True instead of clone() will help in case of cpu --> cpu.
         # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
-        return tensor.to(device, copy=True)
+        return tensor.to(device, copy=copy)
 
 
 class ReplaceWithTensorSlicing:
@@ -340,6 +338,10 @@ class AutoTP():
     def _replace(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
             return
+        device_name = 'cpu' if self.keep_module_on_host else get_accelerator().current_device_name()
+        # keep_module_on_host is used to keep the module on the host. Checkpoints are loaded to the host first (in some
+        # cases it can be done from the disk even to prevent filling host's memory), thus no need to create a new copy.
+        return_new_copy = not self.keep_module_on_host
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         # For mixtral-7x8b, need to skip MoE gate linear replace.
@@ -369,8 +371,7 @@ class AutoTP():
             data = child.weight.data.split(get_shard_size_list(
                 weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
                                            dim=1)
-            data_dc = move(data[mp_replace.gpu_index],
-                           get_accelerator().current_device_name(), self.keep_module_on_host).detach()
+            data_dc = move(data[mp_replace.gpu_index], device_name, return_new_copy).detach()
             del data
 
             setattr(child, "replaced", True)
@@ -378,10 +379,9 @@ class AutoTP():
                 return LmHeadLinearAllreduce(
                     torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
                     child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                        move(child.bias,
-                             get_accelerator().current_device_name(), self.keep_module_on_host)), self.mp_group)
+                        move(child.bias, device_name, return_new_copy)), self.mp_group)
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
-                        torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name(), self.keep_module_on_host)), self.mp_group)
+                        torch.nn.parameter.Parameter(move(child.bias, device_name, return_new_copy)), self.mp_group)
         else:
 
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -394,24 +394,22 @@ class AutoTP():
                 #The copy is a regular copy, The shape of dst and src is the same
                 data_dc = move(
                     prepare_tp_fused_qkvw(self.module, child.weight.data, self.mp_size, mp_replace.gpu_index),
-                    get_accelerator().current_device_name(), self.keep_module_on_host)
+                    device_name, return_new_copy)
 
                 bias_data_dc = None if child.bias is None else move(
                     prepare_tp_fused_qkvw(self.module, child.bias.data, self.mp_size, mp_replace.gpu_index),
-                    get_accelerator().current_device_name(), self.keep_module_on_host)
+                    device_name, return_new_copy)
             else:
                 data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
                                                dim=1 if self.conv_linear_layer else 0)
-                data_dc = move(data[mp_replace.gpu_index],
-                               get_accelerator().current_device_name(), self.keep_module_on_host).detach()
+                data_dc = move(data[mp_replace.gpu_index], device_name, return_new_copy).detach()
                 del data
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(get_shard_size_list(
                         weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size, name),
                                                       dim=0)
-                    bias_data = move(bias_data[mp_replace.gpu_index],
-                                     get_accelerator().current_device_name(), self.keep_module_on_host)
+                    bias_data = move(bias_data[mp_replace.gpu_index], device_name, return_new_copy)
                     bias_data_dc = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                     del bias_data
                 else:
