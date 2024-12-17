@@ -26,8 +26,8 @@ def set_autotp_mode(training=False):
 
     
 def move(tensor, device):
-    #TODO: the data parallelism (DP) is greater than 2,
-    # we need to consider when to delete the CPU data.
+    # TODO: consider the timing of deletion 
+    # to save host resources when DP > 1。
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
     else:
@@ -45,23 +45,25 @@ class RowParallel(torch.autograd.Function):
         return input
     
     @staticmethod
-    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor)-> torch.Tensor:
+    def forward(ctx: Any, group: dist.ProcessGroup, input: torch.Tensor, is_inference_mode:bool)-> torch.Tensor:
         """
         Forward pass.
         """
         ctx.group = group
         if group == None:
             return input
-        # for debug ,will apply dist.inference_all_reduce
-        dist.all_reduce(input.contiguous(), group=group)
+        if is_inference_mode:
+            dist.inference_all_reduce(input, group=group)
+        else:
+            dist.all_reduce(input.contiguous(), group=group)
         return input
 
     @staticmethod
-    def backward(ctx:Any, grad_output: torch.Tensor)-> tuple[None, torch.Tensor]:
+    def backward(ctx:Any, grad_output: torch.Tensor)-> tuple[None, torch.Tensor, None]:
         """
         Backward pass.
         """
-        return None, grad_output
+        return None, grad_output, None
 
 
 class ColumnParallel(torch.autograd.Function):
@@ -88,7 +90,7 @@ class ColumnParallel(torch.autograd.Function):
         """
         if ctx.group == None:
             return None, grad_output
-        # for debug ,will apply dist.inference_all_reduce
+
         dist.all_reduce(grad_output.contiguous(), group=ctx.group)
         return None, grad_output
 
@@ -142,11 +144,10 @@ class Replaced_Layer(nn.Module, ABC):
     def partition(self, params_list:List[torch.Tensor], move_to_device:bool=False):
         """
         Partitions the parameters for tensor parallelism. 
+        It is necessary to ensure that this function only involves the logic of params partitioning.
         """
         
-        # for idx, param in enumerate(params_list):
-        #     params_list[idx].data = param.data_partition
-        #     del param.data_partition
+
 
     def config_tp_training(self, weight):
         """
@@ -250,7 +251,7 @@ class LinearAllreduce(Replaced_Layer):
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
-        output = RowParallel.apply(self.mp_group, output)
+        output = RowParallel.apply(self.mp_group, output, not self.is_training_mode())
         if self.bias is not None:
             output += self.bias
         return output
@@ -327,11 +328,9 @@ class LinearLayer(Replaced_Layer):
         return output
     @torch.no_grad()
     def gather_params(self, params_list):
-
+        #  Does not support uneven shard.
         for idx, param in enumerate(params_list):
-            # TODO: uneven support
-            # shape_tensor=torch.tensor(param.shape[0],dtype=param.dtype,device=param.device)
-            # dist.all_reduce(shape_tensor, group=self.mp_group)
+        
             params_list[idx].data_partition = param.data
             output_param = torch.empty(self.tp_world_size * param.shape[0],
                                        param.shape[1],
@@ -423,42 +422,13 @@ class conv_LinearLayer(LinearLayer):
             del _partition
             bias.data=partition
 
-            
-        
-    
-            
-class bwc_LinearLayer(nn.Module):
 
-    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None):
-        super(LinearLayer, self).__init__()
-        if weight is not None:
-            self.weight = weight
-            self.bias = bias
-        else:
-            self.weight = Parameter(
-                torch.empty(weight_shape, dtype=dtype, device=get_accelerator().current_device_name()))
-
-            self.bias = Parameter(
-                torch.empty(weight_shape[0],
-                            dtype=dtype,
-                            device=get_accelerator().current_device_name())) \
-                if bias is not None else None
-
-    def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.bias is not None:
-            output += self.bias
-        return output
-
+#override the subclasses related to weight splitting.
 class Yuan_LinearALlreduce(LinearAllreduce):
     
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         params_list[0], params_list[1]=shard_value_with_share_qk(params_list[0],params_list[1],self.tp_world_size, self.tp_index, False)
-
-
-
-#override the subclasses related to weight splitting.
 
 class Yuan_LinearLayer(LinearLayer):
     @torch.no_grad()
@@ -493,10 +463,8 @@ class Conv_LinearALlreduce(LinearAllreduce):
             
             params_list[idx].data = _partition
         
-        
-    
 
-#override the subclasses related to reward.
+#override the subclasses related to fwd/bwd.
 class LmHeadLinearAllreduce(LinearAllreduce):
 
     def forward(self, input):

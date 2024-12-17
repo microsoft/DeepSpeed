@@ -328,6 +328,8 @@ class AutoTP():
         self.mp_group = mp_group
 
     def _replace(self, child, name, conv_linear_layer):
+        # This function should clearly define the routing rules for specific layers 
+        # and avoid any complex shard-related logic.
         if getattr(child, "replaced", False) == True:
             return
         weight_shape = child.weight.shape
@@ -339,12 +341,11 @@ class AutoTP():
         # For Yuan model
         if 'Yuan' in str(self.module):
             if 'v_proj' in name:
-
-                # should we use a factory?
                 return Yuan_LinearLayer(child, self.mp_group)
+            
             elif 'o_proj' in name:
-
                 return Yuan_LinearALlreduce(child, self.mp_group)
+            
         # For MLP including chunk layer.
         if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
             return GLM_LinearLayer(child, self.mp_group)
@@ -357,8 +358,6 @@ class AutoTP():
                 return LmHeadLinearAllreduce(child, self.mp_group)
 
             return LinearAllreduce(child, self.mp_group,name=name)
-        
-            
         else:
          
             setattr(child, "replaced", True)

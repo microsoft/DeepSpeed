@@ -413,12 +413,13 @@ class DeepSpeedEngine(Module):
                     p.ds_offload = False
 
     def _configure_tensor_parallel_states(self, model):
-        # It should have a unified group initialization function,
-        # Like Megatron-LM, including tp, sp, pp, dp, ep, and so on
-
+        """
+        Configures the tensor parallel states for the model. 
+        This includes setting up the tensor parallel groups, initializing the TP mesh, 
+        and registering a pre-hook to ensure that the Dataloader inputs are consistent across ranks.
+        """
         # The compatibility has only been validated for 'gpus==autotp_size' at the moment.
-        # Sanity check]
-        #to do, remove this line.
+        # Sanity check
         self._set_client_model(model)
 
         assert self.zero_autotp_size() == dist.get_world_size_from_launcher(
@@ -426,16 +427,9 @@ class DeepSpeedEngine(Module):
         assert self.zero_optimization_stage(
         ) == 0, "Currently, the compatibility between 'autotp' and 'zero_stage > 0' has not been validated"
 
-        # from deepspeed.utils import parallel_states
-        # self.mpu = parallel_states
-        # disable self.allreduce_gradients() for dp =1 test.
-        # self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
-        
         self.mpu = groups
-        
         self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
         
-        # self.enable_backward_allreduce = False
         self.first_dataloader_check=None
         def check_dataloader_inputs_same_across_ranks(module, args, kwargs):
 

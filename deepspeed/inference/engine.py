@@ -155,8 +155,7 @@ class InferenceEngine(Module):
                 # 2. DeepSpeed Kernel Injection
                 self._apply_injection_policy(config)
 
-            # WA, hard code, for TP=1, use module replace for debug."
-            elif config.tensor_parallel.tp_size >= 1:
+            elif config.tensor_parallel.tp_size > 1:
                 # 3. Automatic Tensor Parallelism
                 parser_dict = AutoTP.tp_parser(model)
                 print("AutoTP: ", parser_dict)
