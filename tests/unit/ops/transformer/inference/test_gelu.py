@@ -28,6 +28,7 @@ def version_appropriate_gelu(activations):
     else:
         return torch.nn.functional.gelu(activations)
 
+
 def run_gelu_reference(activations):
     # Expected behavior is that of casting to float32 internally and using the tanh approximation
     return version_appropriate_gelu(activations.to(torch.float32)).to(activations.dtype)
