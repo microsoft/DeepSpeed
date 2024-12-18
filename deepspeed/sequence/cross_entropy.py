@@ -9,6 +9,7 @@ import deepspeed.comm as dist
 
 
 class _VocabSequenceParallelCrossEntropy(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, vocab_seq_parallel_logits, target, sp_group, ignore_index=-100):
         # vocab_seq_parallel_logits: [S/P, B, V]
@@ -60,9 +61,5 @@ class _VocabSequenceParallelCrossEntropy(torch.autograd.Function):
         return grad_input, None, None, None
 
 
-def vocab_sequence_parallel_cross_entropy(
-    vocab_parallel_logits, target, sp_group, ignore_index=-100
-):
-    return _VocabSequenceParallelCrossEntropy.apply(
-        vocab_parallel_logits, target, sp_group, ignore_index
-    )
+def vocab_sequence_parallel_cross_entropy(vocab_parallel_logits, target, sp_group, ignore_index=-100):
+    return _VocabSequenceParallelCrossEntropy.apply(vocab_parallel_logits, target, sp_group, ignore_index)
