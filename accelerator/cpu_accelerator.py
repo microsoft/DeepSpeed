@@ -3,8 +3,12 @@
 
 # DeepSpeed Team
 
-import torch
 from .abstract_accelerator import DeepSpeedAccelerator
+
+try:
+    import torch
+except ImportError as e:
+    pass
 
 try:
     import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
