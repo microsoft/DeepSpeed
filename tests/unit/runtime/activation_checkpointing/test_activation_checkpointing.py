@@ -271,7 +271,7 @@ class TestCheckpointableLayersConfig(DistributedTest):
 
         # Create a simple topology for testing
         from deepspeed.runtime.pipe.topology import PipeModelDataParallelTopology
-        topo = PipeModelDataParallelTopology(num_pp=1, num_mp=1)
+        topo = PipeModelDataParallelTopology(num_pp=1, num_mp=1, num_dp=1)
 
         # Create test classes that we want to checkpoint
         class TestTransformerLayer(torch.nn.Module):
