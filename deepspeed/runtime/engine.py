@@ -37,6 +37,7 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
 from deepspeed.linear.optimized_linear import LoRAOptimizedLinear
+from deepspeed.module_inject.layers import GatherReplacedLayerParams
 
 from deepspeed.runtime.config import DEEPSPEED_OPTIMIZERS, \
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
@@ -2567,7 +2568,6 @@ class DeepSpeedEngine(Module):
         else:
             dp_group = groups._get_sequence_data_parallel_group()
             dp_world_size = dist.get_world_size(dp_group) / float(self.sequence_parallel_size)
-
         for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
             if sparse_bucket_tuple:
                 bucket_type, sparse_bucket = sparse_bucket_tuple
@@ -3641,7 +3641,17 @@ class DeepSpeedEngine(Module):
         logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
 
     def _replace_module_consolidated_state_dict(self):
-        from deepspeed.module_inject.layers import GatherReplacedLayerParams
+        """
+        Get a full non-partitioned state_dict with fp16 weights on cpu.
+        Important: this function must be called on all ranks and not just rank 0.
+        This is similar to nn.Module.state_dict (modelled after _save_to_state_dict)
+        This method is used for tensor parallel training.
+
+        Returns:
+        OrderedDict: The consolidated state dictionary if the current process rank is 0, otherwise None.
+        """
+        #TODO: If we use both Zero3 and tensor parallel simultaneously
+        # we need to consolidate the gather mechanisms of both.
         state_dict = OrderedDict() if dist.get_rank() == 0 else None
 
         def get_layer_state_dict(module, prefix=""):
@@ -3662,14 +3672,16 @@ class DeepSpeedEngine(Module):
         return state_dict
 
     def _consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
-
+        """
+        Consolidate the 16-bit state dictionary.
+        """
         if self.zero_optimization_stage() == ZeroStageEnum.weights:
             return self._zero3_consolidated_16bit_state_dict(exclude_frozen_parameters)
         elif self.zero_autotp_size() > 1:
             return self._replace_module_consolidated_state_dict()
 
         raise ValueError("consolidated_16bit_state_dict is only applicable to cases where weights are partitioned, "
-                         "including Zero Stage 3 and tensor parallelism (TP).")
+                         "including Zero Stage 3 and tensor parallelism.")
 
     def _zero3_consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
         """

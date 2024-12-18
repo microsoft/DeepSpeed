@@ -19,6 +19,9 @@ DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 
 
 def set_autotp_mode(training=False):
+    """
+    Set the DEEPSPEED_AUTOTP_MODE based on the training flag
+    """
     global DEEPSPEED_AUTOTP_MODE
     if training:
         DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.TRAINING

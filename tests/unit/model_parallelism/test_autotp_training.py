@@ -17,16 +17,6 @@ from contextlib import contextmanager
 from torch import nn
 from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer, set_autotp_mode
 
-# test group         done
-# test daloader check      done
-# test fwd/ bwd   done
-# test gather/partition done
-# test save/load ckpt  done
-# test save model done
-# test grad_norm  done , need to refine.
-# test compatibility with zero.etc.?
-# todo:add more batch_size/hidden_dim  test
-
 
 class SequentialLinearModel(torch.nn.Module):
 
