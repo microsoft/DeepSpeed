@@ -111,7 +111,7 @@ class Replaced_Layer(nn.Module, ABC):
     operations and parameter gather/partitioning during inference or training.
 
     Attributes:
-        mode (str): The mode of operation[INFERENCE or Training], default is "INFERENCE".
+        mode (str): The mode of operation[INFERENCE or TRAINING], default is "INFERENCE".
         mp_group (Optional[dist.ProcessGroup]): The process group used for model parallelism.
         tp_world_size (int): The world size of tensor parallelism, i.e., the number of parallel workers.
         tp_index (int): The rank (ID) of the current worker in tensor parallelism.
@@ -150,12 +150,13 @@ class Replaced_Layer(nn.Module, ABC):
         Gathers parameters across devices for distributed training. Must be implemented by subclasses in "TRAINING" mode.
         """
         pass
-
+    @abstractmethod
     def partition(self, params_list: List[torch.Tensor], move_to_device: bool = False):
         """
         Partitions the parameters for tensor parallelism.
         It is necessary to ensure that this function only involves the logic of params partitioning.
         """
+        pass
 
     def config_tp_params(self, weight):
         """
