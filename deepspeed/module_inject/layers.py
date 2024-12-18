@@ -16,7 +16,8 @@ from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_
 from deepspeed.inference.config import AUTOTP_MODE
 
 DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
-
+DS_IS_REPLACED_MODULE = 'ds_is_replaced_module'
+DS_TENSOR_MODEL_PARALLEL= 'tensor_model_parallel'
 
 def set_autotp_mode(training=False):
     """
@@ -156,7 +157,7 @@ class Replaced_Layer(nn.Module, ABC):
         It is necessary to ensure that this function only involves the logic of params partitioning.
         """
 
-    def config_tp_training(self, weight):
+    def config_tp_params(self, weight):
         """
         Configures the weight tensor for training with tensor parallelism. This includes enabling gradients
         and associating necessary methods for parameter gathering and partitioning.
@@ -174,8 +175,8 @@ class Replaced_Layer(nn.Module, ABC):
                     weight.requires_grad = True
             else:
                 weight.requires_grad = False
-            setattr(weight, 'tensor_model_parallel', True)
-            weight.ds_is_preleace_module = True
+            setattr(weight, DS_TENSOR_MODEL_PARALLEL, True)
+            setattr(weight, DS_IS_REPLACED_MODULE, True) 
             weight.gather_params = self.gather_params
             weight.partition = self.partition
 
@@ -225,7 +226,7 @@ class GatherReplacedLayerParams:
         Returns:
             bool: True if the parameter belongs to a replaced module, False otherwise.
         """
-        return getattr(param, 'ds_is_preleace_module', False)
+        return getattr(param, DS_IS_REPLACED_MODULE, False)
 
     def __enter__(self) -> None:
         """
@@ -252,9 +253,9 @@ class LinearAllreduce(Replaced_Layer):
 
         self.partition([self.weight, self.bias], move_to_device=True, **kwargs)
         self.support_training = True
-        self.config_tp_training(self.weight)
+        self.config_tp_params(self.weight)
         if self.bias is not None:
-            self.config_tp_training(self.bias)
+            self.config_tp_params(self.bias)
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
@@ -326,9 +327,9 @@ class LinearLayer(Replaced_Layer):
         if not skip_partition:
             self.partition([self.weight, self.bias], move_to_device=True, **kwargs)
         self.support_training = True
-        self.config_tp_training(self.weight)
+        self.config_tp_params(self.weight)
         if self.bias is not None:
-            self.config_tp_training(self.bias)
+            self.config_tp_params(self.bias)
 
     def forward(self, input):
         input = ColumnParallel.apply(self.mp_group, input)

@@ -454,7 +454,6 @@ class DeepSpeedEngine(Module):
                                                    group=bcast_group,
                                                    device=get_accelerator().current_device())
 
-                        print(f"RANK[{dist.get_rank()}],bcast finished")
                         is_equal = compare_tensors_in_structures(args, _src_args[0])
 
                     equal_tensor = torch.tensor(is_equal,

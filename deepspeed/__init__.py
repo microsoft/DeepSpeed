@@ -379,7 +379,7 @@ def tp_model_init(model, tp_size, dtype):
         torch.nn.Module: The initialized model with tensor parallelism.
     """
     # avoid re-entry
-    assert not hasattr(model, 'ds_autotp_parsed'), "Model already has 'autotp_parsed' attribute, preventing re-entry"
+    assert not hasattr(model, 'ds_autotp_parsed'), "ds_autotp_parsed' attribute already exists in the model, re-entry is not allowed."
 
     set_autotp_mode(training=True)
     model = init_inference(model=model, mp_size=tp_size, dtype=dtype, replace_with_kernel_inject=False).module
