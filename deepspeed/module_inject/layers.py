@@ -17,7 +17,8 @@ from deepspeed.inference.config import AUTOTP_MODE
 
 DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 DS_IS_REPLACED_MODULE = 'ds_is_replaced_module'
-DS_TENSOR_MODEL_PARALLEL= 'tensor_model_parallel'
+DS_TENSOR_MODEL_PARALLEL = 'tensor_model_parallel'
+
 
 def set_autotp_mode(training=False):
     """
@@ -33,21 +34,20 @@ def set_autotp_mode(training=False):
 def move(tensor, device):
     # TODO: consider the timing of deletion
     # to save host resources when DP > 1。
-    
+
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
     else:
         # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
         # Using copy=True instead of clone() will help in case of cpu --> cpu.
         # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
-        cloned_tensor= tensor.to(device, copy=True)
-        
-        # free the memory of the original tensor to reduce memory peak 
+        cloned_tensor = tensor.to(device, copy=True)
+
+        # free the memory of the original tensor to reduce memory peak
         # Equivalent to directly deleting the tensor reference outside the function.
         # see https://github.com/microsoft/DeepSpeed/pull/4353
-        tensor.data=torch.empty(0, device=tensor.device)
+        tensor.data = torch.empty(0, device=tensor.device)
         return cloned_tensor
-
 
 
 class RowParallel(torch.autograd.Function):
@@ -141,8 +141,8 @@ class Replaced_Layer(nn.Module, ABC):
             self.mp_group = mp_group
             self.tp_world_size: int = dist.get_world_size(self.mp_group)
             self.tp_index: int = dist.get_rank(mp_group)
-        
-        self.name=None
+
+        self.name = None
         if kwargs.get('name') is not None:
             self.name = kwargs.get('name')  # Set the layer name if provided.
 
@@ -159,6 +159,7 @@ class Replaced_Layer(nn.Module, ABC):
         Gathers parameters across devices for distributed training. Must be implemented by subclasses in "TRAINING" mode.
         """
         pass
+
     @abstractmethod
     def partition(self, params_list: List[torch.Tensor]):
         """
@@ -186,7 +187,7 @@ class Replaced_Layer(nn.Module, ABC):
             else:
                 weight.requires_grad = False
             setattr(weight, DS_TENSOR_MODEL_PARALLEL, True)
-            setattr(weight, DS_IS_REPLACED_MODULE, True) 
+            setattr(weight, DS_IS_REPLACED_MODULE, True)
             weight.gather_params = self.gather_params
             weight.partition = self.partition
 
@@ -321,11 +322,13 @@ class LinearAllreduce(Replaced_Layer):
 
             _partition = move(_partition, get_accelerator().current_device()).detach()
             params_list[idx].data = _partition
+
+
 #remove kwargs from partition.
 class LinearLayer(Replaced_Layer):
 
     def __init__(self, module, mp_group, skip_partition=False, **kwargs):
-        super(LinearLayer, self).__init__(mp_group,**kwargs)
+        super(LinearLayer, self).__init__(mp_group, **kwargs)
         self.weight = module.weight
         self.bias = module.bias
         if not skip_partition:
@@ -404,17 +407,20 @@ class LinearLayer(Replaced_Layer):
 
 
 class FusedModuleWrapper:
+
     def __init__(self, fused_module: nn.Module):
         self.fused_module = fused_module
 
     def __getattr__(self, module):
         return self.fused_module
-    
+
+
 class fused_LinearLayer(LinearLayer):
+
     def __init__(self, module, mp_group, skip_partition=False, **kwargs):
         assert kwargs.get('fused_module') is not None, "'fused_module' is required but not provided"
         # Use the warp class to avoid module circular references.
-        self.fused_module=FusedModuleWrapper(kwargs.get('fused_module'))
+        self.fused_module = FusedModuleWrapper(kwargs.get('fused_module'))
         super().__init__(module, mp_group, skip_partition, **kwargs)
 
     @torch.no_grad()
@@ -422,7 +428,7 @@ class fused_LinearLayer(LinearLayer):
         for idx, param in enumerate(params_list):
             if param is None:
                 return
-            
+
             _partition = prepare_tp_fused_qkvw(self.fused_module.module, param, self.tp_world_size, self.tp_index)
 
             _partition = move(_partition, get_accelerator().current_device()).detach()
@@ -459,8 +465,8 @@ class Yuan_LinearALlreduce(LinearAllreduce):
     #Yuan2
     @torch.no_grad()
     def partition(self, params_list):
-        weight, bias= shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size,
-                                                                    False)
+        weight, bias = shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index,
+                                                 self.tp_world_size, False)
         params_list[0].data = weight
         if bias is not None:
             params_list[1].data = bias
@@ -470,8 +476,8 @@ class Yuan_LinearLayer(LinearLayer):
     #Yuan2
     @torch.no_grad()
     def partition(self, params_list):
-        weight, bias = shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index,self.tp_world_size, 
-                                                 True)
+        weight, bias = shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index,
+                                                 self.tp_world_size, True)
         params_list[0].data = move(weight, get_accelerator().current_device())
         if bias is not None:
             params_list[1].data = move(bias, get_accelerator().current_device())
