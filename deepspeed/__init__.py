@@ -66,48 +66,45 @@ __git_branch__ = git_branch
 dist = None
 
 
-def _mark_initialized(trainobj: Union[torch.nn.Module, Optimizer, _LRScheduler]):
+def _mark_ds_initialized(trainobj: Union[torch.nn.Module, Optimizer, _LRScheduler]):
     """Mark a trainobj as initialized by setting the ds_is_inited attribute to True."""
-    if hasattr(trainobj, 'ds_is_inited'):
-        assert trainobj.ds_is_inited, "Not expecting the training object has `ds_is_inited` to be False if it exists, make sure you didn't set it to False or called deepspeed.initialize on the model more than once."
-        return
-
     trainobj.ds_is_inited = True
 
 
-def _is_initialized(trainobj: Union[torch.nn.Module, Optimizer, _LRScheduler]):
+def _is_ds_initialized(trainobj: Union[torch.nn.Module, Optimizer, _LRScheduler]):
     """Check if a trainobj has been initialized by checking the ds_is_inited attribute."""
-    if hasattr(trainobj, 'ds_is_inited'):
-        # we shouldn't hit the assert below, but just in case
-        assert trainobj.ds_is_inited, "Not expecting the training object has `ds_is_inited` to be False if it exists, make sure you didn't set it to False or called deepspeed.initialize on the model more than once."
-        return True
-    return False
+    return getattr(trainobj, 'ds_is_inited', False)
 
 
-def _assert_trainobjs_not_inited(model: torch.nn.Module, optimizer: Optional[Optimizer],
-                                 lr_scheduler: Optional[_LRScheduler]):
+def _assert_trainobjs_not_inited(model: torch.nn.Module, optimizer: Optional[Union[Optimizer,
+                                                                                   DeepSpeedOptimizerCallable]],
+                                 lr_scheduler: Optional[Union[_LRScheduler, DeepSpeedSchedulerCallable]]):
     """Enforce the model, optimizer, and lr_scheduler have not been used in a previous deepspeed.initialize call."""
-    if _is_initialized(model):
+    if _is_ds_initialized(model):
         raise ValueError(
             "Model has already been initialized, please make sure to only call deepspeed.initialize on a model once.")
-    if optimizer is not None and _is_initialized(optimizer):
+    if optimizer is not None and isinstance(optimizer, Optimizer) and _is_ds_initialized(optimizer):
         raise ValueError(
             "Optimizer has already been initialized, please make sure to only call deepspeed.initialize on an optimizer once."
         )
-    if lr_scheduler is not None and _is_initialized(lr_scheduler):
+    if lr_scheduler is not None and isinstance(lr_scheduler, _LRScheduler) and _is_ds_initialized(lr_scheduler):
         raise ValueError(
             "LR scheduler has already been initialized, please make sure to only call deepspeed.initialize on an LR scheduler once."
         )
 
 
-def _mark_trainobjs_initialized(model: torch.nn.Module, optimizer: Optional[Optimizer],
-                                lr_scheduler: Optional[_LRScheduler]):
-    """Mark the model, optimizer, and lr_scheduler as initialized."""
-    _mark_initialized(model)
-    if optimizer is not None:
-        _mark_initialized(optimizer)
-    if lr_scheduler is not None:
-        _mark_initialized(lr_scheduler)
+def _mark_trainobjs_initialized(model: torch.nn.Module, optimizer: Optional[Union[Optimizer,
+                                                                                  DeepSpeedOptimizerCallable]],
+                                lr_scheduler: Optional[Union[_LRScheduler, DeepSpeedSchedulerCallable]]):
+    """Mark the model, optimizer, and lr_scheduler as initialized.
+    Note that callables of type DeepSpeedOptimizerCallable and DeepSpeedSchedulerCallable are not marked
+    as they are not stateful and reuse should be permissible.
+    """
+    _mark_ds_initialized(model)
+    if optimizer is not None and isinstance(optimizer, Optimizer):
+        _mark_ds_initialized(optimizer)
+    if lr_scheduler is not None and isinstance(lr_scheduler, _LRScheduler):
+        _mark_ds_initialized(lr_scheduler)
 
 
 def initialize(args=None,
