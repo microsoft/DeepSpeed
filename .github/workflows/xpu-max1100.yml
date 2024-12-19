@@ -58,8 +58,9 @@ jobs:
         pip install .[dev,autotuning]
 
     - name: Check container state
+      shell: bash
       run: |
-        # source ~/my_env/bin/activate
+        source ~/my_env/bin/activate
         ldd --version
         ds_report
         python3 -c "import torch; print('torch:', torch.__version__, torch)"
@@ -68,8 +69,9 @@ jobs:
         pip list
 
     - name: Unit tests
+      shell: bash
       run: |
-        # source ~/my_env/bin/activate
+        source ~/my_env/bin/activate
         cd tests/unit
         pytest --verbose accelerator/*
         pytest --verbose autotuning/*
