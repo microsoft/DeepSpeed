@@ -127,14 +127,13 @@ class Replaced_Layer(nn.Module, ABC):
         name (Optional[str]): The name of the layer, if provided.
     """
 
-    def __init__(self, mp_group: Optional[dist.ProcessGroup], name: Optional[str] = None):
+    def __init__(self, mp_group: Optional[dist.ProcessGroup], **kwargs: Any):
         """
         Initializes the Replaced_Layer with optional model parallelism group and layer name.
 
         Args:
             mp_group (Optional[dist.ProcessGroup]): The process group for model parallelism.
                                                     If None, no model parallelism is set.
-            name (Optional[str]): The optional name for the layer.
         """
         super().__init__()
         self.support_training: bool = False
@@ -142,8 +141,10 @@ class Replaced_Layer(nn.Module, ABC):
             self.mp_group = mp_group
             self.tp_world_size: int = dist.get_world_size(self.mp_group)
             self.tp_index: int = dist.get_rank(mp_group)
-        if name is not None:
-            self.name = name  # Set the layer name if provided.
+        
+        self.name=None
+        if kwargs.get('name') is not None:
+            self.name = kwargs.get('name')  # Set the layer name if provided.
 
     @abstractmethod
     def forward(self, input):
@@ -256,11 +257,11 @@ class GatherReplacedLayerParams:
 class LinearAllreduce(Replaced_Layer):
 
     def __init__(self, module, mp_group, **kwargs):
-        super(LinearAllreduce, self).__init__(mp_group)
+        super(LinearAllreduce, self).__init__(mp_group, **kwargs)
         self.weight = module.weight
         self.bias = module.bias
 
-        self.partition([self.weight, self.bias], **kwargs)
+        self.partition([self.weight, self.bias])
         self.support_training = True
         self.config_tp_params(self.weight)
         if self.bias is not None:
@@ -291,10 +292,10 @@ class LinearAllreduce(Replaced_Layer):
         return
 
     @torch.no_grad()
-    def partition(self, params_list, **kwargs):
+    def partition(self, params_list):
 
         if not self.is_training_mode():
-            self.uneven_partition(params_list, **kwargs)
+            self.uneven_partition(params_list)
             return
 
         else:
@@ -308,27 +309,27 @@ class LinearAllreduce(Replaced_Layer):
 
                 params_list[idx].data = _partition
 
-    def uneven_partition(self, params_list, **kwargs):
+    def uneven_partition(self, params_list):
         for idx, param in enumerate(params_list):
             if param is None or idx > 0:
                 # don't slipt bias
                 return
+            assert self.name is not None, "The module name must be provided in the initialization."
             _partition = params_list[idx].split(get_shard_size_list(params_list[idx].shape[1], self.tp_world_size,
-                                                                    kwargs.get('name')),
+                                                                    self.name),
                                                 dim=1)[self.tp_index]
 
             _partition = move(_partition, get_accelerator().current_device()).detach()
             params_list[idx].data = _partition
-
-
+#remove kwargs from partition.
 class LinearLayer(Replaced_Layer):
 
     def __init__(self, module, mp_group, skip_partition=False, **kwargs):
-        super(LinearLayer, self).__init__(mp_group)
+        super(LinearLayer, self).__init__(mp_group,**kwargs)
         self.weight = module.weight
         self.bias = module.bias
         if not skip_partition:
-            self.partition([self.weight, self.bias], **kwargs)
+            self.partition([self.weight, self.bias])
         self.support_training = True
         self.config_tp_params(self.weight)
         if self.bias is not None:
@@ -355,10 +356,10 @@ class LinearLayer(Replaced_Layer):
             params_list[idx].data = output_param.contiguous()
 
     @torch.no_grad()
-    def partition(self, params_list, **kwargs):
+    def partition(self, params_list):
 
         if not self.is_training_mode():
-            self.uneven_partition(params_list, **kwargs)
+            self.uneven_partition(params_list)
             return
         for idx, param in enumerate(params_list):
             if param is None:
@@ -370,14 +371,15 @@ class LinearLayer(Replaced_Layer):
 
             params_list[idx].data = _partition
 
-    def uneven_partition(self, params_list, **kwargs):
+    def uneven_partition(self, params_list):
 
         for idx, param in enumerate(params_list):
             if param is None:
                 #split bias if provide
                 return
+            assert self.name is not None, "The module name must be provided in the initialization."
             _partition = params_list[idx].split(get_shard_size_list(params_list[idx].shape[0], self.tp_world_size,
-                                                                    kwargs.get('name')),
+                                                                    self.name),
                                                 dim=0)[self.tp_index]
 
             _partition = move(_partition, get_accelerator().current_device()).detach()
@@ -401,14 +403,28 @@ class LinearLayer(Replaced_Layer):
         return cls(linear, skip_partition=True)
 
 
+class FusedModuleWrapper:
+    def __init__(self, fused_module: nn.Module):
+        self.fused_module = fused_module
+
+    def __getattr__(self, module):
+        return self.fused_module
+    
 class fused_LinearLayer(LinearLayer):
+    def __init__(self, module, mp_group, skip_partition=False, **kwargs):
+        assert kwargs.get('fused_module') is not None, "'fused_module' is required but not provided"
+        # Use the warp class to avoid module circular references.
+        self.fused_module=FusedModuleWrapper(kwargs.get('fused_module'))
+        super().__init__(module, mp_group, skip_partition, **kwargs)
 
     @torch.no_grad()
-    def partition(self, params_list, **kwargs):
+    def partition(self, params_list):
         for idx, param in enumerate(params_list):
             if param is None:
                 return
-            _partition = prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_size, self.tp_index)
+            
+            _partition = prepare_tp_fused_qkvw(self.fused_module.module, param, self.tp_world_size, self.tp_index)
+
             _partition = move(_partition, get_accelerator().current_device()).detach()
 
             params_list[idx].data = _partition
@@ -417,7 +433,7 @@ class fused_LinearLayer(LinearLayer):
 class conv_LinearLayer(LinearLayer):
 
     @torch.no_grad()
-    def partition(self, params_list,):
+    def partition(self, params_list):
         weight = None
         bias = None
         if len(params_list) == 1:
@@ -456,9 +472,9 @@ class Yuan_LinearLayer(LinearLayer):
     def partition(self, params_list):
         weight, bias = shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index,self.tp_world_size, 
                                                  True)
-        params_list[0].data = move(weight)
+        params_list[0].data = move(weight, get_accelerator().current_device())
         if bias is not None:
-            params_list[1].data = move(bias)
+            params_list[1].data = move(bias, get_accelerator().current_device())
 
 
 class GLM_LinearLayer(LinearLayer):
