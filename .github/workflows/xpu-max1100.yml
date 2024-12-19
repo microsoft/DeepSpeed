@@ -46,7 +46,9 @@ jobs:
     - name: Install prerequisite
       run: |
         apt-get update
-        apt-get install clinfo libaio-dev python3-pip -y
+        apt-get install clinfo libaio-dev python3-pip python3.12-venv -y
+        python3 -m venv my_env
+        source my_env/bin/activate
         pip install torch==2.5.1 -f https://pytorch-extension.intel.com/release-whl/stable/xpu/cn/torch/
         pip install intel-extension-for-pytorch==2.5.10+xpu -f https://pytorch-extension.intel.com/release-whl/stable/xpu/cn/intel-extension-for-pytorch/
         pip install oneccl_bind_pt==2.5.0+xpu -f https://pytorch-extension.intel.com/release-whl/stable/xpu/cn/oneccl-bind-pt/
@@ -56,6 +58,7 @@ jobs:
 
     - name: Check container state
       run: |
+        # source my_env/bin/activate
         ldd --version
         ds_report
         python3 -c "import torch; print('torch:', torch.__version__, torch)"
@@ -65,6 +68,7 @@ jobs:
 
     - name: Unit tests
       run: |
+        # source my_env/bin/activate
         cd tests/unit
         pytest --verbose accelerator/*
         pytest --verbose autotuning/*
