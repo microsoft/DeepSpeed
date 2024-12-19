@@ -33,13 +33,21 @@ def set_autotp_mode(training=False):
 def move(tensor, device):
     # TODO: consider the timing of deletion
     # to save host resources when DP > 1。
+    
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
     else:
         # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
         # Using copy=True instead of clone() will help in case of cpu --> cpu.
         # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
-        return tensor.to(device, copy=True)
+        cloned_tensor= tensor.to(device, copy=True)
+        
+        # free the memory of the original tensor to reduce memory peak 
+        # Equivalent to directly deleting the tensor reference outside the function.
+        # see https://github.com/microsoft/DeepSpeed/pull/4353
+        tensor.data=torch.empty(0, device=tensor.device)
+        return cloned_tensor
+
 
 
 class RowParallel(torch.autograd.Function):
@@ -151,7 +159,7 @@ class Replaced_Layer(nn.Module, ABC):
         """
         pass
     @abstractmethod
-    def partition(self, params_list: List[torch.Tensor], move_to_device: bool = False):
+    def partition(self, params_list: List[torch.Tensor]):
         """
         Partitions the parameters for tensor parallelism.
         It is necessary to ensure that this function only involves the logic of params partitioning.
@@ -252,7 +260,7 @@ class LinearAllreduce(Replaced_Layer):
         self.weight = module.weight
         self.bias = module.bias
 
-        self.partition([self.weight, self.bias], move_to_device=True, **kwargs)
+        self.partition([self.weight, self.bias], **kwargs)
         self.support_training = True
         self.config_tp_params(self.weight)
         if self.bias is not None:
@@ -283,10 +291,10 @@ class LinearAllreduce(Replaced_Layer):
         return
 
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False, **kwargs):
+    def partition(self, params_list, **kwargs):
 
         if not self.is_training_mode():
-            self.uneven_partition(params_list, move_to_device, **kwargs)
+            self.uneven_partition(params_list, **kwargs)
             return
 
         else:
@@ -296,14 +304,11 @@ class LinearAllreduce(Replaced_Layer):
                     return
                 _partition = torch.chunk(param, self.tp_world_size, dim=-1)[self.tp_index]
 
-                if move_to_device:
-                    partition = move(_partition, get_accelerator().current_device()).detach()
-                    del _partition
-                    _partition = partition
+                _partition = move(_partition, get_accelerator().current_device()).detach()
 
                 params_list[idx].data = _partition
 
-    def uneven_partition(self, params_list, move_to_device, **kwargs):
+    def uneven_partition(self, params_list, **kwargs):
         for idx, param in enumerate(params_list):
             if param is None or idx > 0:
                 # don't slipt bias
@@ -312,10 +317,7 @@ class LinearAllreduce(Replaced_Layer):
                                                                     kwargs.get('name')),
                                                 dim=1)[self.tp_index]
 
-            if move_to_device:
-                partition = move(_partition, get_accelerator().current_device()).detach()
-                del _partition
-                _partition = partition
+            _partition = move(_partition, get_accelerator().current_device()).detach()
             params_list[idx].data = _partition
 
 
@@ -326,7 +328,7 @@ class LinearLayer(Replaced_Layer):
         self.weight = module.weight
         self.bias = module.bias
         if not skip_partition:
-            self.partition([self.weight, self.bias], move_to_device=True, **kwargs)
+            self.partition([self.weight, self.bias], **kwargs)
         self.support_training = True
         self.config_tp_params(self.weight)
         if self.bias is not None:
@@ -353,10 +355,10 @@ class LinearLayer(Replaced_Layer):
             params_list[idx].data = output_param.contiguous()
 
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False, **kwargs):
+    def partition(self, params_list, **kwargs):
 
         if not self.is_training_mode():
-            self.uneven_partition(params_list, move_to_device, **kwargs)
+            self.uneven_partition(params_list, **kwargs)
             return
         for idx, param in enumerate(params_list):
             if param is None:
@@ -364,14 +366,11 @@ class LinearLayer(Replaced_Layer):
             #split bias if provide
             _partition = torch.chunk(param, self.tp_world_size, dim=0)[self.tp_index]
 
-            if move_to_device:
-                partition = move(_partition, get_accelerator().current_device()).detach()
-                del _partition
-                _partition = partition
+            _partition = move(_partition, get_accelerator().current_device()).detach()
 
             params_list[idx].data = _partition
 
-    def uneven_partition(self, params_list, move_to_device=False, **kwargs):
+    def uneven_partition(self, params_list, **kwargs):
 
         for idx, param in enumerate(params_list):
             if param is None:
@@ -381,10 +380,8 @@ class LinearLayer(Replaced_Layer):
                                                                     kwargs.get('name')),
                                                 dim=0)[self.tp_index]
 
-            if move_to_device:
-                partition = move(_partition, get_accelerator().current_device()).detach()
-                del _partition
-                _partition = partition
+            _partition = move(_partition, get_accelerator().current_device()).detach()
+
             params_list[idx].data = _partition
 
     # for bwc
@@ -407,22 +404,20 @@ class LinearLayer(Replaced_Layer):
 class fused_LinearLayer(LinearLayer):
 
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False, **kwargs):
+    def partition(self, params_list, **kwargs):
         for idx, param in enumerate(params_list):
             if param is None:
                 return
             _partition = prepare_tp_fused_qkvw(kwargs.get('fused_module'), param, self.tp_world_size, self.tp_index)
-            if move_to_device:
-                partition = move(_partition, get_accelerator().current_device()).detach()
-                del _partition
-                _partition = partition
+            _partition = move(_partition, get_accelerator().current_device()).detach()
+
             params_list[idx].data = _partition
 
 
 class conv_LinearLayer(LinearLayer):
 
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list,):
         weight = None
         bias = None
         if len(params_list) == 1:
@@ -431,16 +426,15 @@ class conv_LinearLayer(LinearLayer):
             weight, bias = params_list[0], params_list[1]
         _partition = weight.data.split(get_shard_size_list(weight.shape[0], self.tp_world_size, self.name),
                                        dim=1)[self.tp_index]
-        partition = move(_partition, get_accelerator().current_device()).detach()
-        del _partition
-        weight.data = partition
+        _partition = move(_partition, get_accelerator().current_device()).detach()
+        weight.data = _partition
 
         if bias is not None:
             _partition = bias.data.split(get_shard_size_list(weight.shape[1], self.tp_world_size, self.name),
                                          dim=0)[self.tp_index]
-            partition = move(_partition, get_accelerator().current_device()).detach()
-            del _partition
-            bias.data = partition
+            _partition = move(_partition, get_accelerator().current_device()).detach()
+
+            bias.data = _partition
 
 
 #override the subclasses related to weight splitting.
@@ -448,7 +442,7 @@ class Yuan_LinearALlreduce(LinearAllreduce):
 
     #Yuan2
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list):
         weight, bias= shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size,
                                                                     False)
         params_list[0].data = weight
@@ -459,28 +453,28 @@ class Yuan_LinearALlreduce(LinearAllreduce):
 class Yuan_LinearLayer(LinearLayer):
     #Yuan2
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list):
         weight, bias = shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index,self.tp_world_size, 
                                                  True)
-        params_list[0].data = weight
+        params_list[0].data = move(weight)
         if bias is not None:
-            params_list[1].data = bias
+            params_list[1].data = move(bias)
 
 
 class GLM_LinearLayer(LinearLayer):
     # chatGLM2, chatGLM2
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list):
         weight, bias = shard_chunk_mlp(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size)
-        params_list[0].data = weight
+        params_list[0].data = move(weight)
         if bias is not None:
-            params_list[1].data = bias
+            params_list[1].data = move(bias)
 
 
 class Conv_LinearALlreduce(LinearAllreduce):
 
     @torch.no_grad()
-    def partition(self, params_list, move_to_device=False):
+    def partition(self, params_list):
         for idx, param in enumerate(params_list):
             if param is None:
                 return
@@ -489,10 +483,7 @@ class Conv_LinearALlreduce(LinearAllreduce):
             _partition = param.split(get_shard_size_list(param.shape[0], self.tp_world_size, self.name),
                                      dim=1)[self.tp_index]
 
-            if move_to_device:
-                partition = move(_partition, get_accelerator().current_device())
-                del _partition
-                _partition = partition
+            _partition = move(_partition, get_accelerator().current_device())
 
             params_list[idx].data = _partition
 
