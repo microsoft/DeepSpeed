@@ -15,6 +15,8 @@ from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, Yuan_Li
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
+from deepspeed.utils import groups
+from deepspeed.module_inject.layers import is_autotp_training_mode
 
 
 def move(tensor, device):
@@ -324,6 +326,12 @@ class AutoTP():
         return policy_list
 
     def set_tensor_parallel_config(self, mp_size, mp_group):
+
+        if is_autotp_training_mode():
+            self.mp_group = groups.get_tensor_model_parallel_group()
+            self.mp_size = groups.get_tensor_model_parallel_world_size()
+            return
+        
         self.mp_size = mp_size
         self.mp_group = mp_group
 

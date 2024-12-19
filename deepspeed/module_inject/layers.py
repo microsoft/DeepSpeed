@@ -19,6 +19,13 @@ DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 DS_IS_REPLACED_MODULE = 'ds_is_replaced_module'
 DS_TENSOR_MODEL_PARALLEL = 'tensor_model_parallel'
 
+def get_auto_tp_mode():
+    global DEEPSPEED_AUTOTP_MODE
+    return DEEPSPEED_AUTOTP_MODE
+    
+def is_autotp_training_mode():
+    global DEEPSPEED_AUTOTP_MODE
+    return DEEPSPEED_AUTOTP_MODE==AUTOTP_MODE.TRAINING
 
 def set_autotp_mode(training=False):
     """

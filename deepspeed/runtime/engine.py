@@ -423,10 +423,10 @@ class DeepSpeedEngine(Module):
         # Sanity check
         self._set_client_model(model)
 
-        assert self.zero_autotp_size() == dist.get_world_size_from_launcher(
-        ), "Currently, the compatibility between 'autotp' and 'zero' has not been validated"
+        # assert self.zero_autotp_size() == dist.get_world_size_from_launcher(
+        # ), "Currently, the compatibility between 'autotp' and 'zero' has not been validated"
         assert self.zero_optimization_stage(
-        ) == 0, "Currently, the compatibility between 'autotp' and 'zero_stage > 0' has not been validated"
+        ) <= 1, "Currently, the compatibility between 'autotp' and 'zero_stage > 1' has not been validated"
 
         self.mpu = groups
         self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
