@@ -12,8 +12,6 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 
-inference_module = None
-
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = {torch.float32: (5e-4, 5e-5), torch.float16: (5e-2, 2e-3)}[x.dtype]
