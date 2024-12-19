@@ -446,25 +446,29 @@ class conv_LinearLayer(LinearLayer):
 #override the subclasses related to weight splitting.
 class Yuan_LinearALlreduce(LinearAllreduce):
 
+    #Yuan2
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        params_list[0], params_list[1] = shard_value_with_share_qk(params_list[0], params_list[1], self.tp_world_size,
-                                                                   self.tp_index, False)
+        weight, bias= shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size,
+                                                                    False)
+        params_list[0].data = weight
+        if bias is not None:
+            params_list[1].data = bias
 
 
 class Yuan_LinearLayer(LinearLayer):
-
+    #Yuan2
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
-        weight, bias = shard_value_with_share_qk(params_list[0], params_list[1], self.tp_world_size, self.tp_index,
-                                                 False)
+        weight, bias = shard_value_with_share_qk(params_list[0].data, params_list[1], self.tp_index,self.tp_world_size, 
+                                                 True)
         params_list[0].data = weight
         if bias is not None:
             params_list[1].data = bias
 
 
 class GLM_LinearLayer(LinearLayer):
-
+    # chatGLM2, chatGLM2
     @torch.no_grad()
     def partition(self, params_list, move_to_device=False):
         weight, bias = shard_chunk_mlp(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size)
