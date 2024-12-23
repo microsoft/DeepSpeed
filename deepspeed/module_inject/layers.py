@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from typing import Iterable, Any, Optional, List
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 from deepspeed.inference.config import AUTOTP_MODE
-
+import copy
 DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 DS_IS_REPLACED_MODULE = 'ds_is_replaced_module'
 DS_TENSOR_MODEL_PARALLEL = 'tensor_model_parallel'
@@ -148,6 +148,10 @@ class Replaced_Layer(nn.Module, ABC):
             self.mp_group = mp_group
             self.tp_world_size: int = dist.get_world_size(self.mp_group)
             self.tp_index: int = dist.get_rank(mp_group)
+            
+            # backward compatibility
+            self.world_size=self.tp_world_size
+            self.rank =self.tp_index
 
         self.name = getattr(self, 'name', None)
         if kwargs.get('name') is not None:
@@ -202,6 +206,20 @@ class Replaced_Layer(nn.Module, ABC):
         global DEEPSPEED_AUTOTP_MODE
         return DEEPSPEED_AUTOTP_MODE == AUTOTP_MODE.TRAINING
 
+    def __deepcopy__(self, memo):
+        # This function is designed for 
+        # 'mp_group' (a 'ProcessGroup') cannot be pickled during deepcopy in some usage.
+        cls = self.__class__
+        new_obj = cls.__new__(cls)
+
+        for key, value in vars(self).items():
+            if key == 'mp_group':
+                new_obj.mp_group = self.mp_group
+            else:
+                setattr(new_obj, key, copy.deepcopy(value, memo))
+
+        memo[id(self)] = new_obj
+        return new_obj
 
 class GatherReplacedLayerParams:
     """
