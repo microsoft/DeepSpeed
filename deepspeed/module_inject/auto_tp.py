@@ -361,7 +361,7 @@ class AutoTP():
 
             setattr(child, "replaced", True)
             if self.conv_linear_layer:
-                return Conv_LinearALlreduce(child, self.mp_group, name)
+                return Conv_LinearALlreduce(child, self.mp_group, name=name)
             elif name == "lm_head" or name == 'embed_out':
                 return LmHeadLinearAllreduce(child, self.mp_group)
 

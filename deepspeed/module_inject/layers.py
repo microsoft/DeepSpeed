@@ -149,7 +149,7 @@ class Replaced_Layer(nn.Module, ABC):
             self.tp_world_size: int = dist.get_world_size(self.mp_group)
             self.tp_index: int = dist.get_rank(mp_group)
 
-        self.name = None
+        self.name = getattr(self, 'name', None)
         if kwargs.get('name') is not None:
             self.name = kwargs.get('name')  # Set the layer name if provided.
 
@@ -519,10 +519,12 @@ class Conv_LinearALlreduce(LinearAllreduce):
 
 #override the subclasses related to fwd/bwd.
 class LmHeadLinearAllreduce(LinearAllreduce):
-
+    def __init__(self, module, mp_group, **kwargs):
+        self.name="lm_head"
+        super().__init__(module, mp_group, **kwargs)
     def forward(self, input):
         input_shard_size = get_shard_size(input.shape[-1], self.tp_world_size, "lm_head")
-        input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.world_size, "lm_head")[0:self.tp_index])
+        input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.tp_world_size, "lm_head")[0:self.tp_index])
         output = torch.matmul(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
                               self.weight.transpose(-1, -2))
         if self.mp_group is not None:
