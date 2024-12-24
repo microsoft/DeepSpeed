@@ -839,7 +839,9 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
 
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = self.is_cuda_enable()
+        CUDA_ENABLE = (
+            "-D__DISABLE_CUDA__" if self.is_rocm_pytorch() else self.is_cuda_enable()
+        )
         args += [
             CPU_ARCH,
             '-fopenmp',
