@@ -538,7 +538,17 @@ class Conv_LinearALlreduce(LinearAllreduce):
 #override the subclasses related to fwd/bwd.
 class LmHeadLinearAllreduce(LinearAllreduce):
     def __init__(self, module, mp_group, **kwargs):
+        # set the fixed name before partition
         self.name="lm_head"
+        
+        # In some tied_embedding cases, only the lm head is sharded, while the word embedding is not. 
+        # Reinitialization is used to decouple them and prevent the word embedding from being sharded.
+        # This should also be effective for cases where both are sharded in tied_embedding scenarios.
+        
+        # TODO: Training scenario-related tests, is it necessary to re-implement the vocab parallel module?
+        module.weight = nn.Parameter(module.weight.clone().detach())
+        if hasattr(module, 'bias') and module.bias is not None:
+            module.bias = nn.Parameter(module.bias.clone().detach())
         super().__init__(module, mp_group, **kwargs)
     def forward(self, input):
         input_shard_size = get_shard_size(input.shape[-1], self.tp_world_size, "lm_head")
