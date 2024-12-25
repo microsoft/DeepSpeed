@@ -415,10 +415,11 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
-    def is_cuda_enable(self):
+    def get_cuda_compile_flag(self):
         try:
-            assert_no_cuda_mismatch(self.name)
-            return '-D__ENABLE_CUDA__'
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
+                return "-D__ENABLE_CUDA__"
         except MissingCUDAException:
             print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
                   "only cpu ops can be compiled!")
@@ -839,9 +840,7 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
 
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = (
-            "-D__DISABLE_CUDA__" if self.is_rocm_pytorch() else self.is_cuda_enable()
-        )
+        CUDA_ENABLE = self.get_cuda_compile_flag()
         args += [
             CPU_ARCH,
             '-fopenmp',
