@@ -427,7 +427,7 @@ class PartitionedParameterCoordinator:
         for param in iter_params(submodule, recurse=z3_leaf_module(submodule)):
             param.ds_active_sub_modules.discard(submodule.id)
             if param.ds_id in params_to_release and not param.is_external_param:
-                self.__release_param(param, free_data=True)
+                self.__release_param(param, free_data)
             if not free_data:
                 if param.ds_id in params_to_release and not param.is_external_param:
                     # empty buffer ensures that all computations are complete

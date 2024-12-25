@@ -706,10 +706,9 @@ class AllGatherCoalescedHandle:
                     partitions.append(part_to_copy)
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
-            if handle_dependency:
+            if handle_dependency and not get_accelerator().is_synchronized_device():
                 for part_to_copy in partitions:
-                    if not get_accelerator().is_synchronized_device():
-                        part_to_copy.record_stream(get_accelerator().current_stream())
+                    part_to_copy.record_stream(get_accelerator().current_stream())
 
             param_offset += ds_tensor_numel
 
