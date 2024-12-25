@@ -706,7 +706,7 @@ class AllGatherCoalescedHandle:
                     partitions.append(part_to_copy)
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
-            if handle_dependency and not get_accelerator().is_synchronized_device():
+            if not get_accelerator().is_synchronized_device() and handle_dependency:
                 for part_to_copy in partitions:
                     part_to_copy.record_stream(get_accelerator().current_stream())
 
