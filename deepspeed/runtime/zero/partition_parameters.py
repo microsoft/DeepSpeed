@@ -713,7 +713,8 @@ class AllGatherCoalescedHandle:
             param_offset += ds_tensor_numel
 
         self.complete = True
-        if not handle_dependency:
+        if not get_accelerator().is_synchronized_device() and not handle_dependency:
+            # if the device needs to handle dependencies and opts for explicit processing outside the function.
             AllGatherCoalescedHandle.data_buffer.append(partitions)
 
     @staticmethod
