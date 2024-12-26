@@ -86,7 +86,7 @@ class PartitionedParameterCoordinator:
                  timers=None,
                  zero_quantized_weights=False,
                  zero_quantized_nontrainable_weights=False,
-                 fast_fetch_for_leaf_module=False) -> None:
+                 fast_sharding_for_leaf_module=False) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = inflight_param_registry
         # keeps track of the number of submodules invoked so far.
@@ -131,7 +131,7 @@ class PartitionedParameterCoordinator:
 
         # whether to enable fast fetch for the z3 leaf module.
         # this will improve fetch speed but will not break down leaf module parameters to alleviate memory pressure.
-        self.fast_fetch_for_leaf_module = fast_fetch_for_leaf_module
+        self.fast_sharding_for_leaf_module = fast_sharding_for_leaf_module
 
     """Tracing and Tracking
     TODO. consider performing trace before initializing PartitionedParameterCoordinator
@@ -311,7 +311,7 @@ class PartitionedParameterCoordinator:
         wait_numel = 0
         wait_event_name = __class__.FORWARD_FETCH_WAIT if forward else __class__.BACKWARD_FETCH_WAIT
         self.__profiler.start_event(wait_event_name)
-        fast_fetch = self.fast_fetch_for_leaf_module and z3_leaf_module(current_submodule)
+        fast_fetch = self.fast_sharding_for_leaf_module and z3_leaf_module(current_submodule)
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
@@ -419,7 +419,7 @@ class PartitionedParameterCoordinator:
         params_to_release = (self.__params_to_release(submodule, self.__step_id) if self.is_complete_trace() else set(
             p.ds_id for p in iter_params(submodule, recurse=z3_leaf_module(submodule))))
 
-        free_data = not z3_leaf_module(submodule) or not self.fast_fetch_for_leaf_module
+        free_data = not z3_leaf_module(submodule) or not self.fast_sharding_for_leaf_module
         if not free_data:
             # wait for the computation to finish and launch as early as possible.
             empty_buffer = torch.empty(1, device=get_accelerator().current_device())

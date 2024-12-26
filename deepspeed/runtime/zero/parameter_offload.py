@@ -145,7 +145,7 @@ class DeepSpeedZeRoOffload(object):
             module.ds_inflight_param_registry = InflightParamRegistry()
         self.__inflight_param_registry = module.ds_inflight_param_registry
 
-        self.fast_fetch_for_leaf_module = False
+        self.fast_sharding_for_leaf_module = False
 
         if zero_module_granularity_threshold > 0:
             self.min_granularity_value = sys.maxsize
@@ -153,7 +153,7 @@ class DeepSpeedZeRoOffload(object):
             self.granularity_info = set()
             self.z3_leaf_layers = []
             self._set_z3_leaf_modules_by_threshold(module, zero_module_granularity_threshold)
-            self.fast_fetch_for_leaf_module = True
+            self.fast_sharding_for_leaf_module = True
 
         self.param_coordinator = PartitionedParameterCoordinator(
             prefetch_bucket_sz=self._prefetch_bucket_sz,
@@ -165,7 +165,7 @@ class DeepSpeedZeRoOffload(object):
             timers=self.timers,
             zero_quantized_weights=self.zero_quantized_weights,
             zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
-            fast_fetch_for_leaf_module=self.fast_fetch_for_leaf_module)
+            fast_sharding_for_leaf_module=self.fast_sharding_for_leaf_module)
 
         self.forward_hooks = []
         self.backward_hooks = []

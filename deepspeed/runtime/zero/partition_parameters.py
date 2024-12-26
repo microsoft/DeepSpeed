@@ -55,7 +55,7 @@ class NoGatherHandle:
                                                  non_blocking=True).view(param.ds_shape)
         self.__param = param
 
-    def wait(self) -> None:
+    def wait(self, **kwargs) -> None:
         if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().synchronize()
         self.__param.ds_status = ZeroParamStatus.AVAILABLE
@@ -78,7 +78,7 @@ class NoGatherCoalescedHandle:
                                                      non_blocking=True).view(param.ds_shape)
 
     @instrument_w_nvtx
-    def wait(self) -> None:
+    def wait(self, **kwargs) -> None:
         if self.__complete:
             return
 
