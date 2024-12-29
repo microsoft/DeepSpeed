@@ -111,7 +111,7 @@ def _save_checkpoint(file_path, chkpt_sd):
 
 def extract_zero_shards(dir, ds_checkpoint, indices_3D):
     pp_index, tp_index, dp_index = indices_3D
-    sd = ds_checkpoint.get_zero_checkpoint_state(pp_index=pp_index, tp_index=tp_index, dp_index=dp_index)
+    sd = ds_checkpoint.get_zero_checkpoint_state(pp_index=pp_index, tp_index=tp_index, dp_index=dp_index, strip_tensor_paddings=False)
 
     # pprint(f"Processing {dp_index=} {pp_index=}, {tp_index=}")
 
