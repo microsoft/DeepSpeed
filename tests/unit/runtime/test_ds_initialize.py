@@ -21,7 +21,7 @@ from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import FusedAdamBuilder
-from deepspeed import _assert_trainobjs_not_inited, _is_ds_initialized
+from deepspeed import _is_ds_initialized
 
 
 @pytest.mark.parametrize('zero_stage', [0, 3])
@@ -459,7 +459,6 @@ class TestNoRepeatedInitializationAllowed(DistributedTest):
             client_optimizer = _optimizer_callable
 
         # Initialize DeepSpeed engine
-        _assert_trainobjs_not_inited(model=model, optimizer=client_optimizer, lr_scheduler=None)
         model_engine, optim, _, _ = deepspeed.initialize(model=model,
                                                          optimizer=client_optimizer,
                                                          config_params=config_dict)
@@ -473,33 +472,15 @@ class TestNoRepeatedInitializationAllowed(DistributedTest):
         assert _is_ds_initialized(model_engine), "Model engine should be marked as initialized"
         assert _is_ds_initialized(optim), "Optimizer should be marked as initialized"
 
-        exception_raised = False
-        try:
+        err_msg_pattern = "has already been initialized"
+        with pytest.raises(ValueError, match=err_msg_pattern):
             deepspeed.initialize(model=model, optimizer=client_optimizer, config_params=config_dict)
-        except ValueError:
-            exception_raised = True
 
-        assert exception_raised, "Repeated initialization should raise an exception"
-
-        exception_raised = False
-        try:
+        with pytest.raises(ValueError, match=err_msg_pattern):
             deepspeed.initialize(model=model_engine, optimizer=client_optimizer, config_params=config_dict)
-        except ValueError:
-            exception_raised = True
 
-        assert exception_raised, "Initialization on ds types should raise an exception"
-
-        exception_raised = False
-        try:
+        with pytest.raises(ValueError, match=err_msg_pattern):
             deepspeed.initialize(model=model, optimizer=optim, config_params=config_dict)
-        except ValueError:
-            exception_raised = True
 
-        assert exception_raised, "Initialization on ds types should raise an exception"
-
-        exception_raised = False
-        try:
+        with pytest.raises(ValueError, match=err_msg_pattern):
             deepspeed.initialize(model=model_engine, optimizer=optim, config_params=config_dict)
-        except ValueError:
-            exception_raised = True
-        assert exception_raised, "Initialization on ds types should raise an exception"
