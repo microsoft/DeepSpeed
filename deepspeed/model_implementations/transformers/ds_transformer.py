@@ -126,6 +126,7 @@ class DeepSpeedTransformerInference(nn.Module):
             # This needs to be redesigned later!
             layer_head_mask=None,
             past_key_value=None,
+            cache_position=None,
             **kwargs):
 
         if x is not None:
@@ -158,7 +159,7 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input.to(target_dtype)
 
         with torch.no_grad():
-            attention_output, key, value, context_outputtn_ctx, inp_norm = \
+            attention_output, kv, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
                                               input_mask,
                                               head_mask,
@@ -170,9 +171,10 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b,
                                               alibi,
+                                              cache_position,
                                               **kwargs)
 
-            presents = (key, value)
+            #presents = (key, value)
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
@@ -181,8 +183,10 @@ class DeepSpeedTransformerInference(nn.Module):
 
             output = output.to(input_type)
         if get_present:
-            output = (output, presents)
+            output = (output, kv)
 
+        #import pdb; pdb.set_trace()
+        print(f"layer_id = {self.config.layer_id}")
         if self.config.return_single_tuple:
             return (output, )
         elif self.config.return_tuple:
