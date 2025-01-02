@@ -248,7 +248,7 @@ class InferenceEngine(Module):
         self._model_times.append(elapsed_time)
 
     def _create_model_parallel_group(self, config):
-           
+
         if is_autotp_training_mode():
             groups._init_tp_mesh_device(config.tensor_parallel.tp_size)
             self.mp_group = groups.get_tensor_model_parallel_group()

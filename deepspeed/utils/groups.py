@@ -83,10 +83,10 @@ def _init_tp_mesh_device(tensor_model_parallel_size=1, data_parallel_size=None):
     global _DATA_PARALLEL_GROUP
     global _MODEL_PARALLEL_GROUP
     global _TENSOR_MODEL_PARALLEL_GROUP
-    
+
     if _TENSOR_MODEL_PARALLEL_GROUP is not None:
-        return 
-    
+        return
+
     if data_parallel_size is None:
         data_parallel_size = dist.get_world_size() // tensor_model_parallel_size
 

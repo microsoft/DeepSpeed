@@ -331,7 +331,7 @@ class AutoTP():
             self.mp_group = groups.get_tensor_model_parallel_group()
             self.mp_size = groups.get_tensor_model_parallel_world_size()
             return
-        
+
         self.mp_size = mp_size
         self.mp_group = mp_group
 
@@ -357,7 +357,7 @@ class AutoTP():
         # For MLP including chunk layer.
         if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
             return GLM_LinearLayer(child, self.mp_group)
-                # For Arctic model, bypass to all_reduce replacement for w2 weights
+            # For Arctic model, bypass to all_reduce replacement for w2 weights
         arctic_w2_all_reduce_linear = False
         if 'Arctic' in str(self.module) and 'w2' in name:
             arctic_w2_all_reduce_linear = True

@@ -15,17 +15,21 @@ from typing import Iterable, Any, Optional, List
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 from deepspeed.inference.config import AUTOTP_MODE
 import copy
+
 DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 DS_IS_REPLACED_MODULE = 'ds_is_replaced_module'
 DS_TENSOR_MODEL_PARALLEL = 'tensor_model_parallel'
 
+
 def get_auto_tp_mode():
     global DEEPSPEED_AUTOTP_MODE
     return DEEPSPEED_AUTOTP_MODE
-    
+
+
 def is_autotp_training_mode():
     global DEEPSPEED_AUTOTP_MODE
-    return DEEPSPEED_AUTOTP_MODE==AUTOTP_MODE.TRAINING
+    return DEEPSPEED_AUTOTP_MODE == AUTOTP_MODE.TRAINING
+
 
 def set_autotp_mode(training=False):
     """
@@ -148,10 +152,10 @@ class Replaced_Layer(nn.Module, ABC):
             self.mp_group = mp_group
             self.tp_world_size: int = dist.get_world_size(self.mp_group)
             self.tp_index: int = dist.get_rank(mp_group)
-            
+
             # backward compatibility
-            self.world_size=self.tp_world_size
-            self.rank =self.tp_index
+            self.world_size = self.tp_world_size
+            self.rank = self.tp_index
 
         self.name = getattr(self, 'name', None)
         if kwargs.get('name') is not None:
@@ -207,7 +211,7 @@ class Replaced_Layer(nn.Module, ABC):
         return DEEPSPEED_AUTOTP_MODE == AUTOTP_MODE.TRAINING
 
     def __deepcopy__(self, memo):
-        # This function is designed for 
+        # This function is designed for
         # 'mp_group' (a 'ProcessGroup') cannot be pickled during deepcopy in some usage.
         cls = self.__class__
         new_obj = cls.__new__(cls)
@@ -220,6 +224,7 @@ class Replaced_Layer(nn.Module, ABC):
 
         memo[id(self)] = new_obj
         return new_obj
+
 
 class GatherReplacedLayerParams:
     """
@@ -515,7 +520,7 @@ class GLM_LinearLayer(LinearLayer):
         weight, bias = shard_chunk_mlp(params_list[0].data, params_list[1], self.tp_index, self.tp_world_size)
         params_list[0].data = move(weight, device=get_accelerator().current_device_name()).detach()
         if bias is not None:
-            params_list[1].data = move(bias,device=get_accelerator().current_device_name()).detach()
+            params_list[1].data = move(bias, device=get_accelerator().current_device_name()).detach()
 
 
 class Conv_LinearALlreduce(LinearAllreduce):
@@ -537,19 +542,21 @@ class Conv_LinearALlreduce(LinearAllreduce):
 
 #override the subclasses related to fwd/bwd.
 class LmHeadLinearAllreduce(LinearAllreduce):
+
     def __init__(self, module, mp_group, **kwargs):
         # set the fixed name before partition
-        self.name="lm_head"
-        
-        # In some tied_embedding cases, only the lm head is sharded, while the word embedding is not. 
+        self.name = "lm_head"
+
+        # In some tied_embedding cases, only the lm head is sharded, while the word embedding is not.
         # Reinitialization is used to decouple them and prevent the word embedding from being sharded.
         # This should also be effective for cases where both are sharded in tied_embedding scenarios.
-        
+
         # TODO: Training scenario-related tests, is it necessary to re-implement the vocab parallel module?
         module.weight = nn.Parameter(module.weight.clone().detach())
         if hasattr(module, 'bias') and module.bias is not None:
             module.bias = nn.Parameter(module.bias.clone().detach())
         super().__init__(module, mp_group, **kwargs)
+
     def forward(self, input):
         input_shard_size = get_shard_size(input.shape[-1], self.tp_world_size, "lm_head")
         input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.tp_world_size, "lm_head")[0:self.tp_index])
