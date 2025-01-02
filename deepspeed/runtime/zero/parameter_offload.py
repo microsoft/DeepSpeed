@@ -52,7 +52,7 @@ class ZeROOrderedDict(OrderedDict):
 
     def __reduce__(self):
         r0, _, *r2 = super().__reduce__()
-        return (r0, (self._parent_module, )) + r2
+        return (r0, (self._parent_module, )) + tuple(r2)
 
     def __getitem__(self, key):
         param = super().__getitem__(key)
@@ -392,7 +392,8 @@ class DeepSpeedZeRoOffload(object):
                                                                _run_after_backward_hook, inputs)
 
         def _post_backward_module_hook(module, inputs):
-            module.ds_grads_remaining = 0
+            if not hasattr(module, "ds_grads_remaining"):
+                module.ds_grads_remaining = 0
 
             if not hasattr(module, "post_bwd_fn"):
 
