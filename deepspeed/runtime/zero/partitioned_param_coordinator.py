@@ -172,17 +172,17 @@ class PartitionedParameterCoordinator:
             # sub_module must match expectation else invalidate trace cache
             if len(self.__submodule_order) <= self.__step_id:
                 print_rank_0(
-                    f"Invalidate trace cache @ step {self.__step_id} and module {sub_module.id}: "
+                    f"Invalidate trace cache @ step {self.__step_id} and module {sub_module.ds_id}: "
                     f"cache has only {len(self.__submodule_order)} modules",
                     force=True)
                 self._invalidate_trace()
                 return
 
             if sub_module != self.__submodule_order[self.__step_id]:
-                expected_module_id = self.__submodule_order[self.__step_id].id
+                expected_module_id = self.__submodule_order[self.__step_id].ds_id
                 print_rank_0(
                     f"Invalidate trace cache @ step {self.__step_id}: "
-                    f"expected module {expected_module_id}, but got module {sub_module.id}",
+                    f"expected module {expected_module_id}, but got module {sub_module.ds_id}",
                     force=True)
                 self._invalidate_trace()
 
@@ -196,7 +196,7 @@ class PartitionedParameterCoordinator:
             raise RuntimeError(f"attempted to record trace when status = {self.__trace_mode}")
 
         self.__submodule_order.append(sub_module)
-        self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
+        self.__step_id_module_fetched_for[sub_module.ds_id].append(self.__step_id)
 
     def record_parameters(self, sub_module: Module) -> None:
         if is_compiling():
@@ -205,7 +205,7 @@ class PartitionedParameterCoordinator:
         if not self.is_record_trace():
             raise RuntimeError(f"attempted to record trace when status = {self.__trace_mode}")
 
-        step_id = self.__step_id_module_fetched_for[sub_module.id].popleft()
+        step_id = self.__step_id_module_fetched_for[sub_module.ds_id].popleft()
         for param in sorted(set(iter_params(sub_module, recurse=z3_leaf_module(sub_module))), key=lambda p: p.ds_id):
             self.__param_order.append(__class__.__ParamInTrace(param=param, step_id_last_used_at=step_id))
 
@@ -225,7 +225,7 @@ class PartitionedParameterCoordinator:
 
         if not self.is_complete_trace():  # not self.trace_complete:
             # Make sure that recorded submodule orders are identical across ranks
-            assert_ints_same_as_other_ranks([m.id for m in self.__submodule_order])
+            assert_ints_same_as_other_ranks([m.ds_id for m in self.__submodule_order])
 
             if self.is_record_trace():
                 # Successfully recorded a trace
@@ -238,7 +238,7 @@ class PartitionedParameterCoordinator:
                 self.__param_order = tuple(self.__param_order)  # freeze
                 self.__trace_mode = ZeRoTraceMode.COMPLETE
                 print_rank_0(
-                    f"completed record trace of {len(self.__submodule_order)} sub modules: {[m.id for m in self.__submodule_order]}",
+                    f"completed record trace of {len(self.__submodule_order)} sub modules: {[m.ds_id for m in self.__submodule_order]}",
                     force=False)
             else:
                 # Enable trace recording for next forward/backward pass
@@ -281,7 +281,7 @@ class PartitionedParameterCoordinator:
         """
         if logger.isEnabledFor(logging.DEBUG):
             debug_rank0(
-                f"{self.__step_id}: M{current_submodule.id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule, recurse=z3_leaf_module(current_submodule))]} "
+                f"{self.__step_id}: M{current_submodule.ds_id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule, recurse=z3_leaf_module(current_submodule))]} "
                 + str({
                     "avail": f"{self.__n_available_params:.1e}",
                     "queue_sz": f"{len(self.__param_queue or [])}",
@@ -294,7 +294,7 @@ class PartitionedParameterCoordinator:
 
         if fetch_numel > 0:
             event_name = __class__.FORWARD_FETCH_SUBMIT if forward else __class__.BACKWARD_FETCH_SUBMIT
-            self._dump_param_ids(event_name, current_submodule.id,
+            self._dump_param_ids(event_name, current_submodule.ds_id,
                                  [p.ds_id for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
             self.__profiler.start_event(event_name)
             # kick off all gather for params in the immediately required submodule
@@ -310,7 +310,7 @@ class PartitionedParameterCoordinator:
         self.__profiler.start_event(wait_event_name)
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
-            param.ds_active_sub_modules.add(current_submodule.id)
+            param.ds_active_sub_modules.add(current_submodule.ds_id)
             if logger.isEnabledFor(logging.DEBUG):
                 debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
@@ -352,7 +352,7 @@ class PartitionedParameterCoordinator:
             if discarded_from_prefetch_queue != params_not_already_fetched:
                 raise RuntimeError(
                     f"tracing error at step {self.__step_id}: \n"
-                    f"module id: {current_submodule.id}, training: {current_submodule.training}\n"
+                    f"module id: {current_submodule.ds_id}, training: {current_submodule.training}\n"
                     f"expected the next {len(params_not_already_fetched)} parameters in the "
                     f"parameter fetch queue to be {tuple(p.ds_summary(use_debug_name=True) for p in params_not_already_fetched)} \n"
                     f"but got \n {tuple(p.ds_summary(use_debug_name=True) for p in discarded_from_prefetch_queue)}.")
@@ -413,7 +413,7 @@ class PartitionedParameterCoordinator:
         params_to_release = (self.__params_to_release(submodule, self.__step_id) if self.is_complete_trace() else set(
             p.ds_id for p in iter_params(submodule, recurse=z3_leaf_module(submodule))))
         for param in iter_params(submodule, recurse=z3_leaf_module(submodule)):
-            param.ds_active_sub_modules.discard(submodule.id)
+            param.ds_active_sub_modules.discard(submodule.ds_id)
             if param.ds_id in params_to_release and not param.is_external_param:
                 self.__release_param(param)
 
