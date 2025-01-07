@@ -265,8 +265,7 @@ class PipelineEngine(DeepSpeedEngine):
     def _build_data_iter(self, dataset):
         sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                   num_replicas=self.dp_world_size,
-                                                                  rank=self.mpu.get_data_parallel_rank(),
-                                                                  shuffle=False)
+                                                                  rank=self.mpu.get_data_parallel_rank())
         # Build a loader and make it repeating.
         pipe_dataloader = self.deepspeed_io(dataset, data_sampler=sampler)
         pipe_dataloader = RepeatingLoader(pipe_dataloader)

@@ -1788,8 +1788,7 @@ class DeepSpeedEngine(Module):
             data_sampler = torch.utils.data.DistributedSampler(
                 dataset,
                 num_replicas=data_parallel_world_size,
-                rank=data_parallel_rank,
-                shuffle=True,
+                rank=data_parallel_rank
             )
 
         deepspeed_dataloader_config = {}

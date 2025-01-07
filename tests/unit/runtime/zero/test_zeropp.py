@@ -214,7 +214,7 @@ class TestZeroPPConvergence(DistributedTest):
         tokenized_dataset.set_format('torch', columns=['input_ids', 'attention_mask', 'labels'])
 
         # Create data loader
-        data_loader = DataLoader(tokenized_dataset, batch_size=1, shuffle=False)
+        data_loader = DataLoader(tokenized_dataset, batch_size=1)
         return model, data_loader
 
     def get_loss(self, model, data_loader, config_dict, step=500):

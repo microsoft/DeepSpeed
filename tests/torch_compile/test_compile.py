@@ -34,7 +34,7 @@ class RandomDataset(Dataset):
 
 data_size = 1024
 data_length = 100
-rand_loader = DataLoader(dataset=RandomDataset(data_size, data_length), batch_size=1, shuffle=False)
+rand_loader = DataLoader(dataset=RandomDataset(data_size, data_length), batch_size=1)
 
 
 class MyModule(torch.nn.Module):
