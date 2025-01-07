@@ -333,7 +333,8 @@ class AutoTP():
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         # For mixtral-7x8b, need to skip MoE gate linear replace.
-        if name == "block_sparse_moe.gate":
+        if name == "block_sparse_moe.gate" or (('mlp.shared_expert_gate' == name or 'mlp.gate' == name)
+                                               and 'qwen2_moe' in str(type(self.module))):
             return child
         # For Yuan model
         if 'Yuan' in str(self.module):
@@ -345,11 +346,15 @@ class AutoTP():
                 weight, bias = shard_value_with_share_qk(child.weight.data, child.bias, dist.get_rank(),
                                                          dist.get_world_size(), False)
                 return LinearAllreduce(weight, bias, self.mp_group)
+        # For Arctic model, bypass to all_reduce replacement for w2 weights
+        arctic_w2_all_reduce_linear = False
+        if 'Arctic' in str(self.module) and 'w2' in name:
+            arctic_w2_all_reduce_linear = True
         # For MLP including chunk layer.
         if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
             weight, bias = shard_chunk_mlp(child.weight.data, child.bias, dist.get_rank(), dist.get_world_size())
             return LinearLayer(weight=weight, bias=bias)
-        if name in self.all_reduce_linears:
+        if name in self.all_reduce_linears or arctic_w2_all_reduce_linear:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0], weight_shape[1] // mp_size]
 
@@ -495,7 +500,8 @@ class AutoTP():
         num_kv_heads = None
         # multi_query_group_num is for chatglm2 & chatglm3
         kv_head_names = [
-            'multi_query_group_num', 'num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads'
+            'multi_query_group_num', 'num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads',
+            'attention_heads'
         ]
         for name in kv_head_names:
             if hasattr(config, name):
