@@ -17,7 +17,7 @@ from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 from .layers import TensorParallelOcShardConv2d, TensorParallelIcShardConv2d
 
 from deepspeed import comm as dist
-from deepspeed.module_inject.tp_shard import set_num_kv_heads, set_n_embd, set_num_attention_heads
+from deepspeed.module_inject.tp_shard import set_num_kv_heads, set_n_embd, set_num_attention_heads, set_tp_grain_size
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -303,6 +303,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         if hasattr(model_config, 'num_attention_heads'):
             set_num_attention_heads(getattr(model_config, 'num_attention_heads'))
 
+        # 4.4 set tp_grain_size
+        set_tp_grain_size(config.tensor_parallel.tp_grain_size)
+
         # 5. Set linear policies
         _autotp.update_linear_policies()
 
@@ -415,7 +418,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
 
             for i in range(len(checkpoint)):
-                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu')]
+                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu', weights_only=False)]
                 load_model_with_checkpoint(replaced_module,
                                            sd,
                                            mp_replace,
@@ -437,7 +440,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     os.path.join(base_dir1, ckpt_list[ckpt_index + j]) if base_dir1 else ckpt_list[ckpt_index + j]
                     for j in range(sd_count)
                 ]
-                sds = [torch.load(ckpt_file, map_location='cpu') for ckpt_file in ckpt_files]
+                sds = [torch.load(ckpt_file, map_location='cpu', weights_only=False) for ckpt_file in ckpt_files]
                 load_model_with_checkpoint(replaced_module,
                                            sds,
                                            mp_replace,
@@ -457,7 +460,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     pbar.update(1)
                     ckpt_file = os.path.join(base_dir1,
                                              checkpoint["non_tp"][i]) if base_dir1 else checkpoint["non_tp"][i]
-                    sds = [torch.load(ckpt_file, map_location='cpu')]
+                    sds = [torch.load(ckpt_file, map_location='cpu', weights_only=False)]
                     load_model_with_checkpoint(replaced_module,
                                                sds,
                                                mp_replace,
@@ -624,7 +627,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
             from safetensors.torch import load_file
             sd = load_file(checkpoint)
         else:
-            sd = torch.load(checkpoint, map_location='cpu')
+            sd = torch.load(checkpoint, map_location='cpu', weights_only=False)
 
     policy = {}
     if orig_class is not None:
