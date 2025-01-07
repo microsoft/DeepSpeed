@@ -604,6 +604,10 @@ class TestAutoTensorParallelism(DistributedTest):
         print(local_rank, "deepspeed", ds_output)
         assert assert_fn(bs_output, ds_output)
 
+        if keep_module_on_host:
+            for name, param in model.named_parameters():
+                assert param.device == torch.device('cpu'), f"keep_module_on_host is on but param {name} is not on cpu"
+
     @pytest.mark.world_size(3)
     def test_odd_world_size(
         self,
@@ -639,6 +643,10 @@ class TestAutoTensorParallelism(DistributedTest):
         print(local_rank, "baseline", bs_output)
         print(local_rank, "deepspeed", ds_output)
         assert assert_fn(bs_output, ds_output)
+
+        if keep_module_on_host:
+            for name, param in model.named_parameters():
+                assert param.device == torch.device('cpu'), f"keep_module_on_host is on but param {name} is not on cpu"
 
 
 @pytest.mark.nightly
