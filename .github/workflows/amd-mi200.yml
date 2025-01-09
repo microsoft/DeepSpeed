@@ -32,7 +32,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install -U --cache-dir $TORCH_CACHE torch torchvision --index-url https://download.pytorch.org/whl/rocm5.6
+          pip install -U --cache-dir $TORCH_CACHE torch torchvision --index-url https://download.pytorch.org/whl/rocm6.0
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -48,8 +48,6 @@ jobs:
       - name: Install (ROCm) apex
         run: |
           git clone https://github.com/ROCmSoftwarePlatform/apex.git
-          cd apex
-          git checkout torch_2.1_higher
           CURRENT_VER=$(git rev-parse HEAD)
           INSTALLED_VER=$(cat /blob/amd-apex/.venv_installed_version)
           if [[ "$CURRENT_VER" != "$INSTALLED_VER" ]]; then

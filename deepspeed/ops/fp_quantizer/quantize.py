@@ -7,7 +7,9 @@ import torch
 import abc
 from abc import ABC
 
+import gc
 from deepspeed.ops.op_builder import FPQuantizerBuilder
+from deepspeed.accelerator import get_accelerator
 
 fp_quant_module = None
 
@@ -90,6 +92,16 @@ class FP_Quantize(Quantizer):
     def get_scales(self):
         return fp_quant_module.get_scales(self.scales, self.num_groups)
 
+    def to(self, *args, **kwargs):
+        # Intermediate tensors may need to be moved to different devices
+        if hasattr(self, 'input_q'):
+            self.input_q = self.input_q.to(*args, **kwargs)
+        if hasattr(self, 'scale'):
+            self.scale = self.scale.to(*args, **kwargs)
+
+    def get_scales(self):
+        return fp_quant_module.get_scales(self.scale, self.num_groups)
+
     def dequantize(self, input_q, fp_out=None, q_bits=8, q_mantisa_bits=3, scale=None) -> torch.Tensor:
         assert (self.orig_dtype is not None), \
             "[De-quantization Error]: you need to call quantize before dequantizing!"
@@ -106,6 +118,11 @@ class FP_Quantize(Quantizer):
         else:
             assert (0), \
                 f"Missing {q_bits}-dequantization, please add the template arguments for the kernel to support this precision!"
+
+        if scale is not None:
+            assert input_q.numel() == fp_out.numel(), \
+            f'[De-quantization Error]: quantized data should have the same size as original tensor when scale is not None!'
+            input_q = torch.cat([input_q.reshape(-1, self.group_size), scale], dim=-1).contiguous()
         fp_quant_module.dequantize(fp_out, input_q, self.group_size, q_mantisa_bits, q_bits - q_mantisa_bits - 1)
 
         return fp_out

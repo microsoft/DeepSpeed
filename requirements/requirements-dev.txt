@@ -1,12 +1,12 @@
 accelerate
-clang-format==16.0.2
+clang-format==18.1.3
 comet_ml>=3.41.0
 deepspeed-kernels ; sys_platform == 'linux'
 docutils<0.18
 future
 importlib-metadata>=4
 mup
-pre-commit>=2.20.0
+pre-commit>=3.2.0
 pytest>=7.2.0
 pytest-forked
 pytest-randomly

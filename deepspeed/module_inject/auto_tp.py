@@ -134,7 +134,8 @@ class Loading():
         load_layer_names = [
             "LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "FalconLinear",
             "MistralRMSNorm", "T5LayerNorm", "MixtralRMSNorm", "Phi3RotaryEmbedding", "Phi3SuScaledRotaryEmbedding",
-            "Phi3RMSNorm", "YuanRMSNorm", "YuanRotaryEmbedding"
+            "Phi3RMSNorm", "YuanRMSNorm", "YuanRotaryEmbedding", "Phi3LongRoPEScaledRotaryEmbedding", "Qwen2RMSNorm",
+            "DeepseekV2RMSNorm", "DeepseekV2YarnRotaryEmbedding", "MoEGate"
         ]
         return module.__class__ in load_layers or module._get_name() in load_layer_names
 
@@ -309,6 +310,10 @@ class AutoTP():
                     gem_list = gem_list + [layer]
                 elif 'self_attn.dense' in layer and 'Phi' in str(type(module)):
                     gem_list = gem_list + [layer]
+                elif 'self_attention.dense' in layer and 'ChatGLM' in str(model):
+                    gem_list = gem_list + [layer]
+                elif 'dense_4h_to_h' in layer and 'ChatGLM' in str(model):
+                    gem_list = gem_list + [layer]
 
             layer_list = []
             if gem_list != []:
@@ -328,8 +333,9 @@ class AutoTP():
             return
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
-        # For mixtral-7x8b, need to skip MoE gate linear replace.
-        if name == "block_sparse_moe.gate":
+        # For TP layer skip, e.g., MoE gate, deepseek low rank layer skip
+        if "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
+            ('mlp.shared_expert_gate' == name or 'mlp.gate' == name) and 'qwen2_moe' in str(type(self.module))):
             return child
         # For Yuan model
         if 'Yuan' in str(self.module):
@@ -341,11 +347,19 @@ class AutoTP():
                 weight, bias = shard_value_with_share_qk(child.weight.data, child.bias, dist.get_rank(),
                                                          dist.get_world_size(), False)
                 return LinearAllreduce(weight, bias, self.mp_group)
-        # for phi3.
-        if 'gate_up_proj' in name:
+        # For Arctic model, bypass to all_reduce replacement for w2 weights
+        arctic_w2_all_reduce_linear = False
+        if 'Arctic' in str(self.module) and 'w2' in name:
+            arctic_w2_all_reduce_linear = True
+        # For MoE MLP model, e.g., deepseek and jamba
+        down_proj = False
+        if 'down_proj' in name:
+            down_proj = True
+        # For MLP including chunk layer.
+        if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
             weight, bias = shard_chunk_mlp(child.weight.data, child.bias, dist.get_rank(), dist.get_world_size())
             return LinearLayer(weight=weight, bias=bias)
-        if name in self.all_reduce_linears:
+        if name in self.all_reduce_linears or arctic_w2_all_reduce_linear or down_proj:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0], weight_shape[1] // mp_size]
 
@@ -424,7 +438,8 @@ class AutoTP():
             return
         param_list = [
             "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads", "all_head_size",
-            "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads", "kv_n_heads", "d_model"
+            "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads", "kv_n_heads", "d_model",
+            "num_attention_heads_per_partition", "num_multi_query_groups_per_partition", "hidden_size_per_partition"
         ]
         for param in param_list:
             if "Yuan" in str(child) and 'embed_dim' in param_list:
@@ -488,7 +503,11 @@ class AutoTP():
 
     def get_model_num_kv_heads(self, config):
         num_kv_heads = None
-        kv_head_names = ['num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads']
+        # multi_query_group_num is for chatglm2 & chatglm3
+        kv_head_names = [
+            'multi_query_group_num', 'num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads',
+            'attention_heads'
+        ]
         for name in kv_head_names:
             if hasattr(config, name):
                 num_kv_heads = getattr(config, name)
