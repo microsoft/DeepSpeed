@@ -9,7 +9,6 @@ except ImportError:
     pkg_version = None
 
 from .builder import CUDAOpBuilder, installed_cuda_version
-import torch
 
 
 class FPQuantizerBuilder(CUDAOpBuilder):
@@ -102,6 +101,7 @@ class FPQuantizerBuilder(CUDAOpBuilder):
 
     @staticmethod
     def get_default_quant_dtype():
+        import torch
         return torch.uint8
 
     @staticmethod
