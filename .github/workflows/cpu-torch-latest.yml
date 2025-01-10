@@ -21,6 +21,8 @@ jobs:
   unit-tests:
     runs-on: ubuntu-24.04
 
+
+
     steps:
       - uses: actions/checkout@v4
 
@@ -55,7 +57,15 @@ jobs:
         run: |
           pip list
 
+      - name: System Status
+        run: |
+          df -h
+          free -m
+
       - name: Unit tests
+        env:
+          ACTIONS_RUNNER_DEBUG: true
+          ACTIONS_STEP_DEBUG: true
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
