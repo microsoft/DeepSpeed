@@ -19,6 +19,9 @@ import subprocess
 # -----------------------------------------------------------------------------
 # util class/functions for triton
 def is_nfs_path(path):
+    if os.name == 'nt':
+        return False
+
     # Normalize the path to get the absolute path
     path = os.path.abspath(path)
 
@@ -40,13 +43,17 @@ class TritonCacheDir:
     _warning_printed = False
 
     @staticmethod
-    def default_cache_dir():
-        tmp_path = os.path.join(Path.home(), ".triton", "autotune")
-        if is_nfs_path(tmp_path) and not TritonCacheDir._warning_printed:
+    def warn_if_nfs(cache_dir):
+        if is_nfs_path(cache_dir) and not TritonCacheDir._warning_printed:
             print(
-                f"Warning: The default cache directory for DeepSpeed Triton autotune, {tmp_path}, appears to be on an NFS system. While this is generally acceptable, if you experience slowdowns or hanging when DeepSpeed exits, it is recommended to set the TRITON_CACHE_DIR environment variable to a non-NFS path."
+                f"Warning: The cache directory for DeepSpeed Triton autotune, {cache_dir}, appears to be on an NFS system. While this is generally acceptable, if you experience slowdowns or hanging when DeepSpeed exits, it is recommended to set the TRITON_CACHE_DIR environment variable to a non-NFS path."
             )
             TritonCacheDir._warning_printed = True
+        return
+
+    @staticmethod
+    def default_cache_dir():
+        tmp_path = os.path.join(Path.home(), ".triton", "autotune")
         return tmp_path
 
 
@@ -80,9 +87,9 @@ class AutotuneCacheManager:
         self.lock_path = None
         # if caching is enabled, get the lock and bin path
         self.cache_dir = os.environ.get('TRITON_CACHE_DIR', TritonCacheDir.default_cache_dir())
+        TritonCacheDir.warn_if_nfs(self.cache_dir)
         if self.cache_dir:
             os.makedirs(self.cache_dir, exist_ok=True)
-        if self.cache_dir:
             self.file_path = os.path.join(self.cache_dir, self.key + ".pickle")
             self.lock_path = self.file_path + ".lock"
 
@@ -95,7 +102,7 @@ class AutotuneCacheManager:
             with FileLock(self.lock_path):
                 with open(self.file_path + ".tmp", 'wb') as handle:
                     pickle.dump(table, handle)
-                os.rename(self.file_path + ".tmp", self.file_path)
+                os.replace(self.file_path + ".tmp", self.file_path)
 
     def load(self):
         if os.path.exists(self.file_path):

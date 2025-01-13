@@ -27,6 +27,7 @@ from setuptools import setup, find_packages
 from setuptools.command import egg_info
 import time
 import typing
+import shlex
 
 torch_available = True
 try:
@@ -157,10 +158,12 @@ if BUILD_OP_DEFAULT:
 
 def command_exists(cmd):
     if sys.platform == "win32":
-        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+        safe_cmd = shlex.split(f'{cmd}')
+        result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
         return result.wait() == 1
     else:
-        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+        safe_cmd = shlex.split(f"bash -c type {cmd}")
+        result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
         return result.wait() == 0
 
 
@@ -183,8 +186,8 @@ for op_name, builder in ALL_OPS.items():
     if op_enabled(op_name) and not op_compatible:
         env_var = op_envvar(op_name)
         if not is_env_set(env_var):
-            builder.warning(f"One can disable {op_name} with {env_var}=0")
-        abort(f"Unable to pre-compile {op_name}")
+            builder.warning(f"Skip pre-compile of incompatible {op_name}; One can disable {op_name} with {env_var}=0")
+        continue
 
     # If op is compatible but install is not enabled (JIT mode).
     if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
@@ -199,13 +202,13 @@ for op_name, builder in ALL_OPS.items():
 print(f'Install Ops={install_ops}')
 
 # Write out version/git info.
-git_hash_cmd = "git rev-parse --short HEAD"
-git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
+git_hash_cmd = shlex.split("bash -c \"git rev-parse --short HEAD\"")
+git_branch_cmd = shlex.split("bash -c \"git rev-parse --abbrev-ref HEAD\"")
 if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
     try:
-        result = subprocess.check_output(git_hash_cmd, shell=True)
+        result = subprocess.check_output(git_hash_cmd)
         git_hash = result.decode('utf-8').strip()
-        result = subprocess.check_output(git_branch_cmd, shell=True)
+        result = subprocess.check_output(git_branch_cmd)
         git_branch = result.decode('utf-8').strip()
     except subprocess.CalledProcessError:
         git_hash = "unknown"
@@ -295,7 +298,7 @@ if sys.platform == "win32":
 else:
     scripts = [
         'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
-        'bin/ds_elastic'
+        'bin/ds_elastic', 'bin/ds_nvme_tune', 'bin/ds_io'
     ]
 
 start_time = time.time()
@@ -318,9 +321,9 @@ setup(name='deepspeed',
       include_package_data=True,
       scripts=scripts,
       classifiers=[
-          'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
-          'Programming Language :: Python :: 3.10'
+          'Programming Language :: Python :: 3.10', 'Programming Language :: Python :: 3.11',
+          'Programming Language :: Python :: 3.12'
       ],
       license='Apache Software License 2.0',
       ext_modules=ext_modules,
