@@ -136,6 +136,7 @@ def process_linear_layer(hidden_dim, input):
     torch_loss.backward()
     return torch_linear, torch_out
 
+@pytest.mark.sequential
 @pytest.mark.parametrize("tp_size", [2,4])
 class TestTpLayerFwdBwd(DistributedTest):
     world_size = 4
@@ -234,7 +235,7 @@ class TestTpLayerFwdBwd(DistributedTest):
                               out.contiguous(),
                               atol=1e-3)
 
-
+@pytest.mark.sequential
 class TestParamsGather(DistributedTest):
     world_size = 4
     reuse_dist_env = True
