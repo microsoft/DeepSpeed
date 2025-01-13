@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from torch import nn
 from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer, set_autotp_mode
 from unit.checkpoint.common import compare_lr_scheduler_states, compare_optimizer_states
+import os
 
 
 class SequentialLinearModel(torch.nn.Module):
@@ -396,7 +397,7 @@ class TestSave(DistributedTest):
         else:
             assert tp_state_dict is None, f"noly rank0 should have the state_dict"
 
-    def test_ckpt_save(self):
+    def test_ckpt_save(self, tmpdir):
         tp_size = 4
         hidden_dim = 64
         set_autotp_mode(training=True)
@@ -443,7 +444,7 @@ class TestSave(DistributedTest):
                                         hidden_dim=hidden_dim,
                                         device=trained_model.device,
                                         dtype=preferred_dtype())
-        ckpt_path = "./test_ckpt/"
+        ckpt_path = os.path.join(tmpdir, 'tp_saved_checkpoint')
         for i, batch in enumerate(data_loader):
             batch[0].requires_grad = True
             loss = trained_model(batch[0], batch[1])
