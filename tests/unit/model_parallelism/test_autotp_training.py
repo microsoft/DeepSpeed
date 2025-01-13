@@ -447,13 +447,14 @@ class TestSave(DistributedTest):
         compare_optimizer_states(trained_model, loaded_model, hidden_dim, fp16=(preferred_dtype() == torch.float16))
         compare_lr_scheduler_states(trained_model, loaded_model)
 
+@pytest.mark.parametrize("zero_stage", [0,1])
 @pytest.mark.parametrize("tp_size", [2,4])
 class TestTpGradNorm(DistributedTest):
 
     world_size = 4
     reuse_dist_env = True
 
-    def test(self, tp_size:int):
+    def test(self, tp_size:int, zero_stage:int):
         hidden_dim = 64
         set_autotp_mode(training=True)
         config_dict = {
@@ -466,7 +467,7 @@ class TestTpGradNorm(DistributedTest):
                 }
             },
             "zero_optimization": {
-                "stage": 0,
+                "stage": zero_stage,
                 "autotp_size": tp_size
             }
         }
@@ -487,21 +488,17 @@ class TestTpGradNorm(DistributedTest):
                                                                 model_parameters=base_model.parameters(),
                                                                 config=config_dict)
         data_loader = random_dataloader(model=base_model,
-                                        total_samples=2,
+                                        total_samples=20,
                                         hidden_dim=hidden_dim,
                                         device=base_model.device,
                                         dtype=preferred_dtype())
-        # duplicate each rank training(no-DP)
-        with base_model.no_sync():
-            for i, batch in enumerate(data_loader):
-                batch[0].requires_grad = True
-                loss = base_model(batch[0], batch[1])
-                loss = loss
-                base_model.backward(loss)
-                # to avoid assert failures for test purpose
-                base_model.inside_no_sync_ctxt=False
-                base_model.step()
-                base_model.inside_no_sync_ctxt=True
+
+        for i, batch in enumerate(data_loader):
+            batch[0].requires_grad = True
+            loss = base_model(batch[0], batch[1])
+            loss = loss
+            base_model.backward(loss)
+            base_model.step()
 
         base_norm = base_optimizer._global_grad_norm
 
