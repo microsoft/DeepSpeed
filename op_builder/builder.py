@@ -67,7 +67,7 @@ def get_default_compute_capabilities():
             # Special treatment of CUDA 11.0 because compute_86 is not supported.
             compute_caps += ";8.0"
         else:
-            compute_caps += ";8.0;8.6"
+            compute_caps += ";8.0;8.6;9.0"
     return compute_caps
 
 
@@ -76,7 +76,7 @@ def get_default_compute_capabilities():
 cuda_minor_mismatch_ok = {
     10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5"],
+    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6"],
 }
 
 
@@ -296,7 +296,7 @@ class OpBuilder(ABC):
         '''
         return []
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         '''
         Check if all non-python dependencies are satisfied to build this op
         '''
@@ -415,10 +415,11 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
-    def is_cuda_enable(self):
+    def get_cuda_compile_flag(self):
         try:
-            assert_no_cuda_mismatch(self.name)
-            return '-D__ENABLE_CUDA__'
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
+                return "-D__ENABLE_CUDA__"
         except MissingCUDAException:
             print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
                   "only cpu ops can be compiled!")
@@ -432,7 +433,7 @@ class OpBuilder(ABC):
                          "to detect the CPU architecture. 'lscpu' does not appear to exist on "
                          "your system, will fall back to use -march=native and non-vectorized execution.")
             return None
-        result = subprocess.check_output('lscpu', shell=True)
+        result = subprocess.check_output(['lscpu'])
         result = result.decode('utf-8').strip().lower()
 
         cpu_info = {}
@@ -482,7 +483,8 @@ class OpBuilder(ABC):
             cmds = [cmd]
         valid = False
         for cmd in cmds:
-            result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+            safe_cmd = ["bash", "-c", f"type {cmd}"]
+            result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
             valid = valid or result.wait() == 0
 
         if not valid and len(cmds) > 1:
@@ -678,7 +680,7 @@ class CUDAOpBuilder(OpBuilder):
             version_ge_1_5 = ['-DVERSION_GE_1_5']
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-    def is_compatible(self, verbose=True):
+    def is_compatible(self, verbose=False):
         return super().is_compatible(verbose)
 
     def builder(self):
@@ -838,7 +840,7 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
 
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = self.is_cuda_enable()
+        CUDA_ENABLE = self.get_cuda_compile_flag()
         args += [
             CPU_ARCH,
             '-fopenmp',

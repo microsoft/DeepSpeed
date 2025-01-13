@@ -80,7 +80,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         else:
             model_param_json_fname = "pytorch_model.bin.index.json"
             model_file_fname = "pytorch_model.bin"
-            self._checkpoint_load_fn = partial(torch.load, map_location="cpu")
+            self._checkpoint_load_fn = partial(torch.load, map_location="cpu", weights_only=False)
 
         model_param_json = os.path.join(self._local_checkpoint_dir, model_param_json_fname)
 
@@ -108,6 +108,12 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         for checkpoint in self._all_ckpt_paths:
             inference_logger().info(f"Loading checkpoint: {checkpoint}")
             checkpoint_sd = self._checkpoint_load_fn(checkpoint)
+
+            # If the model has tied embeddings, we need to make sure the lm_head weights are tied to the embeddings weights
+            if hasattr(self.model_config, "tie_word_embeddings") and self.model_config.tie_word_embeddings:
+                if self.model_config.model_type == "qwen2":
+                    checkpoint_sd["lm_head.weight"] = checkpoint_sd["model.embed_tokens.weight"]
+
             param_keys = list(checkpoint_sd.keys())
             for param_name in param_keys:
                 param = checkpoint_sd[param_name]
