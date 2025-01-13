@@ -7,6 +7,7 @@ import pytest
 import deepspeed.comm as dist
 import torch
 import math
+from copy import deepcopy
 
 from unit.common import DistributedTest, preferred_dtype
 import deepspeed
@@ -16,6 +17,7 @@ from deepspeed.utils import groups
 from contextlib import contextmanager
 from torch import nn
 from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer, set_autotp_mode
+from unit.checkpoint.common import compare_lr_scheduler_states, compare_optimizer_states
 
 
 class SequentialLinearModel(torch.nn.Module):
@@ -51,15 +53,14 @@ def should_assert_with_msg(expected_message):
         else:
             raise e
 
-
+@pytest.mark.parametrize("tp_size", [2,4])
 class TestTpParallelStates(DistributedTest):
     world_size = 4
 
-    def test(self):
+    def test(self, tp_size: int):
         set_autotp_mode(training=True)
-        tp_size = 4
 
-        dp_size = 4 / dist.get_world_size()
+        dp_size = 4 / tp_size
         hidden_dim = 128
         config_dict = {"train_micro_batch_size_per_gpu": 1, "zero_optimization": {"stage": 0, "autotp_size": tp_size}}
         model = SimpleModel(hidden_dim=hidden_dim)
@@ -67,13 +68,12 @@ class TestTpParallelStates(DistributedTest):
         assert groups.get_tensor_model_parallel_world_size() == tp_size
         assert groups.get_data_parallel_world_size() == dp_size
 
-
+@pytest.mark.parametrize("tp_size", [2,4])
 class TestTpDataloaderCorrectness(DistributedTest):
     world_size = 4
     reuse_dist_env = True
 
-    def test(self):
-        tp_size = 4
+    def test(self, tp_size: int):
         hidden_dim = 128
         set_autotp_mode(training=True)
         config_dict = {
@@ -129,21 +129,19 @@ class TestTpDataloaderCorrectness(DistributedTest):
 
 
 def process_linear_layer(hidden_dim, input):
-    torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(), device="cpu", bias=None)
+    torch.manual_seed(42)
+    torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(), device=get_accelerator().current_device(), bias=None)
     torch_out = torch_linear(input)
     torch_loss = torch_out.sum()
     torch_loss.backward()
-    torch_norm = torch.norm(torch_linear.weight.grad)
-    torch_linear.zero_grad()
-    return torch_linear, torch_out, torch_norm
+    return torch_linear, torch_out
 
-
+@pytest.mark.parametrize("tp_size", [2,4])
 class TestTpLayerFwdBwd(DistributedTest):
     world_size = 4
     reuse_dist_env = True
 
-    def testRowParallel(self):
-        tp_size = 4
+    def testRowParallel(self, tp_size: int):
         hidden_dim = 128
         batch_size_per_device = 1
         set_autotp_mode(training=True)
@@ -165,36 +163,30 @@ class TestTpLayerFwdBwd(DistributedTest):
             config_dict["fp16"] = {"enabled": True}
         elif preferred_dtype() is torch.bfloat16:
             config_dict["bf16"] = {"enabled": True}
-        torch.manual_seed(42)
-
         model = SequentialLinearModel(hidden_dim=hidden_dim)
         model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
         input = torch.randn(batch_size_per_device,
                             hidden_dim,
                             dtype=preferred_dtype(),
                             requires_grad=True,
-                            device="cpu")
+                            device=get_accelerator().current_device())
+        
+        dist.broadcast(input, groups.get_tensor_model_parallel_src_rank(), group=groups.get_tensor_model_parallel_group())
 
-        torch_linear, torch_out, torch_norm = process_linear_layer(hidden_dim, input)
-
-        linear = LinearAllreduce(torch_linear, groups.get_tensor_model_parallel_group())
-        input.to(get_accelerator().current_device())
+        torch_linear, torch_out = process_linear_layer(hidden_dim, input)
+        linear = LinearAllreduce(deepcopy(torch_linear), groups.get_tensor_model_parallel_group())
 
         input_ = torch.chunk(input, tp_size, dim=-1)[groups.get_tensor_model_parallel_rank()]
         out = linear(input_.to(get_accelerator().current_device()))
         loss = out.sum()
         loss.backward()
-        norm = torch.norm(linear.weight.grad)
-        norm_pow = norm**2
-        dist.all_reduce(norm_pow, group=groups.get_tensor_model_parallel_group())
-        norm = torch.sqrt(norm_pow)
 
-        assert torch.equal(norm, torch_norm.to(get_accelerator().current_device()))
+        torch_grad=torch.chunk(torch_linear.weight.grad,tp_size,dim=1)[groups.get_tensor_model_parallel_rank()]
+        assert torch.allclose(linear.weight.grad, torch_grad.to(get_accelerator().current_device()), atol=1e-3)
         assert torch.allclose(out, torch_out.to(get_accelerator().current_device()), atol=1e-3)
 
-    def testColumnParallel(self):
+    def testColumnParallel(self, tp_size: int):
 
-        tp_size = 4
         hidden_dim = 128
         batch_size_per_device = 1
         set_autotp_mode(training=True)
@@ -216,7 +208,6 @@ class TestTpLayerFwdBwd(DistributedTest):
             config_dict["fp16"] = {"enabled": True}
         elif preferred_dtype() is torch.bfloat16:
             config_dict["bf16"] = {"enabled": True}
-        torch.manual_seed(42)
 
         model = SequentialLinearModel(hidden_dim=hidden_dim)
         model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
@@ -224,21 +215,21 @@ class TestTpLayerFwdBwd(DistributedTest):
                             hidden_dim,
                             dtype=preferred_dtype(),
                             requires_grad=True,
-                            device="cpu")
+                            device=get_accelerator().current_device())
+        dist.broadcast(input, groups.get_tensor_model_parallel_src_rank(), group=groups.get_tensor_model_parallel_group())
 
-        torch_linear, torch_out, torch_norm = process_linear_layer(hidden_dim, input)
+        torch_linear, torch_out = process_linear_layer(hidden_dim, input)
 
-        linear = LinearLayer(torch_linear, groups.get_tensor_model_parallel_group())
+        linear = LinearLayer(deepcopy(torch_linear), groups.get_tensor_model_parallel_group())
 
         out = linear(input.to(get_accelerator().current_device()))
         loss = out.sum()
         loss.backward()
-        norm = torch.norm(linear.weight.grad)
-        norm_pow = norm**2
-        dist.all_reduce(norm_pow, group=groups.get_tensor_model_parallel_group())
-        norm = torch.sqrt(norm_pow)
+        
+
         cur_device_out = torch.chunk(torch_out, tp_size, dim=-1)[groups.get_tensor_model_parallel_rank()]
-        assert torch.equal(norm, torch_norm.to(get_accelerator().current_device()))
+        torch_grad=torch.chunk(torch_linear.weight.grad,tp_size,dim=0)[groups.get_tensor_model_parallel_rank()]
+        assert torch.allclose(linear.weight.grad, torch_grad.to(get_accelerator().current_device()), atol=1e-3)
         assert torch.allclose(cur_device_out.to(get_accelerator().current_device()).contiguous(),
                               out.contiguous(),
                               atol=1e-3)
@@ -318,7 +309,6 @@ def dummy_init_engine(config):
 def prepare_tp_model(hidden_dim, nlayers, linear_indices, allreduce_indices, group, return_global_copy=False):
     model = SequentialLinearModel(hidden_dim=hidden_dim, nlayers=nlayers).to(preferred_dtype())
     base_model = None
-    from copy import deepcopy
     if return_global_copy:
         base_model = deepcopy(model)
     for i in linear_indices:
@@ -454,18 +444,16 @@ class TestSave(DistributedTest):
                                                      model_parameters=loaded_model.parameters(),
                                                      config=config_dict)
         loaded_model.load_checkpoint(ckpt_path, load_optimizer_states=True, load_lr_scheduler_states=True)
-        from unit.checkpoint.common import compare_lr_scheduler_states, compare_optimizer_states
         compare_optimizer_states(trained_model, loaded_model, hidden_dim, fp16=(preferred_dtype() == torch.float16))
         compare_lr_scheduler_states(trained_model, loaded_model)
 
-
+@pytest.mark.parametrize("tp_size", [2,4])
 class TestTpGradNorm(DistributedTest):
 
     world_size = 4
     reuse_dist_env = True
 
-    def test(self):
-        tp_size = 4
+    def test(self, tp_size:int):
         hidden_dim = 64
         set_autotp_mode(training=True)
         config_dict = {
@@ -479,7 +467,7 @@ class TestTpGradNorm(DistributedTest):
             },
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": 4
+                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:
@@ -503,14 +491,17 @@ class TestTpGradNorm(DistributedTest):
                                         hidden_dim=hidden_dim,
                                         device=base_model.device,
                                         dtype=preferred_dtype())
+        # duplicate each rank training(no-DP)
         with base_model.no_sync():
-            # duplicate each rank training.
             for i, batch in enumerate(data_loader):
                 batch[0].requires_grad = True
                 loss = base_model(batch[0], batch[1])
                 loss = loss
                 base_model.backward(loss)
+                # to avoid assert failures for test purpose
+                base_model.inside_no_sync_ctxt=False
                 base_model.step()
+                base_model.inside_no_sync_ctxt=True
 
         base_norm = base_optimizer._global_grad_norm
 
