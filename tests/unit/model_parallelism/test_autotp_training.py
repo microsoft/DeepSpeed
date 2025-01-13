@@ -53,7 +53,8 @@ def should_assert_with_msg(expected_message):
         else:
             raise e
 
-@pytest.mark.parametrize("tp_size", [2,4])
+
+@pytest.mark.parametrize("tp_size", [2, 4])
 class TestTpParallelStates(DistributedTest):
     world_size = 4
 
@@ -68,7 +69,8 @@ class TestTpParallelStates(DistributedTest):
         assert groups.get_tensor_model_parallel_world_size() == tp_size
         assert groups.get_data_parallel_world_size() == dp_size
 
-@pytest.mark.parametrize("tp_size", [2,4])
+
+@pytest.mark.parametrize("tp_size", [2, 4])
 class TestTpDataloaderCorrectness(DistributedTest):
     world_size = 4
     reuse_dist_env = True
@@ -130,14 +132,19 @@ class TestTpDataloaderCorrectness(DistributedTest):
 
 def process_linear_layer(hidden_dim, input):
     torch.manual_seed(42)
-    torch_linear = nn.Linear(hidden_dim, hidden_dim, dtype=preferred_dtype(), device=get_accelerator().current_device(), bias=None)
+    torch_linear = nn.Linear(hidden_dim,
+                             hidden_dim,
+                             dtype=preferred_dtype(),
+                             device=get_accelerator().current_device(),
+                             bias=None)
     torch_out = torch_linear(input)
     torch_loss = torch_out.sum()
     torch_loss.backward()
     return torch_linear, torch_out
 
+
 @pytest.mark.sequential
-@pytest.mark.parametrize("tp_size", [2,4])
+@pytest.mark.parametrize("tp_size", [2, 4])
 class TestTpLayerFwdBwd(DistributedTest):
     world_size = 4
     reuse_dist_env = True
@@ -171,8 +178,10 @@ class TestTpLayerFwdBwd(DistributedTest):
                             dtype=preferred_dtype(),
                             requires_grad=True,
                             device=get_accelerator().current_device())
-        
-        dist.broadcast(input, groups.get_tensor_model_parallel_src_rank(), group=groups.get_tensor_model_parallel_group())
+
+        dist.broadcast(input,
+                       groups.get_tensor_model_parallel_src_rank(),
+                       group=groups.get_tensor_model_parallel_group())
 
         torch_linear, torch_out = process_linear_layer(hidden_dim, input)
         linear = LinearAllreduce(deepcopy(torch_linear), groups.get_tensor_model_parallel_group())
@@ -182,7 +191,7 @@ class TestTpLayerFwdBwd(DistributedTest):
         loss = out.sum()
         loss.backward()
 
-        torch_grad=torch.chunk(torch_linear.weight.grad,tp_size,dim=1)[groups.get_tensor_model_parallel_rank()]
+        torch_grad = torch.chunk(torch_linear.weight.grad, tp_size, dim=1)[groups.get_tensor_model_parallel_rank()]
         assert torch.allclose(linear.weight.grad, torch_grad.to(get_accelerator().current_device()), atol=1e-3)
         assert torch.allclose(out, torch_out.to(get_accelerator().current_device()), atol=1e-3)
 
@@ -217,7 +226,9 @@ class TestTpLayerFwdBwd(DistributedTest):
                             dtype=preferred_dtype(),
                             requires_grad=True,
                             device=get_accelerator().current_device())
-        dist.broadcast(input, groups.get_tensor_model_parallel_src_rank(), group=groups.get_tensor_model_parallel_group())
+        dist.broadcast(input,
+                       groups.get_tensor_model_parallel_src_rank(),
+                       group=groups.get_tensor_model_parallel_group())
 
         torch_linear, torch_out = process_linear_layer(hidden_dim, input)
 
@@ -226,14 +237,14 @@ class TestTpLayerFwdBwd(DistributedTest):
         out = linear(input.to(get_accelerator().current_device()))
         loss = out.sum()
         loss.backward()
-        
 
         cur_device_out = torch.chunk(torch_out, tp_size, dim=-1)[groups.get_tensor_model_parallel_rank()]
-        torch_grad=torch.chunk(torch_linear.weight.grad,tp_size,dim=0)[groups.get_tensor_model_parallel_rank()]
+        torch_grad = torch.chunk(torch_linear.weight.grad, tp_size, dim=0)[groups.get_tensor_model_parallel_rank()]
         assert torch.allclose(linear.weight.grad, torch_grad.to(get_accelerator().current_device()), atol=1e-3)
         assert torch.allclose(cur_device_out.to(get_accelerator().current_device()).contiguous(),
                               out.contiguous(),
                               atol=1e-3)
+
 
 @pytest.mark.sequential
 class TestParamsGather(DistributedTest):
@@ -448,14 +459,15 @@ class TestSave(DistributedTest):
         compare_optimizer_states(trained_model, loaded_model, hidden_dim, fp16=(preferred_dtype() == torch.float16))
         compare_lr_scheduler_states(trained_model, loaded_model)
 
-@pytest.mark.parametrize("zero_stage", [0,1])
-@pytest.mark.parametrize("tp_size", [2,4])
+
+@pytest.mark.parametrize("zero_stage", [0, 1])
+@pytest.mark.parametrize("tp_size", [2, 4])
 class TestTpGradNorm(DistributedTest):
 
     world_size = 4
     reuse_dist_env = True
 
-    def test(self, tp_size:int, zero_stage:int):
+    def test(self, tp_size: int, zero_stage: int):
         hidden_dim = 64
         set_autotp_mode(training=True)
         config_dict = {
