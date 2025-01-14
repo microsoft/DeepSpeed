@@ -1307,7 +1307,6 @@ class DeepSpeedEngine(Module):
         self._check_for_duplicates(basic_optimizer)
 
         self.basic_optimizer = basic_optimizer
-        #log_dist("Basic Optimizer = {}".format(basic_optimizer.__class__.__name__), ranks=[0])
         provider_name = type(basic_optimizer).__module__.split('.')[0]
         optimizer_name = basic_optimizer.__class__.__name__
 
