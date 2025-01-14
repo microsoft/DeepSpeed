@@ -13,24 +13,12 @@
 #include <cassert>
 #include "simd.h"
 
-#if defined(__ENABLE_CUDA__)
-#include <cuda_fp16.h>
-#include <cuda_runtime_api.h>
-#include "cuda.h"
-#include "custom_cuda_layers.h"
-typedef __half ds_half_precision_t;
-#else
-#include <cmath>
-typedef unsigned short ds_half_precision_t;
-#endif
-
-#define STEP(SPAN)                                             \
-    void Step_##SPAN(float* _params,                           \
-                     float* grads,                             \
-                     float* _exp_avg,                          \
-                     size_t _param_size,                       \
-                     ds_half_precision_t* dev_param = nullptr, \
-                     bool half_precision = false);
+#define STEP(SPAN)                                                           \
+    template <typename ds_params_precision_t, typename ds_state_precision_t> \
+    void Step_##SPAN(ds_params_precision_t* _params,                         \
+                     ds_params_precision_t* grads,                           \
+                     ds_state_precision_t* _exp_avg,                         \
+                     size_t _param_size);
 
 class Lion_Optimizer {
 public:
@@ -40,42 +28,21 @@ public:
                    float weight_decay = 0)
         : _alpha(alpha), _betta1(betta1), _betta2(betta2), _weight_decay(weight_decay), _step(0)
     {
-#if defined(__ENABLE_CUDA__)
-        cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
-        cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
-
-        _streams[0] = TrainingContext::Instance().GetCurrentStream();
-        _streams[1] = TrainingContext::Instance().GetNewStream();
-        _buf_index = false;
-#endif
     }
-    ~Lion_Optimizer()
-    {
-#if defined(__ENABLE_CUDA__)
-        cudaFreeHost(_doubled_buffer[0]);
-        cudaFreeHost(_doubled_buffer[1]);
-#endif
-    }
+    ~Lion_Optimizer() {}
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span>
+    template <int span, typename ds_params_precision_t, typename ds_state_precision_t>
     void Step_AVX(size_t* rounded_size,
-                  float* _params,
-                  float* grads,
-                  float* _exp_avg,
-                  size_t param_size,
-                  ds_half_precision_t* dev_param = nullptr,
-                  bool half_precision = false);
+                  ds_params_precision_t* _params,
+                  ds_params_precision_t* grads,
+                  ds_state_precision_t* _exp_avg,
+                  size_t param_size);
 #endif
     STEP(1)
     STEP(4)
     STEP(8)
-#if defined(__ENABLE_CUDA__)
-    inline void SynchronizeStreams()
-    {
-        for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
-    }
-#endif
+
     inline void IncrementStep(size_t step, float beta1, float beta2)
     {
         _step++;
@@ -97,26 +64,23 @@ private:
     float _betta2;
     float _weight_decay;
     size_t _step;
-
-#if defined(__ENABLE_CUDA__)
-    float* _doubled_buffer[2];
-    cudaStream_t _streams[2];
-    bool _buf_index;
-#endif
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span>
+template <int span, typename ds_params_precision_t, typename ds_state_precision_t>
 void Lion_Optimizer::Step_AVX(size_t* rounded_size,
-                              float* _params,
-                              float* grads,
-                              float* _exp_avg,
-                              size_t _param_size,
-                              ds_half_precision_t* dev_params,
-                              bool half_precision)
+                              ds_params_precision_t* _params,
+                              ds_params_precision_t* grads,
+                              ds_state_precision_t* _exp_avg,
+                              size_t _param_size)
 {
+#if !defined(__AVX512__)
+    if (std::is_same_v<ds_params_precision_t, c10::BFloat16> ||
+        std::is_same_v<ds_state_precision_t, c10::BFloat16>) {
+        return;
+    }
+#endif
     size_t new_rounded_size = 0;
-    int rshft = half_precision ? 1 : 0;
 
     constexpr float neg1 = -1.0f;
     AVX_Data neg1_4;
@@ -147,19 +111,17 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
         size_t copy_size = TILE;
         if ((t + TILE) > new_rounded_size) copy_size = new_rounded_size - t;
         size_t offset = copy_size + t;
-#if defined(__ENABLE_CUDA__)
-        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
-#endif
+
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
-            simd_load<span>(grad_4, grads + (i >> rshft), half_precision);
+            simd_load<span>(grad_4, grads + i);
 
             AVX_Data momentum_4[span];
-            simd_load<span>(momentum_4, _exp_avg + i, false);
+            simd_load<span>(momentum_4, _exp_avg + i);
 
             AVX_Data param_4[span];
-            simd_load<span>(param_4, _params + (i >> rshft), half_precision);
+            simd_load<span>(param_4, _params + i);
 
             AVX_Data tmp_4[span];
 
@@ -177,26 +139,9 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
             simd_mul<span>(momentum_4, momentum_4, betta2_4);
             simd_fma<span>(momentum_4, grad_4, betta2_minus1_4, momentum_4);
 
-            simd_store<span>(_params + (i >> rshft), param_4, half_precision);
-#if defined(__ENABLE_CUDA__)
-            if (dev_params) {
-                simd_store<span>(_doubled_buffer[_buf_index] + (i - t), param_4, half_precision);
-            }
-#endif
-            simd_store<span>(_exp_avg + i, momentum_4, false);
+            simd_store<span>(_params + i, param_4);
+            simd_store<span>(_exp_avg + i, momentum_4);
         }
-#if defined(__ENABLE_CUDA__)
-        if (dev_params) {
-            if (half_precision)
-                launch_param_update_half(
-                    _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
-            else
-                launch_param_update(
-                    _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
-
-            _buf_index = !_buf_index;
-        }
-#endif
     }
     *rounded_size = new_rounded_size;
 }
@@ -218,16 +163,5 @@ int ds_lion_step(int optimizer_id,
                  torch::Tensor& params,
                  torch::Tensor& grads,
                  torch::Tensor& exp_avg);
-
-int ds_lion_step_plus_copy(int optimizer_id,
-                           size_t step,
-                           float lr,
-                           float beta1,
-                           float beta2,
-                           float weight_decay,
-                           torch::Tensor& params,
-                           torch::Tensor& grads,
-                           torch::Tensor& exp_avg,
-                           torch::Tensor& gpu_params);
 
 int destroy_lion_optimizer(int optimizer_id);

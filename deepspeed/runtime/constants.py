@@ -77,7 +77,7 @@ ZERO_FORCE_DS_CPU_OPTIMIZER_DEFAULT = True
 
 # Steps
 STEPS_PER_PRINT = "steps_per_print"
-STEPS_PER_PRINT_DEFAULT = 10
+STEPS_PER_PRINT_DEFAULT = None
 
 #########################################
 # Training micro batch size per GPU
@@ -125,6 +125,10 @@ BFLOAT16_OLD = "bfloat16"  # keeping for backwards compatibility
 
 BFLOAT16_ENABLED = "enabled"
 BFLOAT16_ENABLED_DEFAULT = False
+
+# BFLOAT16 optimizer immediate gradient update
+BFLOAT16_IMMEDIATE_GRAD_UPDATE = "immediate_grad_update"
+BFLOAT16_IMMEDIATE_GRAD_UPDATE_DEFAULT = False
 
 #########################################
 # FP16 support
@@ -211,6 +215,18 @@ GRADIENT_CLIPPING = 'gradient_clipping'
 GRADIENT_CLIPPING_DEFAULT = 0.
 
 #########################################
+# Capture graph for short kernels sequences
+#########################################
+# Graph harvesting. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+GRAPH_HARVESTING_FORMAT = '''
+Graph harvesting should be enabled as:
+"graph_harvesting": true
+'''
+GRAPH_HARVESTING = 'graph_harvesting'
+GRAPH_HARVESTING_DEFAULT = False
+
+#########################################
 # Communication data type
 #########################################
 # Supported types: ['none', 'fp16', 'fp32']
@@ -222,6 +238,19 @@ Communication data type should be set as:
 '''
 COMMUNICATION_DATA_TYPE = "communication_data_type"
 COMMUNICATION_DATA_TYPE_DEFAULT = None
+
+###########################################################
+# Gradient communication data type for sequence parallelism
+###########################################################
+# Supported types: ['fp16', 'bf16','fp32']
+# Default value is fp32
+# Users can configure in ds_config.json as below example:
+SEQ_PARALLEL_COMMUNICATION_DATA_TYPE_FORMAT = '''
+Optional comm data type for seq paralleism should be set as:
+"seq_parallel_communication_data_type": "fp32"
+'''
+SEQ_PARALLEL_COMMUNICATION_DATA_TYPE = "seq_parallel_comm_data_type"
+SEQ_PARALLEL_COMMUNICATION_DATA_TYPE_DEFAULT = "fp32"
 
 #########################################
 # Scale/predivide gradients before allreduce
@@ -420,3 +449,9 @@ PIPE_REPLICATED = 'ds_pipe_replicated'
 #########################################
 DATA_PARALLEL_GROUP = "data_parallel_group"
 GLOBAL_RANK = "global_rank"
+
+#########################################
+# EXPERT-DATA PARALLELISM TOPO Config
+#########################################
+USE_DATA_BEFORE_EXPERT_PARALLEL = "use_data_before_expert_parallelism"
+USE_DATA_BEFORE_EXPERT_PARALLEL_DEFAULT = False

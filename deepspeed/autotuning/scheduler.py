@@ -5,7 +5,6 @@
 
 import copy
 
-from numpy import BUFSIZE
 import json
 import subprocess
 import sys
@@ -18,7 +17,7 @@ import hjson
 from tqdm import tqdm
 
 from ..utils import logger
-from .constants import AUTOTUNING, AUTOTUNING_METRIC_PATH
+from .constants import AUTOTUNING, AUTOTUNING_METRIC_PATH, BUFSIZE
 from .utils import get_val_by_key, search_error, was_interruptted
 """
 thread-0: loop over experiment queue dispatching experiments if they become available
@@ -316,7 +315,10 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
         include_str += f"{reservation.node.host}:{slots}@"
     include_str = include_str[:-1]
     master_port = exp["master_port"]
+    hostfile = exp["hostfile"]
     exp["launcher_args"] = [
+        "--hostfile",
+        f"{hostfile}",
         "--include",
         f"{include_str}",
         "--master_port",

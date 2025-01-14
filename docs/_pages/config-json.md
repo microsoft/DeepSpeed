@@ -6,7 +6,7 @@ toc_label: "Contents"
 
 ### Batch Size Related Parameters
 
-**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation**</i> * number of GPUs. For simplicity, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
+**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation_steps**</i> * number of GPUs. For simplicity, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
 {: .notice--warning}
 
 <i>**train_batch_size**</i>: [integer]
@@ -480,7 +480,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                          | Default |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e6`   |
+| Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e5`   |
 
 
 ***stage3_gather_16bit_weights_on_model_save***: [boolean]
@@ -488,6 +488,11 @@ Enabling and configuring ZeRO memory optimizations
 | Description                                                                                                                                                                                                                                                                    | Default |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ------- |
 | Consolidate the weights before saving the model by `save_16bit_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gathers the weights when this option is enabled and then saves the fp16 model weights. | `False` |
+
+***stage3_module_granularity_threshold***: [integer]
+| Description                                                                                                                                                                                                                                                                    | Default |
+|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ------- |
+| The granularity of a module is determined by the ratio of `parameter_count` / `(1 + descendant_count)`. ZeRO3 classifies modules with a granularity below the threshold as fine-grained, treating them as integral units during parameter fetching. This reduces host and communication overhead from separate hooks. | `0` |
 
 ***zero_hpz_partition_size***: [integer]
 
@@ -576,6 +581,7 @@ Note that if the value of "device" is not specified or not supported, an asserti
     "device": "[cpu|nvme]",
     "nvme_path": "/local_nvme",
     "pin_memory": [true|false],
+    "ratio": 0.3,
     "buffer_count": 4,
     "fast_init": false
   }
@@ -597,6 +603,12 @@ Note that if the value of "device" is not specified or not supported, an asserti
 | Description                                                                                          | Default |
 | ---------------------------------------------------------------------------------------------------- | ------- |
 | Offload to page-locked CPU memory. This could boost throughput at the cost of extra memory overhead. | `false` |
+
+***ratio***: [float]
+
+| Description                                                         | Default |
+| ------------------------------------------------------------------- | ------- |
+| the ratio of parameters updating (i.e. optimizer step) on CPU side. | 1       |
 
 ***buffer_count***: [integer]
 
@@ -656,7 +668,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                                                                                                                                                                                                                                                                                     | Default |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Unused parameters in modules may be unexpected in static networks, but could be normal in dynamic networks. This controls whether or not training should terminate with an error message when unused parameters are detected. This is set to `False` by default, which means unused parameters are ignored and training continues. Now is just used in stage 2. | `True`  |
+| Unused parameters in modules may be unexpected in static networks, but could be normal in dynamic networks. This controls whether or not training should terminate with an error message when unused parameters are detected. This is set to `True` by default, which means unused parameters are ignored and training continues. Now is just used in stage 2. | `True`  |
 
 ### Logging
 
@@ -1132,15 +1144,16 @@ DeepSpeed Data Efficiency Library includes two techniques: curriculum learning a
 | ---------------------------------------------------------------------------------------------------------------------------- | ------- |
 | List of which step to change difficulty level. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A     |
 
-### Monitoring Module (TensorBoard, WandB, CSV)
+### Monitoring Module
 
 **Note:** Deepspeed logs to TensorBoard through PyTorch. Logging to TensorBoard requires that the `tensorboard` package is installed (read more in the [PyTorch documentation](https://pytorch.org/docs/1.8.0/tensorboard.html)).
 {: .notice--warning}
 **Note:** Logging to WandB requires that the `wandb` package is installed (read more in the [WandB documentation](https://docs.wandb.ai/quickstart)).
 {: .notice--warning}
+**Note:** Logging to Comet requires that the `comet_ml` package is installed (read more in the [Comet documentation](https://www.comet.com/docs/v2/guides/quickstart/#1-install-and-configure-the-comet-ml-sdk)).
+{: .notice--warning}
 
-
-Deepspeed's Monitor module can log training details into a [Tensorboard](https://www.tensorflow.org/tensorboard)-compatible file, to [WandB](https://wandb.ai/site), or to simple CSV files. Below is an overview of what DeepSpeed will log automatically.
+Deepspeed's Monitor module can log training details into a [Tensorboard](https://www.tensorflow.org/tensorboard)-compatible file, to [WandB](https://wandb.ai/site), to [Comet](https://www.comet.com/site/?utm_source=deepseed&utm_medium=docs&utm_content=docs) or to simple CSV files. Below is an overview of what DeepSpeed will log automatically.
 
 | Field | Description                                                                                                                                                                                                                                                                                               |Conditions |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
@@ -1191,6 +1204,36 @@ Example of <i>**wandb**</i> configuration:
     "group": "my_group",
     "team": "my_team",
     "project": "my_project"
+}
+```
+
+<i>**comet**</i>: [dictionary]
+
+| Fields  | Value   | Default   |
+|---  |---  |---  |
+| enabled   | Whether logging to [Comet](https://www.comet.com/site/) is enabled.   | `false`   |
+| workspace   | Comet workspace name.   | `None`  |
+| project   | Comet project name.   | `None`  |
+| samples_log_interval  | Metrics will be submitted to Comet after processing every `samples_log_intervas` samples.   | `100`   |
+| experiment_name   | The name for comet experiment to be used for logging.   | `None`  |
+| api_key   | Comet API key. It's not recommended to save the Comet API Key in code.  | `None`  |
+| experiment_key  | The key for comet experiment to be used for logging. Must be an alphanumeric string whose length is between 32 and 50 characters.   | `None`  |
+| online  | If True, the data will be logged to Comet server, otherwise it will be stored locally in offline experiment. Default is `True`.   | `None`  |
+| mode  | Control how the Comet experiment is started. "get": Continue logging to an existing experiment identified by the `experiment_key` value. "create": Always creates of a new experiment, useful for HPO sweeps. "get_or_create" (default): Starts a fresh experiment if required, or persists logging to an existing one.   | `None`  |
+
+
+Example of <i>**comet**</i> configuration:
+
+```json
+"comet": {
+    "enabled": true,
+    "workspace": "my_workspace",
+    "project": "my_project",
+    "samples_log_interval": 50,
+    "experiment_name": "llama-fine-tuning",
+    "experiment_key": "0c4a1c4a90664f2a8084e600b19a9d7",
+    "online": false,
+    "mode": "get",
 }
 ```
 

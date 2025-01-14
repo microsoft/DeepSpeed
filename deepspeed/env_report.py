@@ -9,7 +9,7 @@ import deepspeed
 import subprocess
 import argparse
 from .ops.op_builder.all_ops import ALL_OPS
-from .git_version_info import installed_ops, torch_info
+from .git_version_info import installed_ops, torch_info, accelerator_name
 from deepspeed.accelerator import get_accelerator
 
 GREEN = '\033[92m'
@@ -51,7 +51,8 @@ def op_report(verbose=True):
     for op_name, builder in ALL_OPS.items():
         dots = "." * (max_dots - len(op_name))
         is_compatible = OKAY if builder.is_compatible(verbose) else no
-        is_installed = installed if installed_ops.get(op_name, False) else no
+        is_installed = installed if installed_ops.get(op_name,
+                                                      False) and accelerator_name == get_accelerator()._name else no
         dots2 = '.' * ((len(h[1]) + (max_dots2 - len(h[1]))) - (len(is_installed) - color_len))
         print(op_name, dots, is_installed, dots2, is_compatible)
     print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
@@ -80,10 +81,36 @@ def nvcc_version():
     return ".".join(release)
 
 
+def installed_cann_path():
+    if "ASCEND_HOME_PATH" in os.environ or os.path.exists(os.environ["ASCEND_HOME_PATH"]):
+        return os.environ["ASCEND_HOME_PATH"]
+    return None
+
+
+def installed_cann_version():
+    import re
+    ascend_path = installed_cann_path()
+    if ascend_path is None:
+        return f"CANN_HOME does not exist, unable to compile NPU op(s)"
+    cann_version = ""
+    for dirpath, _, filenames in os.walk(os.path.realpath(ascend_path)):
+        if cann_version:
+            break
+        install_files = [file for file in filenames if re.match(r"ascend_.*_install\.info", file)]
+        if install_files:
+            filepath = os.path.join(dirpath, install_files[0])
+            with open(filepath, "r") as f:
+                for line in f:
+                    if line.find("version") != -1:
+                        cann_version = line.strip().split("=")[-1]
+                        break
+    return cann_version
+
+
 def get_shm_size():
     try:
         shm_stats = os.statvfs('/dev/shm')
-    except (OSError, FileNotFoundError, ValueError):
+    except (OSError, FileNotFoundError, ValueError, AttributeError):
         return "UNKNOWN", None
 
     shm_size = shm_stats.f_frsize * shm_stats.f_blocks
@@ -122,6 +149,11 @@ def debug_report():
                        ("deepspeed wheel compiled w.", f"torch {torch_info['version']}, " +
                         (f"hip {torch_info['hip_version']}" if hip_version else f"cuda {torch_info['cuda_version']}"))
                        ])
+    elif get_accelerator().device_name() == 'npu':
+        import torch_npu
+        report.extend([("deepspeed wheel compiled w.", f"torch {torch_info['version']}"),
+                       ("torch_npu install path", torch_npu.__path__), ("torch_npu version", torch_npu.__version__),
+                       ("ascend_cann version", installed_cann_version())])
     else:
         report.extend([("deepspeed wheel compiled w.", f"torch {torch_info['version']} ")])
 
