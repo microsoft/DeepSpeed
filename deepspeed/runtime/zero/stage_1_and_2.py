@@ -1692,7 +1692,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     all_norms.append(
                         torch.linalg.vector_norm(g.data.double().detach(),
-                                          ord=norm_type).to(get_accelerator().current_device_name()))
+                                                 ord=norm_type).to(get_accelerator().current_device_name()))
             if len(all_norms) > 0:
                 total_norm = torch.stack(all_norms).square().sum().float()
             else:
