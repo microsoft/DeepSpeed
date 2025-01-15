@@ -513,7 +513,7 @@ class Yuan_LinearLayer(LinearLayer):
             params_list[1].data = move(bias, get_accelerator().current_device_name()).detach()
 
 
-class GLM_LinearLayer(LinearLayer):
+class GateUpPack_LinearLayer(LinearLayer):
     # chatGLM2, chatGLM2
     @torch.no_grad()
     def partition(self, params_list):

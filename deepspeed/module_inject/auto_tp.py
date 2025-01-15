@@ -11,7 +11,7 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, Yuan_LinearALlreduce, Yuan_LinearLayer, GLM_LinearLayer, Conv_LinearALlreduce, fused_LinearLayer, conv_LinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, Yuan_LinearAllreduce, Yuan_LinearLayer, GateUpPack_LinearLayer, Conv_LinearALlreduce, fused_LinearLayer, conv_LinearLayer
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
@@ -352,11 +352,11 @@ class AutoTP():
                 return Yuan_LinearLayer(child, self.mp_group)
 
             elif 'o_proj' in name:
-                return Yuan_LinearALlreduce(child, self.mp_group)
+                return Yuan_LinearAllreduce(child, self.mp_group)
 
         # For MLP including chunk layer.
         if 'gate_up_proj' in name or ('dense_h_to_4h' in name and 'GLM' in str(self.module)):
-            return GLM_LinearLayer(child, self.mp_group)
+            return GateUpPack_LinearLayer(child, self.mp_group)
             # For Arctic model, bypass to all_reduce replacement for w2 weights
         arctic_w2_all_reduce_linear = False
         if 'Arctic' in str(self.module) and 'w2' in name:
