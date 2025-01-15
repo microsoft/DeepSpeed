@@ -471,8 +471,7 @@ class DeepSpeedEngine(Module):
             broadcast_and_check(args, bcast_rank, bcast_group)
             broadcast_and_check(kwargs, bcast_rank, bcast_group)
 
-            print(f"RANK[{dist.get_rank()}]:The Dataloader has passed the TP group consistency check.")
-
+            logger.info(f":The Dataloader has passed the TP group consistency check.")
             self.first_dataloader_check.remove()
 
         self.first_dataloader_check = self.module.register_forward_pre_hook(check_dataloader_inputs_same_across_ranks,

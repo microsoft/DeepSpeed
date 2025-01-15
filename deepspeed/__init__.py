@@ -32,7 +32,7 @@ from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.hybrid_engine import DeepSpeedHybridEngine
 from .runtime.pipe.engine import PipelineEngine
 from .inference.engine import InferenceEngine
-from .inference.config import DeepSpeedInferenceConfig, AUTOTP_MODE
+from .inference.config import DeepSpeedInferenceConfig
 from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
