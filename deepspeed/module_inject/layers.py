@@ -14,7 +14,8 @@ from abc import ABC, abstractmethod
 from typing import Iterable, Any, Optional, List
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 from deepspeed.runtime.tensor_parallel import AUTOTP_MODE
-import copy
+from copy import deepcopy
+from typing import Union
 
 DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
 DS_IS_REPLACED_MODULE = 'ds_is_replaced_module'
@@ -220,7 +221,7 @@ class Replaced_Layer(nn.Module, ABC):
             if key == 'mp_group':
                 new_obj.mp_group = self.mp_group
             else:
-                setattr(new_obj, key, copy.deepcopy(value, memo))
+                setattr(new_obj, key, deepcopy(value, memo))
 
         memo[id(self)] = new_obj
         return new_obj
@@ -232,7 +233,10 @@ class GatherReplacedLayerParams:
     based on the configuration of the model.
     """
 
-    def __init__(self, params: Iterable[torch.Tensor] | torch.Tensor, module: torch.nn.Module, enabled: bool = True):
+    def __init__(self,
+                 params: Union[Iterable[torch.Tensor], torch.Tensor],
+                 module: torch.nn.Module,
+                 enabled: bool = True):
         """
         Initialize the context manager to handle parameter gathering and partitioning for a replaced layer.
 
@@ -490,7 +494,7 @@ class conv_LinearLayer(LinearLayer):
 
 
 #override the subclasses related to weight splitting.
-class Yuan_LinearALlreduce(LinearAllreduce):
+class Yuan_LinearAllreduce(LinearAllreduce):
 
     #Yuan2
     @torch.no_grad()
