@@ -42,7 +42,6 @@ class TpTrainingManager():
     def _apply_injection_policy(self, config, client_module=None):
         from deepspeed.module_inject import replace_transformer_layer
         """Apply the given injection policy to a client module."""
-        # replace_transformer_layer(client_module, self.module, None, self.config, self.model_config)
         if isinstance(self.module, torch.nn.Module):
             replace_transformer_layer(client_module, self.module, None, self.config, self.model_config)
 
