@@ -27,7 +27,7 @@ class TpTrainingManager():
 
         # Synchronize random number generator state across devices
         _rng_state = get_accelerator().get_rng_state().to(get_accelerator().current_device_name())
-        dist.broadcast(_rng_state, 0)
+        dist.broadcast(_rng_state, 0, self.tp_config.tp_group)
         get_accelerator().set_rng_state(_rng_state.cpu())
         
         # Apply injection policies
