@@ -246,7 +246,6 @@ class InferenceEngine(Module):
         self._model_times.append(elapsed_time)
 
     def _create_model_parallel_group(self, config):
-
         # Call the init process
         if InferenceEngine.inference_mp_group is None:
             init_distributed()
