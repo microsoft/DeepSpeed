@@ -474,7 +474,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         set_lm_head(replaced_module)
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
-    if not is_autotp_training_mode() and  config.save_mp_checkpoint_path is not None:
+    if not is_autotp_training_mode() and config.save_mp_checkpoint_path is not None:
         from collections import OrderedDict
         import json
         num_partitions = 8

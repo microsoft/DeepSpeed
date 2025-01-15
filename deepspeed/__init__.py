@@ -385,7 +385,7 @@ def tp_model_init(model, tp_size, dtype):
     set_autotp_mode(training=True)
     from deepspeed.runtime.tensor_parallel import TpTrainingManager
     # model = init_inference(model=model, mp_size=tp_size, dtype=dtype, replace_with_kernel_inject=False).module
-    model = TpTrainingManager(model=model, tp_size=tp_size, dtype=dtype).module    
+    model = TpTrainingManager(model=model, tp_size=tp_size, dtype=dtype).module
     setattr(model, 'ds_autotp_parsed', True)
 
     return model

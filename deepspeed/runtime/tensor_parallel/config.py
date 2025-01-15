@@ -1,13 +1,20 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from enum import Enum
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 import torch
-from pydantic import Field, field_validator
-from typing import Dict, Union, Optional
+from pydantic import Field
+from typing import Optional
+
 
 class AUTOTP_MODE(Enum):
     TRAINING = "TRAINING"
     INFERENCE = "INFERENCE"
-    
+
+
 class DeepSpeedTPConfig(DeepSpeedConfigModel):
     """ Configure tensor parallelism settings """
 
@@ -27,7 +34,8 @@ class DeepSpeedTPConfig(DeepSpeedConfigModel):
     """
 
     tp_group: object = None
-    
+
+
 class DeepSpeedTPTrainingConfig(DeepSpeedConfigModel):
 
     dtype: torch.dtype = torch.float16
@@ -41,5 +49,5 @@ class DeepSpeedTPTrainingConfig(DeepSpeedConfigModel):
     Configuration for tensor parallelism used to split the model across several
     GPUs. Expects a dictionary containing values for :any:`DeepSpeedTPConfig`.
     """
-    
+
     injection_policy_tuple: Optional[tuple] = None
