@@ -77,7 +77,7 @@ ZERO_FORCE_DS_CPU_OPTIMIZER_DEFAULT = True
 
 # Steps
 STEPS_PER_PRINT = "steps_per_print"
-STEPS_PER_PRINT_DEFAULT = 10
+STEPS_PER_PRINT_DEFAULT = None
 
 #########################################
 # Training micro batch size per GPU
@@ -125,6 +125,10 @@ BFLOAT16_OLD = "bfloat16"  # keeping for backwards compatibility
 
 BFLOAT16_ENABLED = "enabled"
 BFLOAT16_ENABLED_DEFAULT = False
+
+# BFLOAT16 optimizer immediate gradient update
+BFLOAT16_IMMEDIATE_GRAD_UPDATE = "immediate_grad_update"
+BFLOAT16_IMMEDIATE_GRAD_UPDATE_DEFAULT = False
 
 #########################################
 # FP16 support

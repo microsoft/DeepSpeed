@@ -8,6 +8,7 @@ Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 
 from deepspeed.ops.op_builder import AsyncIOBuilder
 from deepspeed import comm as dist
+import torch
 
 from deepspeed.runtime.swap_tensor.constants import *
 from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensors, print_object
@@ -28,7 +29,7 @@ class OptimizerSwapOp(object):
         self.num_ops = num_ops
 
     def is_parameter(self, parameter):
-        return id(parameter) == self.param_info.param_id
+        return OptimizerSwapper.parameter_id(parameter) == self.param_info.param_id
 
     def wait(self):
         assert self.wait_required
@@ -154,6 +155,8 @@ class PipelinedOptimizerSwapper(OptimizerSwapper):
 
     def _complete_swap_out(self, swap_out_type):
         self.swap_ops[swap_out_type].wait()
+        for buffer in self.swap_ops[swap_out_type].state_buffers:
+            buffer = torch.Tensor()
         self.swap_buffer_manager.free(self.swap_ops[swap_out_type].allocated_buffers)
         self.swap_ops[swap_out_type] = None
 
