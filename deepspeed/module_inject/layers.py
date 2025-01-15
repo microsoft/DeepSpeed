@@ -13,7 +13,7 @@ from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
 from typing import Iterable, Any, Optional, List
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
-from deepspeed.inference.config import AUTOTP_MODE
+from deepspeed.runtime.tensor_parallel import AUTOTP_MODE
 import copy
 
 DEEPSPEED_AUTOTP_MODE = AUTOTP_MODE.INFERENCE
