@@ -67,7 +67,7 @@ def get_default_compute_capabilities():
             # Special treatment of CUDA 11.0 because compute_86 is not supported.
             compute_caps += ";8.0"
         else:
-            compute_caps += ";8.0;8.6"
+            compute_caps += ";8.0;8.6;9.0"
     return compute_caps
 
 
@@ -76,7 +76,7 @@ def get_default_compute_capabilities():
 cuda_minor_mismatch_ok = {
     10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5"],
+    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6"],
 }
 
 
@@ -253,8 +253,7 @@ class OpBuilder(ABC):
             rocm_info = Path("rocminfo")
         rocm_gpu_arch_cmd = str(rocm_info) + " | grep -o -m 1 'gfx.*'"
         try:
-            safe_cmd = shlex.split(rocm_gpu_arch_cmd)
-            result = subprocess.check_output(safe_cmd)
+            result = subprocess.check_output(rocm_gpu_arch_cmd, shell=True)
             rocm_gpu_arch = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
             rocm_gpu_arch = ""
@@ -272,8 +271,7 @@ class OpBuilder(ABC):
         rocm_wavefront_size_cmd = str(
             rocm_info) + " | grep -Eo -m1 'Wavefront Size:[[:space:]]+[0-9]+' | grep -Eo '[0-9]+'"
         try:
-            safe_cmd = shlex.split(rocm_wavefront_size_cmd)
-            result = subprocess.check_output(rocm_wavefront_size_cmd)
+            result = subprocess.check_output(rocm_wavefront_size_cmd, shell=True)
             rocm_wavefront_size = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
             rocm_wavefront_size = "32"
@@ -417,10 +415,11 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
-    def is_cuda_enable(self):
+    def get_cuda_compile_flag(self):
         try:
-            assert_no_cuda_mismatch(self.name)
-            return '-D__ENABLE_CUDA__'
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
+                return "-D__ENABLE_CUDA__"
         except MissingCUDAException:
             print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
                   "only cpu ops can be compiled!")
@@ -841,7 +840,7 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
 
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = self.is_cuda_enable()
+        CUDA_ENABLE = self.get_cuda_compile_flag()
         args += [
             CPU_ARCH,
             '-fopenmp',
