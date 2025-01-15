@@ -904,7 +904,7 @@ class DeepSpeedEngine(Module):
 
     def autotp_size(self):
         return self._config.tensor_parallel_config.autotp_size
-    
+
     def graph_harvesting(self):
         return self._config.graph_harvesting
 

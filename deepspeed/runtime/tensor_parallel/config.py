@@ -43,7 +43,7 @@ class TPTrainingConfig(DeepSpeedConfigModel):
     Desired model data type, will convert model to this type.
     Supported target types: `torch.half`, `torch.int8`, `torch.float`
     """
-    
+
     autotp_size: int = 0
     """
     In automatic tensor-parallelism training, 'tensor_parallel_size'
@@ -54,9 +54,10 @@ class TPTrainingConfig(DeepSpeedConfigModel):
     Configuration for tensor parallelism used to split the model across several
     GPUs. Expects a dictionary containing values for :any:`DeepSpeedTPConfig`.
     """
-    
+
     injection_policy_tuple: Optional[tuple] = None
-    
+
+
 def get_tensor_parallel_config(ds_config):
 
     if 'tensor_parallel' in ds_config:

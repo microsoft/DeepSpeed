@@ -8,6 +8,7 @@ from .config import TPTrainingConfig, TPConfig
 from deepspeed.utils import groups
 import deepspeed.comm as dist
 
+
 class TpTrainingManager():
 
     def __init__(self, model, tp_size, dtype):
@@ -29,10 +30,9 @@ class TpTrainingManager():
         _rng_state = get_accelerator().get_rng_state().to(get_accelerator().current_device_name())
         dist.broadcast(_rng_state, 0, self.tp_config.tp_group)
         get_accelerator().set_rng_state(_rng_state.cpu())
-        
+
         # Apply injection policies
         self._apply_policies(parser_dict)
-        
 
     def _initialize_config(self, dtype):
         """Initialize and return the DeepSpeed TP training configuration."""
