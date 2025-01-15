@@ -247,7 +247,7 @@ class DeepSpeedEngine(Module):
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
-        if self.zero_autotp_size() > 1:
+        if self.autotp_size() > 1:
             self._configure_tensor_parallel_states(model)
         see_memory_usage(f"DeepSpeed Engine: After args sanity test", force=self.memory_breakdown())
         if mpu is not None:
@@ -427,7 +427,7 @@ class DeepSpeedEngine(Module):
         ) <= 1, "Currently, the compatibility between 'autotp' and 'zero_stage > 1' has not been validated"
 
         self.mpu = groups
-        self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.zero_autotp_size())
+        self.mpu._init_tp_mesh_device(tensor_model_parallel_size=self.autotp_size())
 
         self.first_dataloader_check = None
 
@@ -902,9 +902,9 @@ class DeepSpeedEngine(Module):
     def zero_ignore_unused_parameters(self):
         return self._config.zero_config.ignore_unused_parameters
 
-    def zero_autotp_size(self):
-        return self._config.zero_config.autotp_size
-
+    def autotp_size(self):
+        return self._config.tensor_parallel_config.autotp_size
+    
     def graph_harvesting(self):
         return self._config.graph_harvesting
 
@@ -3679,7 +3679,7 @@ class DeepSpeedEngine(Module):
         """
         if self.zero_optimization_stage() == ZeroStageEnum.weights:
             return self._zero3_consolidated_16bit_state_dict(exclude_frozen_parameters)
-        elif self.zero_autotp_size() > 1:
+        elif self.autotp_size() > 1:
             return self._replace_module_consolidated_state_dict()
 
         raise ValueError("consolidated_16bit_state_dict is only applicable to cases where weights are partitioned, "

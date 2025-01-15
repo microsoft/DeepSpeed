@@ -16,7 +16,6 @@ from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchChe
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 from deepspeed.runtime.compiler import is_compile_supported
 from deepspeed.utils import groups
-from deepspeed.module_inject.layers import is_autotp_training_mode
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject import replace_transformer_layer, generic_injection
@@ -249,10 +248,6 @@ class InferenceEngine(Module):
 
     def _create_model_parallel_group(self, config):
 
-        if is_autotp_training_mode():
-            groups._init_tp_mesh_device(config.tensor_parallel.tp_size)
-            self.mp_group = groups.get_tensor_model_parallel_group()
-            return
         # Call the init process
         if InferenceEngine.inference_mp_group is None:
             init_distributed()

@@ -15,7 +15,7 @@ class AUTOTP_MODE(Enum):
     INFERENCE = "INFERENCE"
 
 
-class DeepSpeedTPConfig(DeepSpeedConfigModel):
+class TPConfig(DeepSpeedConfigModel):
     """ Configure tensor parallelism settings """
 
     enabled: bool = True
@@ -36,18 +36,29 @@ class DeepSpeedTPConfig(DeepSpeedConfigModel):
     tp_group: object = None
 
 
-class DeepSpeedTPTrainingConfig(DeepSpeedConfigModel):
+class TPTrainingConfig(DeepSpeedConfigModel):
 
     dtype: torch.dtype = torch.float16
     """
     Desired model data type, will convert model to this type.
     Supported target types: `torch.half`, `torch.int8`, `torch.float`
     """
-
-    tensor_parallel: DeepSpeedTPConfig = Field({}, alias="tp")
+    
+    autotp_size: int = 0
+    """
+    In automatic tensor-parallelism training, 'tensor_parallel_size'
+    When set to 0, indicates that it is disabled.
+    """
+    tensor_parallel: TPConfig = Field({}, alias="tp")
     """
     Configuration for tensor parallelism used to split the model across several
     GPUs. Expects a dictionary containing values for :any:`DeepSpeedTPConfig`.
     """
-
+    
     injection_policy_tuple: Optional[tuple] = None
+    
+def get_tensor_parallel_config(ds_config):
+
+    if 'tensor_parallel' in ds_config:
+        return TPTrainingConfig(**ds_config['tensor_parallel'])
+    return None

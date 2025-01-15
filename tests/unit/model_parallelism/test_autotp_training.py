@@ -64,7 +64,7 @@ class TestTpParallelStates(DistributedTest):
 
         dp_size = 4 / tp_size
         hidden_dim = 128
-        config_dict = {"train_micro_batch_size_per_gpu": 1, "zero_optimization": {"stage": 0, "autotp_size": tp_size}}
+        config_dict = {"train_micro_batch_size_per_gpu": 1,"tensor_parallel":{"autotp_size": tp_size} ,"zero_optimization": {"stage": 0}}
         model = SimpleModel(hidden_dim=hidden_dim)
         model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
         assert groups.get_tensor_model_parallel_world_size() == tp_size
@@ -88,9 +88,9 @@ class TestTpDataloaderCorrectness(DistributedTest):
                     "lr": 1e-6
                 }
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:
@@ -163,9 +163,9 @@ class TestTpLayerFwdBwd(DistributedTest):
                     "lr": 1e-6
                 }
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:
@@ -210,9 +210,9 @@ class TestTpLayerFwdBwd(DistributedTest):
                     "lr": 1e-6
                 }
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:
@@ -265,9 +265,9 @@ class TestParamsGather(DistributedTest):
                     "lr": 1e-6
                 }
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:
@@ -353,9 +353,9 @@ class TestSave(DistributedTest):
                     "lr": 1e-6
                 }
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:
@@ -412,8 +412,8 @@ class TestSave(DistributedTest):
             },
             "zero_optimization": {
                 "stage": 0,
-                "autotp_size": tp_size
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "scheduler": {
                 "type": "WarmupLR",
                 "params": {
@@ -480,9 +480,9 @@ class TestTpGradNorm(DistributedTest):
                     "lr": 1e-6
                 }
             },
+            "tensor_parallel":{"autotp_size": tp_size},
             "zero_optimization": {
                 "stage": zero_stage,
-                "autotp_size": tp_size
             }
         }
         if preferred_dtype() is torch.float16:

@@ -4,9 +4,9 @@
 # DeepSpeed Team
 
 import torch
-from .config import DeepSpeedTPTrainingConfig, DeepSpeedTPConfig
+from .config import TPTrainingConfig, TPConfig
 from deepspeed.utils import groups
-
+import deepspeed.comm as dist
 
 class TpTrainingManager():
 
@@ -15,6 +15,7 @@ class TpTrainingManager():
         self.config = self._initialize_config(dtype)
 
         from deepspeed.module_inject.auto_tp import AutoTP
+        from deepspeed import get_accelerator
 
         # Parse model configuration
         parser_dict = AutoTP.tp_parser(model)
@@ -24,12 +25,18 @@ class TpTrainingManager():
         self._initialize_tp_config(tp_size)
         self._get_model_config_generate()
 
+        # Synchronize random number generator state across devices
+        _rng_state = get_accelerator().get_rng_state().to(get_accelerator().current_device_name())
+        dist.broadcast(_rng_state, 0)
+        get_accelerator().set_rng_state(_rng_state.cpu())
+        
         # Apply injection policies
         self._apply_policies(parser_dict)
+        
 
     def _initialize_config(self, dtype):
         """Initialize and return the DeepSpeed TP training configuration."""
-        config = DeepSpeedTPTrainingConfig()
+        config = TPTrainingConfig()
         config.dtype = dtype
         return config
 
@@ -47,7 +54,7 @@ class TpTrainingManager():
 
     def _initialize_tp_config(self, tp_size):
         """Perform TP configuration initialization."""
-        self.tp_config = DeepSpeedTPConfig()
+        self.tp_config = TPConfig()
         self.tp_config.tp_size = tp_size
         if tp_size <= 1:
             self.tp_config.enabled = False

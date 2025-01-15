@@ -44,7 +44,6 @@ ZeRO optimization should be enabled as:
     "zero_quantized_gradients": [true|false],
     "memory_efficient_linear": [true|false],
     "override_module_apply": [true|false],
-    "autotp_size": 0,
     "zeropp_loco_param": {...},
     }
 }
@@ -339,10 +338,6 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     override_module_apply: bool = True
     """
     Override nn.Module apply function, for Stage 3.
-    """
-    autotp_size: int = Field(0, ge=0, new_param="autotp_size")
-    """
-    In automatic tensor-parallelism training, 'tensor_parallel_size', when set to 0, indicates that it is disabled.
     """
     # Validators
     @model_validator(mode="after")

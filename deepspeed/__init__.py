@@ -385,6 +385,11 @@ def tp_model_init(model, tp_size, dtype):
     set_autotp_mode(training=True)
     
     from deepspeed.runtime.tensor_parallel import TpTrainingManager
+    # The expected usage here is for it to be invoked by transformers package.
+    
+    #TODO: We should provide a custom TP mapping solution without using autoTP 
+    #as modifying the autoTP logic may be more difficult for users compared to configuring it
+
     model = TpTrainingManager(model=model, tp_size=tp_size, dtype=dtype).module
     
     setattr(model, 'ds_autotp_parsed', True)
