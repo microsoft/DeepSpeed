@@ -55,10 +55,7 @@ def test_fp_quant_meta(dtype):
         x_quantized, meta_tensor = fpq.quantize(ds_x, q_bits=q_bits, return_meta_tensor=True)
         x_dequantized = fpq.dequantize(x_quantized, q_bits=q_bits, scale=meta_tensor)
 
-        qtorch_out = qtorch_quantize(x,
-                                     exp_bits=exp_bits,
-                                     man_bits=man_bits,
-                                     group_size=group_size)
+        qtorch_out = qtorch_quantize(x, exp_bits=exp_bits, man_bits=man_bits, group_size=group_size)
         qtorch_error = (qtorch_out - x).abs().sum() / x.numel()
         ds_error = (x_dequantized - x).abs().sum() / x.numel()
 
@@ -129,10 +126,7 @@ def test_fp_quant(dtype, q_bits):
         else:
             raise ValueError(f"unknown {q_bits=}")
 
-        qtorch_out = qtorch_quantize(x,
-                                     exp_bits=exp_bits,
-                                     man_bits=man_bits,
-                                     group_size=quant_config.group_size)
+        qtorch_out = qtorch_quantize(x, exp_bits=exp_bits, man_bits=man_bits, group_size=quant_config.group_size)
 
         qtorch_error = (qtorch_out - x).abs().sum() / x.numel()
         ds_error = (x_dequantized - x).abs().sum() / x.numel()
