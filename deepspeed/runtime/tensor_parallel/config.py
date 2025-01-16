@@ -18,13 +18,12 @@ class AUTOTP_MODE(Enum):
 class TPConfig(DeepSpeedConfigModel):
     """ Configure tensor parallelism settings """
 
-    enabled: bool = True
-    """ Turn tensor parallelism on/off. """
-
     tp_size: int = 1
     """ Number of devices to split the model across using tensor parallelism. """
 
-    tp_grain_size: int = 64
+    tp_grain_size: int = 1
+    "The variable required by the autoTP parser has not been activated in training yet"
+    "as it depends on the gather logic that supports uneven partitioning. "
     "Desired MLP/lm_head tp size granularity. DNN library favors tensor size in granularity of power of 2, we pick 64 as a default size."
 
     mpu: object = None

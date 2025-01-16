@@ -56,8 +56,7 @@ class TpTrainingManager():
         """Perform TP configuration initialization."""
         self.tp_config = TPConfig()
         self.tp_config.tp_size = tp_size
-        if tp_size <= 1:
-            self.tp_config.enabled = False
+
         groups._init_tp_mesh_device(tp_size)
         self.tp_config.tp_group = groups.get_tensor_model_parallel_group()
         self.config.tensor_parallel = self.tp_config
