@@ -54,6 +54,24 @@ class TPTrainingConfig(DeepSpeedConfigModel):
     """
 
     injection_policy_tuple: Optional[tuple] = None
+    #The following parameters are required by autoTP parser.
+    ########################################
+    keep_module_on_host: bool = False
+    """
+    When loading checkpoints to model parameters, they are moved to the device. In very large models
+    this might fill the device and cause OOM. Setting this flag to true, will keep checkpoints on
+    host and not move them directly to the device (giving an option to quantize checkpoint data before
+    moving it to the device for example).
+    """
+
+    replace_with_kernel_inject: bool = Field(False, alias="kernel_inject")
+    """
+    Set to true to inject inference kernels for models such as, Bert, GPT2,
+    GPT-Neo and GPT-J.  Otherwise, the injection_dict provides the names of two
+    linear layers as a tuple:
+    `(attention_output projection, transformer output projection)`
+    """
+    ########################################
 
 
 def get_tensor_parallel_config(ds_config):
