@@ -3670,6 +3670,9 @@ class DeepSpeedEngine(Module):
                     get_layer_state_dict(child, prefix + name + ".")
 
         get_layer_state_dict(self.module, prefix="")
+
+        # ensure that all GPU communication tasks are completed before the process exits
+        get_accelerator().synchronize()
         return state_dict
 
     def _consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
