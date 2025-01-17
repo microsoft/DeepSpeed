@@ -67,7 +67,7 @@ class CompressedBackend(object):
             buffer_m = torch.cat([buffer_m, empty_tensor])
 
         buffer_m.add_(worker_error)
-        worker_scale = torch.linalg.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
+        worker_scale = torch.linalg.vector_norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
 
         worker_error.set_(buffer_m - worker_scale * buffer_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
@@ -96,7 +96,7 @@ class CompressedBackend(object):
 
         compensated_server_m.add_(server_error)
 
-        server_scale = torch.norm(compensated_server_m) / np.sqrt(compensated_server_m.numel())
+        server_scale = torch.linalg.vector_norm(compensated_server_m) / np.sqrt(compensated_server_m.numel())
 
         server_error.set_(compensated_server_m -
                           server_scale * compensated_server_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
