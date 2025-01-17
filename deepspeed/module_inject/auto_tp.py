@@ -19,14 +19,14 @@ from deepspeed.utils import groups
 from deepspeed.module_inject.layers import is_autotp_training_mode
 
 
-def move(tensor, device):
+def move(tensor, device, copy=True):
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
     else:
         # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
         # Using copy=True instead of clone() will help in case of cpu --> cpu.
         # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
-        return tensor.to(device, copy=True)
+        return tensor.to(device, copy=copy)
 
 
 class ReplaceWithTensorSlicing:
@@ -136,7 +136,8 @@ class Loading():
         load_layer_names = [
             "LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "FalconLinear",
             "MistralRMSNorm", "T5LayerNorm", "MixtralRMSNorm", "Phi3RotaryEmbedding", "Phi3SuScaledRotaryEmbedding",
-            "Phi3RMSNorm", "YuanRMSNorm", "YuanRotaryEmbedding", "Phi3LongRoPEScaledRotaryEmbedding", "Qwen2RMSNorm"
+            "Phi3RMSNorm", "YuanRMSNorm", "YuanRotaryEmbedding", "Phi3LongRoPEScaledRotaryEmbedding", "Qwen2RMSNorm",
+            "DeepseekV2RMSNorm", "DeepseekV2YarnRotaryEmbedding", "MoEGate"
         ]
         return module.__class__ in load_layers or module._get_name() in load_layer_names
 
@@ -190,7 +191,14 @@ class Loading():
 
 class AutoTP():
 
-    def __init__(self, module, all_reduce_linears, prefix, state_dict, linear_layer_setting, orig_layer_impl):
+    def __init__(self,
+                 module,
+                 all_reduce_linears,
+                 prefix,
+                 state_dict,
+                 linear_layer_setting,
+                 orig_layer_impl,
+                 keep_module_on_host=False):
         self.module = module
         self.all_reduce_linears = all_reduce_linears
         self.prefix = prefix
@@ -202,6 +210,7 @@ class AutoTP():
         self.orig_layer_impl = orig_layer_impl
         self.linear_policies = None
         self.conv_linear_layer = False
+        self.keep_module_on_host = keep_module_on_host
 
     def in_module_list(module, module_list):
         for item in module_list:
@@ -340,11 +349,15 @@ class AutoTP():
         # and avoid any complex shard-related logic.
         if getattr(child, "replaced", False) == True:
             return
+        device_name = 'cpu' if self.keep_module_on_host else get_accelerator().current_device_name()
+        # keep_module_on_host is used to keep the module on the host. Checkpoints are loaded to the host first (in some
+        # cases it can be done from the disk even to prevent filling host's memory), thus no need to create a new copy.
+        return_new_copy = not self.keep_module_on_host
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
-        # For mixtral-7x8b, need to skip MoE gate linear replace.
-        if name == "block_sparse_moe.gate" or (('mlp.shared_expert_gate' == name or 'mlp.gate' == name)
-                                               and 'qwen2_moe' in str(type(self.module))):
+        # For TP layer skip, e.g., MoE gate, deepseek low rank layer skip
+        if "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
+            ('mlp.shared_expert_gate' == name or 'mlp.gate' == name) and 'qwen2_moe' in str(type(self.module))):
             return child
         # For Yuan model
         if 'Yuan' in str(self.module):
@@ -361,7 +374,11 @@ class AutoTP():
         arctic_w2_all_reduce_linear = False
         if 'Arctic' in str(self.module) and 'w2' in name:
             arctic_w2_all_reduce_linear = True
-        if name in self.all_reduce_linears or arctic_w2_all_reduce_linear:
+        # For MoE MLP model, e.g., deepseek and jamba
+        down_proj = False
+        if 'down_proj' in name:
+            down_proj = True
+        if name in self.all_reduce_linears or arctic_w2_all_reduce_linear or down_proj:
 
             setattr(child, "replaced", True)
             if self.conv_linear_layer:

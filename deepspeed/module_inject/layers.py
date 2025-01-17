@@ -226,6 +226,14 @@ class Replaced_Layer(nn.Module, ABC):
         memo[id(self)] = new_obj
         return new_obj
 
+    def extra_repr(self):
+        if self.weight is not None:
+            out_features, in_features = self.weight.shape if self.weight is not None else (None, None)
+            dtype = self.weight.dtype if self.weight is not None else None
+            extra_repr_str = "in_features={}, out_features={}, bias={}, dtype={}".format(
+                in_features, out_features, self.bias is not None, dtype)
+        return extra_repr_str
+
 
 class GatherReplacedLayerParams:
     """
@@ -681,7 +689,7 @@ class OPTEmbedding(EmbeddingLayer):
         self.offset = 2
         super().__init__(weight_shape, weight=weight)
 
-    def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0):
+    def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0, position_ids: int = 0):
         """`input_ids_shape` is expected to be [bsz x seqlen]."""
         attention_mask = attention_mask.long()
 
