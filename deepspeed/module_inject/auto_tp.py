@@ -15,6 +15,8 @@ from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw, shard_value_with_share_qk, shard_chunk_mlp
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
+import os
+import ast
 
 
 def move(tensor, device, copy=True):
@@ -289,6 +291,33 @@ class AutoTP():
         assert AutoTP.supported(model), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
         if AutoTP.kernel_supported(module_list) else "AutoTP not supported for model. Please provide policy."
         norm_layer_name_list = ['LayerNorm', 'layer_norm', 'ln_1', 'ln_2']
+
+        default_ds_common_reduceLinear_keys = ['out_proj', 'o_proj', 'down_proj']
+        #the different model names of the same key are concat with comma
+        predefined_ds_common_reduceLinear_items = {
+            'attention.dense': 'GPTNeoX',
+            'self_attention.dense': 'falcon,ChatGLM,Phi',
+            'w2': 'Mixtral',
+            'dense_4h_to_h': 'ChatGLM'
+        }
+
+        ds_user_reduceLinear_items = os.environ.get('DS_ALL_REDUCE_LINEAR_ITEMS')
+        if ds_user_reduceLinear_items:
+            ds_user_reduceLinear_items = ast.literal_eval(ds_user_reduceLinear_items)  #dict
+
+        ds_reduceLinear_items = predefined_ds_common_reduceLinear_items
+        ds_reduceLinear_items.update(ds_user_reduceLinear_items)
+        ds_reduceLinear_keys = ds_reduceLinear_items.keys()
+
+        ds_user_remove_reduceLinear_keys = os.environ.get('DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS')
+        if ds_user_remove_reduceLinear_keys:
+            ds_user_remove_reduceLinear_keys = ast.literal_eval(ds_user_remove_reduceLinear_keys)
+            ds_common_reduceLinear_keys = [
+                item for item in default_ds_common_reduceLinear_keys if item not in ds_user_remove_reduceLinear_keys
+            ]
+        else:
+            ds_common_reduceLinear_keys = default_ds_common_reduceLinear_keys
+
         #ln_1 , ln_2 for Qwen
         for module in module_list:
             for key, submodule in module._modules.items():
@@ -298,30 +327,22 @@ class AutoTP():
                     layer_list = layer_list + ["ln"]
                 else:
                     layer_list = layer_list + AutoTP.get_layers(key, submodule)
+            module_name = str(type(module))
             for i, layer in enumerate(layer_list):
                 if layer == 'ln':
                     if layer_list[i - 1] != 'ln':
                         gem_list = gem_list + [layer_list[i - 1]]
-                elif 'out_proj' in layer:
+
+                if any((key in layer) for key in ds_common_reduceLinear_keys):
                     gem_list = gem_list + [layer]
-                elif 'o_proj' in layer:
-                    gem_list = gem_list + [layer]
-                elif 'down_proj' in layer:
-                    gem_list = gem_list + [layer]
-                elif 'attention.dense' in layer and 'GPTNeoX' in str(model):
-                    gem_list = gem_list + [layer]
-                elif 'self_attention.dense' in layer and 'falcon' in str(
-                        type(module)):  # this is a hack to get the right linear layer for this model!
-                    gem_list = gem_list + [layer]
-                # Mixtral-7x8b used w2*act(w1*w3) linear. need to replace w2 to linearallreduce.
-                elif 'w2' in layer and 'Mixtral' in str(type(module)):
-                    gem_list = gem_list + [layer]
-                elif 'self_attn.dense' in layer and 'Phi' in str(type(module)):
-                    gem_list = gem_list + [layer]
-                elif 'self_attention.dense' in layer and 'ChatGLM' in str(model):
-                    gem_list = gem_list + [layer]
-                elif 'dense_4h_to_h' in layer and 'ChatGLM' in str(model):
-                    gem_list = gem_list + [layer]
+                    continue
+
+                for key in ds_reduceLinear_keys:
+                    if key in layer:
+                        values = ds_reduceLinear_items[key].split(',')
+                        if any((v in module_name) for v in values):
+                            gem_list = gem_list + [layer]
+                        break
 
             layer_list = []
             if gem_list != []:
@@ -346,9 +367,27 @@ class AutoTP():
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         # For TP layer skip, e.g., MoE gate, deepseek low rank layer skip
-        if "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
-            ('mlp.shared_expert_gate' == name or 'mlp.gate' == name) and 'qwen2_moe' in str(type(self.module))):
-            return child
+        predefined_keep_Linear_Items = {
+            'q_a_proj': 'DeepseekV2',
+            'kv_a_proj_with_mqa': 'DeepseekV2',
+            'block_sparse_moe.gate': 'DeepseekV2',
+            'mlp.shared_expert_gate': 'qwen2_moe',
+            'mlp.gate': 'qwen2_moe'
+        }
+        user_keep_Linear_Items = os.environ.get('DS_KEEP_LINEAR_ITEMS')
+        if user_keep_Linear_Items:
+            user_keep_Linear_Items = ast.literal_eval(user_keep_Linear_Items)
+
+        keep_Linear_Items = predefined_keep_Linear_Items
+        keep_Linear_Items.update(user_keep_Linear_Items)
+        keys = keep_Linear_Items.keys()
+        for item in keys:
+            if item in name:
+                values = keep_Linear_Items[item]
+                values = values.split(',')  #the different model names of the same key are concat with comma
+                if any((v in str(type(self.module))) for v in values):
+                    return child
+
         # For Yuan model
         if 'Yuan' in str(self.module):
             if 'v_proj' in name:
