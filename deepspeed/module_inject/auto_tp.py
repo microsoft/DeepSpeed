@@ -302,7 +302,7 @@ class AutoTP():
             'dense_4h_to_h': 'ChatGLM'
         }
         ds_reduceLinear_items = predefined_ds_common_reduceLinear_items
-        #DS_ALL_REDUCE_LINEAR_ITEMS is a dictionary whose keys are layer names of LinearAllreduce and
+        #'DS_ALL_REDUCE_LINEAR_ITEMS' is a dictionary whose keys are layer names of LinearAllreduce and
         #whose values are keywords in the module name.
         # If the same layer name in multiple models is LinearAllreduce, concat the keywords of the different module names with comma
         # import os
@@ -317,6 +317,10 @@ class AutoTP():
 
         ds_reduceLinear_keys = ds_reduceLinear_items.keys()
 
+        #'DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS' is a list. The layer name in the list will be removed from those of default common LinearAllReduce.
+        # import os
+        # os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"] = "['layer_name_1', 'layer_name_2',...]"
+        #for example: os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"] = "['o_proj']"
         ds_user_remove_reduceLinear_keys = os.environ.get('DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS')
         if ds_user_remove_reduceLinear_keys:
             ds_user_remove_reduceLinear_keys = ast.literal_eval(ds_user_remove_reduceLinear_keys)
