@@ -301,13 +301,20 @@ class AutoTP():
             'w2': 'Mixtral',
             'dense_4h_to_h': 'ChatGLM'
         }
-
+        ds_reduceLinear_items = predefined_ds_common_reduceLinear_items
+        #DS_ALL_REDUCE_LINEAR_ITEMS is a dictionary whose keys are layer names of LinearAllreduce and
+        #whose values are keywords in the module name.
+        # If the same layer name in multiple models is LinearAllreduce, concat the keywords of the different module names with comma
+        # import os
+        # os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"] = "{'layer_name_1':'model_1 keyword','layer_name_2':'model_1 keyword',...},"
+        # os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"] = "{'layer_name_1':'model-1 keyword,model-2 keyword,...',
+        #                                              'layer_name_2':'model-1 keyword,model-2 keyword,...',...}"
+        # for example: os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"]="{'w2','mixtral'}"
         ds_user_reduceLinear_items = os.environ.get('DS_ALL_REDUCE_LINEAR_ITEMS')
         if ds_user_reduceLinear_items:
-            ds_user_reduceLinear_items = ast.literal_eval(ds_user_reduceLinear_items)  #dict
+            ds_user_reduceLinear_items = ast.literal_eval(ds_user_reduceLinear_items)
+            ds_reduceLinear_items.update(ds_user_reduceLinear_items)
 
-        ds_reduceLinear_items = predefined_ds_common_reduceLinear_items
-        ds_reduceLinear_items.update(ds_user_reduceLinear_items)
         ds_reduceLinear_keys = ds_reduceLinear_items.keys()
 
         ds_user_remove_reduceLinear_keys = os.environ.get('DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS')
@@ -376,12 +383,23 @@ class AutoTP():
             'mlp.shared_expert_gate': 'qwen2_moe',
             'mlp.gate': 'qwen2_moe'
         }
+        keep_Linear_Items = predefined_keep_Linear_Items
+        #DS_KEEP_LINEAR_ITEMS is a dictionary whose keys are layer names of Linear and
+        #whose values are keywords in the module name.
+        #If the same layer name in multiple models keeps Linear, concat the keywords of the different module names with comma
+        # import os
+        # one keyword for one model
+        # os.environ["DS_KEEP_LINEAR_ITEMS"] = "{'layer_name_1':'model_1 keyword','layer_name_2':'model_1 keyword',...}"
+        # one keyword for multiple models
+        # os.environ["DS_KEEP_LINEAR_ITEMS"] = "{'layer_name_1':'model_1 keyword,model_2 keyword,...',
+        #                                        'layer_name_2':'model_1 keyword,model_2 keyword,...',...}"
+        #for example:
+        # os.environ["DS_KEEP_LINEAR_ITEMS"] = "{'gate':'mixtral'}"
         user_keep_Linear_Items = os.environ.get('DS_KEEP_LINEAR_ITEMS')
         if user_keep_Linear_Items:
             user_keep_Linear_Items = ast.literal_eval(user_keep_Linear_Items)
+            keep_Linear_Items.update(user_keep_Linear_Items)
 
-        keep_Linear_Items = predefined_keep_Linear_Items
-        keep_Linear_Items.update(user_keep_Linear_Items)
         keys = keep_Linear_Items.keys()
         for item in keys:
             if item in name:
