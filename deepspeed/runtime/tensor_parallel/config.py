@@ -78,4 +78,4 @@ def get_tensor_parallel_config(ds_config):
 
     if 'tensor_parallel' in ds_config:
         return TPTrainingConfig(**ds_config['tensor_parallel'])
-    return None
+    return TPTrainingConfig()

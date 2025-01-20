@@ -11,7 +11,7 @@ from torch.nn.parameter import Parameter
 from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 from abc import ABC, abstractmethod
-from typing import Iterable, Any, Optional, List
+from typing import Iterable, Any, Optional, List, Tuple
 from .fusedqkv_utils import shard_value_with_share_qk, shard_chunk_mlp, prepare_tp_fused_qkvw
 from deepspeed.runtime.tensor_parallel import AUTOTP_MODE
 from copy import deepcopy
@@ -87,7 +87,7 @@ class RowParallel(torch.autograd.Function):
         return input
 
     @staticmethod
-    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[None, torch.Tensor, None]:
+    def backward(ctx: Any, grad_output: torch.Tensor) -> Tuple[None, torch.Tensor, None]:
         """
         Backward pass.
         """
@@ -113,7 +113,7 @@ class ColumnParallel(torch.autograd.Function):
         return input
 
     @staticmethod
-    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[None, torch.Tensor]:
+    def backward(ctx: Any, grad_output: torch.Tensor) -> Tuple[None, torch.Tensor]:
         """
         Backward pass.
         """
