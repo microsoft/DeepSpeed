@@ -319,8 +319,8 @@ class AutoTP():
 
         #'DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS' is a list. The layer name in the list will be removed from those of default common LinearAllReduce.
         # import os
-        # os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"] = "['layer_name_1', 'layer_name_2',...]"
-        #for example: os.environ["DS_ALL_REDUCE_LINEAR_ITEMS"] = "['o_proj']"
+        # os.environ["DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS"] = "['layer_name_1', 'layer_name_2',...]"
+        #for example: os.environ["DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS"] = "['o_proj']"
         ds_user_remove_reduceLinear_keys = os.environ.get('DS_REMOVED_COMMON_REDUCE_LINEAR_KEYS')
         if ds_user_remove_reduceLinear_keys:
             ds_user_remove_reduceLinear_keys = ast.literal_eval(ds_user_remove_reduceLinear_keys)
