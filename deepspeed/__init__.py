@@ -42,7 +42,7 @@ from .module_inject import replace_transformer_layer, revert_transformer_layer
 from .utils import log_dist, OnDevice, logger
 from .comm.comm import init_distributed
 
-from .runtime import zero
+from .runtime import zero, domino
 from .runtime.compiler import is_compile_supported
 
 from .pipe import PipelineModule
@@ -165,8 +165,8 @@ def initialize(args=None,
     if hasattr(args, "deepscale_config") and args.deepscale_config is not None:
         logger.warning("************ --deepscale_config is deprecated, please use --deepspeed_config ************")
         if hasattr(args, "deepspeed_config"):
-            assert (args.deepspeed_config is
-                    None), "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
+            assert (args.deepspeed_config
+                    is None), "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
         args.deepspeed_config = args.deepscale_config
         args.deepscale_config = None
 
