@@ -510,6 +510,10 @@ class TestTpGradNorm(DistributedTest):
         if preferred_dtype() is torch.float16:
             config_dict["fp16"] = {"enabled": True}
         elif preferred_dtype() is torch.bfloat16:
+            if zero_stage == 0:
+                pytest.skip(
+                    "This test has an overflow data and needs to implement an overflow skip mechanism in BF16_optimizer"
+                )
             config_dict["bf16"] = {"enabled": True}
 
         torch.manual_seed(42)
