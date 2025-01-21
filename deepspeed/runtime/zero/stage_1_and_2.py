@@ -310,6 +310,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for param in param_group['params']:
                 if param.requires_grad:
                     param.grad_accum = None
+                    param.param_idx_in_group = len(trainable_parameters)
                     trainable_parameters.append(param)
             self.bit16_groups.append(trainable_parameters)
 
@@ -613,7 +614,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
         # NOTE: To run ZeRO stage 1 with MoE, we need to set self.contiguous_gradients to True or ignore the assertion
         if not self.partition_gradients and not self.contiguous_gradients:
-            logger.warn(
+            logger.warning(
                 "ZeRO Stage 1 has not been thoroughly tested with MoE. This configuration is still experimental.")
         assert self.reduce_scatter, "Reduce Scatter in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
 
@@ -961,7 +962,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         assert grad_reduc is not None, f"rank {dist.get_rank()} - Invalid to reduce Param {param_id} with None gradient"
 
         self.grads_in_ipg_bucket.append(grad_reduc)
-        self.params_in_ipg_bucket.append((i, param, param_id))
+        self.params_in_ipg_bucket.append((i, param.param_idx_in_group, param_id))
 
         #make sure the average tensor function knows how to average the gradients
         if is_moe_param(param):
@@ -1067,7 +1068,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
             process_group = self.dp_process_group
             # count = 0
-            for i, param, param_id in self.params_in_ipg_bucket:
+            for i, param_idx_in_group, param_id in self.params_in_ipg_bucket:
+                param = self.bit16_groups[i][param_idx_in_group]
 
                 process_group = self.dp_process_group
 
@@ -1383,7 +1385,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             stream = get_accelerator().current_stream()
 
         with get_accelerator().stream(stream):
-            for _, param, param_id in self.params_in_ipg_bucket:
+            for group_idx, param_idx_in_group, param_id in self.params_in_ipg_bucket:
+                param = self.bit16_groups[group_idx][param_idx_in_group]
 
                 assert self.params_already_reduced[param_id] == False, \
                     f"The parameter {param_id} has already been reduced. \
@@ -1688,7 +1691,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     continue
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     all_norms.append(
-                        torch.norm(g.data.double().detach(), norm_type).to(get_accelerator().current_device_name()))
+                        torch.linalg.vector_norm(g.data.double().detach(),
+                                                 ord=norm_type).to(get_accelerator().current_device_name()))
             if len(all_norms) > 0:
                 total_norm = torch.stack(all_norms).square().sum().float()
             else:
@@ -1792,7 +1796,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self._average_expert_grad_norms(norm_groups)
 
         # calculating L2 norm
-        return torch.norm(torch.stack(norm_groups), p=norm_type)
+        return torch.linalg.vector_norm(torch.stack(norm_groups), ord=norm_type)
 
     def get_bit16_param_group(self, group_no):
         bit16_partitions = self.parallel_partitioned_bit16_groups[group_no]
@@ -2296,11 +2300,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
         self.load_hp_checkpoint_state_from_checkpoint_dir("bit16_groups", checkpoint_folder)
-
-    @property
-    def param_groups(self):
-        """Forward the wrapped optimizer's parameters."""
-        return self.optimizer.param_groups
 
     def _load_global_state(self, sd):
         self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)

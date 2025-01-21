@@ -91,6 +91,13 @@ class LinearAllreduce(nn.Module):
             output += self.bias
         return output
 
+    def extra_repr(self):
+        out_features, in_features = self.weight.shape if self.weight is not None else (None, None)
+        dtype = self.weight.dtype if self.weight is not None else None
+        extra_repr_str = "in_features={}, out_features={}, bias={}, dtype={}".format(
+            in_features, out_features, self.bias is not None, dtype)
+        return extra_repr_str
+
 
 class LmHeadLinearAllreduce(nn.Module):
 
@@ -120,6 +127,13 @@ class LmHeadLinearAllreduce(nn.Module):
             output += self.bias
         return output
 
+    def extra_repr(self):
+        out_features, in_features = self.weight.shape if self.weight is not None else (None, None)
+        dtype = self.weight.dtype if self.weight is not None else None
+        extra_repr_str = "in_features={}, out_features={}, bias={}, dtype={}".format(
+            in_features, out_features, self.bias is not None, dtype)
+        return extra_repr_str
+
 
 class LinearLayer(nn.Module):
 
@@ -143,6 +157,13 @@ class LinearLayer(nn.Module):
         if self.bias is not None:
             output += self.bias
         return output
+
+    def extra_repr(self):
+        out_features, in_features = self.weight.shape
+        dtype = self.weight.dtype
+        extra_repr_str = "in_features={}, out_features={}, bias={}, dtype={}".format(
+            in_features, out_features, self.bias is not None, dtype)
+        return extra_repr_str
 
 
 class Normalize(nn.Module):
@@ -191,7 +212,7 @@ class OPTEmbedding(EmbeddingLayer):
         self.offset = 2
         super().__init__(weight_shape, weight=weight)
 
-    def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0):
+    def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0, position_ids: int = 0):
         """`input_ids_shape` is expected to be [bsz x seqlen]."""
         attention_mask = attention_mask.long()
 
