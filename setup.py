@@ -202,8 +202,8 @@ for op_name, builder in ALL_OPS.items():
 print(f'Install Ops={install_ops}')
 
 # Write out version/git info.
-git_hash_cmd = shlex.split("bash -c git rev-parse --short HEAD")
-git_branch_cmd = shlex.split("bash -c git rev-parse --abbrev-ref HEAD")
+git_hash_cmd = shlex.split("bash -c \"git rev-parse --short HEAD\"")
+git_branch_cmd = shlex.split("bash -c \"git rev-parse --abbrev-ref HEAD\"")
 if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
     try:
         result = subprocess.check_output(git_hash_cmd)
@@ -321,9 +321,9 @@ setup(name='deepspeed',
       include_package_data=True,
       scripts=scripts,
       classifiers=[
-          'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
-          'Programming Language :: Python :: 3.10'
+          'Programming Language :: Python :: 3.10', 'Programming Language :: Python :: 3.11',
+          'Programming Language :: Python :: 3.12'
       ],
       license='Apache Software License 2.0',
       ext_modules=ext_modules,
