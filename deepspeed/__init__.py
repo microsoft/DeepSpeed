@@ -93,7 +93,6 @@ def _ensure_and_mark_trainobjs_inited(
     trainobjs = {"model": model, "optimizer": optimizer, "lr_scheduler": lr_scheduler}
 
     for name, trainobj in trainobjs.items():
-        print(f"Checking {name}")
         if trainobj is None:
             continue
         if name in ("optimizer", "lr_scheduler") and not isinstance(trainobj, (Optimizer, _LRScheduler)):
