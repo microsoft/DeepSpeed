@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import functools
 import os
 import pkgutil
 import importlib
@@ -16,24 +17,43 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'hpu'
         self._communication_backend_name = 'hccl'
+        self._compile_backend = "hpu_backend"
+        self.apply_hpu_workarounds()
         try:
             import habana_frameworks.torch.hpu as hpu
-            hpu.setDeterministic(True)
             self.hpu = hpu
+            torch.use_deterministic_algorithms(True)
         except ImportError as e:
             raise ValueError(
                 f"HPU_Accelerator requires habana_frameworks.torch.hpu, which is not installed on this system.")
 
         self.fp16_supported = None
 
+    def apply_hpu_workarounds(self):
+
+        def update_wa_env_var(key, value):
+            if key not in os.environ.keys():
+                os.environ[key] = value
+
+        update_wa_env_var("PT_HPU_LAZY_ACC_PAR_MODE", "0")
+        update_wa_env_var("PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES", "0")
+
     # Device APIs
     def is_synchronized_device(self):
         return False
 
+    def use_host_timers(self):
+        return False
+
+    def resolves_data_dependency(self):
+        return True
+
+    def handles_memory_backpressure(self):
+        return True
+
     def device_name(self, device_index=None):
-        if device_index is None:
-            return 'hpu'
-        return 'hpu:{}'.format(device_index)
+        # ignoring device_index.
+        return 'hpu'
 
     def device(self, device_index=None):
         return torch.device(self.device_name(device_index))
@@ -64,13 +84,13 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return self.hpu.random.get_rng_state()
 
     def manual_seed(self, seed):
-        self.hpu.random.manual_seed(seed)
+        return self.hpu.random.manual_seed(seed)
 
     def manual_seed_all(self, seed):
         self.hpu.random.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        self.hpu.random.initial_seed(seed)
+    def initial_seed(self):
+        return self.hpu.random.initial_seed()
 
     def default_generator(self, device_index):
         return self.hpu.random.default_generators[device_index]
@@ -108,28 +128,28 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return self.hpu.reset_max_memory_allocated()
 
     def memory_cached(self, device_index=None):
-        return 0
+        return self.hpu.memory_cached(device_index)
 
     def max_memory_cached(self, device_index=None):
-        return 0
+        return self.hpu.max_memory_cached(device_index)
 
     def reset_max_memory_cached(self, device_index=None):
-        return 0
+        return None
 
     def memory_stats(self, device_index=None):
-        return {}
+        return self.hpu.memory_stats(device_index)
 
     def reset_peak_memory_stats(self, device_index=None):
-        self.hpu.reset_peak_memory_stats()
+        self.hpu.reset_peak_memory_stats(device_index)
 
     def memory_reserved(self, device_index=None):
-        return 0
+        return self.hpu.memory_reserved(device_index)
 
     def max_memory_reserved(self, device_index=None):
-        return 0
+        return self.hpu.max_memory_reserved(device_index)
 
     def total_memory(self, device_index=None):
-        return 0
+        return self.memory_stats(device_index)['Limit']
 
     def available_memory(self, device_index=None):
         return self.total_memory(device_index) - self.memory_allocated(device_index)
@@ -147,7 +167,7 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     def supported_dtypes(self):
         supported_dtypes = [torch.float, torch.bfloat16]
         if self.is_fp16_supported():
-            supported_dtypes.append(torch.bfloat16)
+            supported_dtypes.append(torch.half)
         return supported_dtypes
 
     # Misc
@@ -174,43 +194,43 @@ class HPU_Accelerator(DeepSpeedAccelerator):
 
     # Graph operations
     def create_graph(self):
-        return None
+        return self.hpu.HPUGraph()
 
     def capture_to_graph(self, graph, pool=None, stream=None):
-        from deepspeed.runtime.utils import noop_context
-        return noop_context()
+        return self.hpu.graph(graph, stream=stream)
 
     def replay_graph(self, graph):
+        graph.replay()
         return
 
     # Tensor operations
     @property
     def BFloat16Tensor(self):
-        return torch.hpu.BFloat16Tensor
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device='hpu')
 
     @property
     def ByteTensor(self):
-        return torch.hpu.ByteTensor
+        return functools.partial(torch.tensor, dtype=torch.uint8, device='hpu')
 
     @property
     def DoubleTensor(self):
-        return torch.hpu.DoubleTensor
+        return functools.partial(torch.tensor, dtype=torch.double, device='hpu')
 
     @property
     def FloatTensor(self):
-        return torch.hpu.FloatTensor
+        return functools.partial(torch.tensor, dtype=torch.float, device='hpu')
 
     @property
     def HalfTensor(self):
-        return torch.hpu.HalfTensor
+        return functools.partial(torch.tensor, dtype=torch.half, device='hpu')
 
     @property
     def IntTensor(self):
-        return torch.hpu.IntTensor
+        return functools.partial(torch.tensor, dtype=torch.int, device='hpu')
 
     @property
     def LongTensor(self):
-        return torch.hpu.LongTensor
+        return functools.partial(torch.tensor, dtype=torch.long, device='hpu')
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory(self.device())
@@ -285,3 +305,25 @@ class HPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def visible_devices_envs(self):
+        # Current way deepspeed set this env var is not applicable with all HPU instances
+        # User has to follow instructions in:
+        # https://docs.habana.ai/en/latest/PyTorch/Reference/PT_Multiple_Tenants_on_HPU/Multiple_Workloads_Single_Docker.html
+        # keeping CUDA_VISIBLE_DEVICES
+        return ['CUDA_VISIBLE_DEVICES']  #['HABANA_VISIBLE_MODULES']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")

@@ -32,7 +32,7 @@ that process speech, images and waveforms concurrently require long
 context reasoning over high dimensional inputs with extremely large
 sequences. Similarly, chapter and book level summarization (estimated at
 tens and hundreds of thousands of words) are of great importance in
-conversational AI and abstractive summarization tasks.
+conversational AI and abstract summarization tasks.
 
 Long sequence length is equally critical for AI for science opening
 doors for better understanding of structure biology, health care,
@@ -233,7 +233,7 @@ at different sequence length and GPU count.*
 
 Next, we evaluate Ulysses on 7 billion (7B) and 30 billion (30B) parameter
 GPT dense attention models and compare against Megatron-LM's sequence
-parallelism (Megatron LM) and Colosal AI sequence parallelism (ColAI-SP) on
+parallelism (Megatron LM) and Colossal AI sequence parallelism (ColAI-SP) on
 32 and 64 A100 GPUs respectively. The results of these evaluations are shown
 in Figures 3 and 4.
 

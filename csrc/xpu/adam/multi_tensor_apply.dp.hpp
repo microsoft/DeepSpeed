@@ -10,6 +10,7 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
+#include <c10/xpu/XPUStream.h>
 #include <ipex.h>
 #include <sycl/sycl.hpp>
 #include "compat.h"
@@ -22,10 +23,8 @@ namespace at {
 namespace cuda {
 sycl::queue* getCurrentCUDAStream()
 {
-    auto device_type = c10::DeviceType::XPU;
-    c10::impl::VirtualGuardImpl impl(device_type);
-    c10::Stream c10_stream = impl.getStream(c10::Device(device_type));
-    auto& queue = xpu::get_queue_from_stream(c10_stream);
+    c10::xpu::XPUStream stream = c10::xpu::getCurrentXPUStream();
+    auto& queue = stream.queue();
     return &queue;
 }
 
@@ -109,6 +108,12 @@ private:
     U callable;
     std::tuple<ArgTypes...> args;
 };
+
+// to make sure multi_tensor_apply_kernel can be used in sycl::buffer
+namespace sycl {
+template <typename T, typename U, typename... ArgTypes>
+struct is_device_copyable<multi_tensor_apply_kernel<T, U, ArgTypes...>> : std::true_type {};
+}  // namespace sycl
 
 template <int depth, typename T, typename... ArgTypes>
 void multi_tensor_apply(int block_size,

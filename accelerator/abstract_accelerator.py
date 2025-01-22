@@ -12,9 +12,22 @@ class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
+        self._compile_backend = None
 
     @abc.abstractmethod
     def is_synchronized_device(self):
+        ...
+
+    @abc.abstractmethod
+    def use_host_timers(self):
+        ...
+
+    @abc.abstractmethod
+    def resolves_data_dependency(self):
+        ...
+
+    @abc.abstractmethod
+    def handles_memory_backpressure(self):
         ...
 
     # Device APIs
@@ -68,7 +81,7 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def initial_seed(self, seed):
+    def initial_seed(self):
         ...
 
     @abc.abstractmethod
@@ -274,4 +287,20 @@ class DeepSpeedAccelerator(ABC):
 
     @abc.abstractmethod
     def export_envs(self):
+        ...
+
+    @abc.abstractmethod
+    def visible_devices_envs(self):
+        ...
+
+    @abc.abstractmethod
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        ...
+
+    @abc.abstractmethod
+    def get_compile_backend(self):
+        ...
+
+    @abc.abstractmethod
+    def set_compile_backend(self, backend):
         ...

@@ -305,7 +305,7 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 ***(II) スケーラビリティ分析*** モデルサイズごとに、最良のスループットを得られるGPU数は異なります。これは、モデルサイズが大きくなると、実行に多くのメモリを必要とすることに加え、以下に説明する DeepSpeed-HE のスケーラビリティ特性にも起因しています。
 
-図7は、DeepSeed-RLHF が最大 64 GPU で全体的に良好なスケーラビリティを達成したことを示しています。しかし、より詳細に見ると、DeepSpeed-RLHFの訓練では、小規模な環境では超線形（super linear）なスケーリングを達成し、大規模では線形（linear）またはそれ以下のスケーラビリティになっていることが分かります。これは、メモリの可用性と最大グローバルバッチサイズとの間の相互作用によるものです。
+図7は、DeepSpeed-RLHF が最大 64 GPU で全体的に良好なスケーラビリティを達成したことを示しています。しかし、より詳細に見ると、DeepSpeed-RLHFの訓練では、小規模な環境では超線形（super linear）なスケーリングを達成し、大規模では線形（linear）またはそれ以下のスケーラビリティになっていることが分かります。これは、メモリの可用性と最大グローバルバッチサイズとの間の相互作用によるものです。
 
 DeepSpeed-HEはトレーニングにZeROの技術を採用しているため、利用可能なGPU間でモデルを分割することが可能です。その結果、GPUあたりのメモリ消費量はGPU数の増加とともに減少し、DeepSpeed-HEはGPUあたりでより大きなバッチサイズをサポートできるようになり、超線形のスケーリングが実現できます。しかし、より大規模になると、利用可能なメモリが増加し続ける一方で、最大グローバルバッチサイズが制限されているため、GPUあたりのバッチサイズを小さくすることになり、線形またはそれ以下のスケーリングになります。その結果、与えられた最大グローバルバッチサイズに対して、DeepSpeed-HEは、スーパーリニアとサブリニアのスケーラビリティの境界で最高のスループットとコスト効率を達成し、正確なポイントは、利用可能なメモリとグローバルバッチサイズの関数としてGPUごとに実行できる最大バッチサイズによってほぼ決定されます。
 
@@ -332,7 +332,7 @@ DeepSpeedは、以下のような機能を提供します。
 
 DeepSpeedは、Microsoftの[AI at Scale initiative](https://www.microsoft.com/en-us/research/project/ai-at-scale/)の一部で、次世代AIの機能の大規模な実現を進めています。詳細は[こちら](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)をご覧ください。DeepSpeedは、[Megatron-Turing NLG (530B)](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [Jurassic-1 (178B)](https://uploads-ssl.webflow.com/60fd4503684b466578c0d307/61138924626a6981ee09caf6_jurassic_tech_paper.pdf), [BLOOM (176B)](https://huggingface.co/blog/bloom-megatron-deepspeed), [GLM (130B)](https://github.com/THUDM/GLM-130B), [YaLM (100B)](https://github.com/yandex/YaLM-100B) を含め、様々な大規模モデルを学習するのに使用されてきました。
 
-またDeepSpeedは、 [Hugging Face Transformers](https://huggingface.co/docs/transformers/main/main_classes/deepspeed), [Hugging Face Accelerate](https://huggingface.co/docs/accelerate/usage_guides/deepspeed), [PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html), [MosaicML Composer](https://docs.mosaicml.com/en/latest/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration), [Determined AI](https://docs.determined.ai/latest/training/apis-howto/deepspeed/overview.html) など、多くの著名なオープンソースの深層学習フレームワークのバックエンドとして利用されています。
+またDeepSpeedは、 [Hugging Face Transformers](https://huggingface.co/docs/transformers/deepspeed), [Hugging Face Accelerate](https://huggingface.co/docs/accelerate/usage_guides/deepspeed), [PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html), [MosaicML Composer](https://docs.mosaicml.com/en/latest/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration), [Determined AI](https://docs.determined.ai/latest/training/apis-howto/deepspeed/overview.html) など、多くの著名なオープンソースの深層学習フレームワークのバックエンドとして利用されています。
 
 DeepSpeedについてのより詳しい情報は、以下をご覧ください。
 

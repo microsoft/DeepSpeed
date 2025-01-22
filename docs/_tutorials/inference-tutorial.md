@@ -3,6 +3,8 @@ title: "Getting Started with DeepSpeed for Inferencing Transformer based Models"
 tags: inference
 ---
 
+>**DeepSpeed-Inference v2 is here and it's called DeepSpeed-FastGen! For the best performance, latest features, and newest model support please see our [DeepSpeed-FastGen release blog](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen)!**
+
 DeepSpeed-Inference introduces several features to efficiently serve transformer-based PyTorch models. It supports model parallelism (MP) to fit large models that would otherwise not fit in GPU memory. Even for smaller models, MP can be used to reduce latency for inference. To further reduce latency and cost, we introduce inference-customized kernels. Finally, we propose a novel approach to quantize models, called MoQ, to both shrink the model and reduce the inference cost at production. For more details on the inference related optimizations in DeepSpeed, please refer to our [blog post](https://www.microsoft.com/en-us/research/blog/deepspeed-accelerating-large-scale-model-inference-and-training-via-system-optimizations-and-compression/).
 
 DeepSpeed provides a seamless inference mode for compatible transformer based models trained using DeepSpeed, Megatron, and HuggingFace, meaning that we don’t require any change on the modeling side such as exporting the model or creating a different checkpoint from your trained checkpoints. To run inference on multi-GPU for compatible models, provide the model parallelism degree and the checkpoint information or the model which is already loaded from a checkpoint, and DeepSpeed will do the rest. It will automatically partition the model as necessary, inject compatible high performance kernels into your model and manage the inter-gpu communication. For list of compatible models please see [here](https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py).
@@ -25,7 +27,7 @@ import deepspeed
 
 # Initialize the DeepSpeed-Inference engine
 ds_engine = deepspeed.init_inference(model,
-                                 mp_size=2,
+                                 tensor_parallel={"tp_size": 2},
                                  dtype=torch.half,
                                  checkpoint=None if args.pre_load_checkpoint else args.checkpoint_json,
                                  replace_with_kernel_inject=True)
@@ -47,7 +49,7 @@ pipe = pipeline("text2text-generation", model="google/t5-v1_1-small", device=loc
 # Initialize the DeepSpeed-Inference engine
 pipe.model = deepspeed.init_inference(
     pipe.model,
-    mp_size=world_size,
+    tensor_parallel={"tp_size": world_size},
     dtype=torch.float,
     injection_policy={T5Block: ('SelfAttention.o', 'EncDecAttention.o', 'DenseReluDense.wo')}
 )
@@ -108,7 +110,7 @@ generator = pipeline('text-generation', model='EleutherAI/gpt-neo-2.7B',
 
 
 generator.model = deepspeed.init_inference(generator.model,
-                                           mp_size=world_size,
+                                           tensor_parallel={"tp_size": world_size},
                                            dtype=torch.float,
                                            replace_with_kernel_inject=True)
 
