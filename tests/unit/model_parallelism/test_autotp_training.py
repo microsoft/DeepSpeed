@@ -21,6 +21,11 @@ from unit.checkpoint.common import compare_lr_scheduler_states, compare_optimize
 import os
 
 
+def skip_on_device():
+    if get_accelerator().device_name() == 'xpu':
+        pytest.skip(f"XPU requires a higher version for test")
+
+
 class SequentialLinearModel(torch.nn.Module):
 
     def __init__(self, hidden_dim, empty_grad=False, nlayers=1):
@@ -60,6 +65,7 @@ class TestTpParallelStates(DistributedTest):
     world_size = 4
 
     def test(self, tp_size: int):
+        skip_on_device()
         set_autotp_mode(training=True)
 
         dp_size = 4 / tp_size
@@ -85,6 +91,7 @@ class TestTpDataloaderCorrectness(DistributedTest):
     reuse_dist_env = True
 
     def test(self, tp_size: int):
+        skip_on_device()
         hidden_dim = 128
         set_autotp_mode(training=True)
         config_dict = {
@@ -161,6 +168,7 @@ class TestTpLayerFwdBwd(DistributedTest):
     reuse_dist_env = True
 
     def testRowParallel(self, tp_size: int):
+        skip_on_device()
         hidden_dim = 128
         batch_size_per_device = 1
         set_autotp_mode(training=True)
@@ -209,7 +217,7 @@ class TestTpLayerFwdBwd(DistributedTest):
         assert torch.allclose(out, torch_out.to(get_accelerator().current_device()), atol=1e-3)
 
     def testColumnParallel(self, tp_size: int):
-
+        skip_on_device()
         hidden_dim = 128
         batch_size_per_device = 1
         set_autotp_mode(training=True)
@@ -268,6 +276,7 @@ class TestParamsGather(DistributedTest):
 
     @pytest.mark.parametrize("layer_type", ["linear", "linearallreduce"])
     def test(self, layer_type):
+        skip_on_device()
         tp_size = 4
         hidden_dim = 128
         set_autotp_mode(training=True)
@@ -359,6 +368,7 @@ class TestSave(DistributedTest):
     reuse_dist_env = True
 
     def test_save_original_weight(self, tp_size: int, zero_stage: int):
+        skip_on_device()
         hidden_dim = 64
         set_autotp_mode(training=True)
         config_dict = {
@@ -417,6 +427,7 @@ class TestSave(DistributedTest):
             assert tp_state_dict is None, f"noly rank0 should have the state_dict"
 
     def test_ckpt_save(self, tmpdir, tp_size: int, zero_stage: int):
+        skip_on_device()
         hidden_dim = 64
         set_autotp_mode(training=True)
         config_dict = {
@@ -489,6 +500,7 @@ class TestTpGradNorm(DistributedTest):
     reuse_dist_env = True
 
     def test(self, tp_size: int, zero_stage: int):
+        skip_on_device()
         hidden_dim = 64
         set_autotp_mode(training=True)
         config_dict = {
