@@ -15,20 +15,20 @@ from ..logging import inference_logger
 
 class HuggingFaceCheckpointEngine(CheckpointEngineBase):
 
-    def __init__(self, model_name_or_path: str, auth_token: str = None) -> None:
+    def __init__(self, model_name_or_path: str, auth_token: str = None, **hf_kwargs) -> None:
         super().__init__()
         from transformers import AutoConfig, GenerationConfig
 
         self.model_name_or_path = model_name_or_path
         self.auth_token = auth_token
-        self.model_config = AutoConfig.from_pretrained(self.model_name_or_path)
-        self.generation_config = GenerationConfig.from_pretrained(self.model_name_or_path)
+        self.model_config = AutoConfig.from_pretrained(self.model_name_or_path, **hf_kwargs)
         # Define this property here so we can use it in the model implementation
         if not hasattr(self.model_config, "max_seq_length"):
-            self.model_config.max_seq_length = self.model_config.max_position_embeddings
-        else:
-            self.model_config.max_seq_length = self.generation_config.max_length
-
+            if hasattr(self.model_config, "max_position_embeddings"):
+                self.model_config.max_seq_length = self.model_config.max_position_embeddings
+            else:
+                generation_config = GenerationConfig.from_pretrained(self.model_name_or_path)
+                self.model_config.max_seq_length = generation_config.max_length
         self._local_checkpoint_dir = None
         self._all_ckpt_paths = self._fetch_checkpoint_files()
 
@@ -40,16 +40,13 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         # currently coming from the ckpt engine init but maybe a catch all kwargs for other
         # snapshot download parameters would be more flexible.
 
-        # NOTE(jeff): allow_patterns here are explicitly not using safetensors or other
-        # checkpoint files that may be present. Example of all files in the llama-2-7b
-        # repo here: https://huggingface.co/meta-llama/Llama-2-7b-hf/tree/main
-        from huggingface_hub import snapshot_download, list_files_info
+        from huggingface_hub import snapshot_download, list_repo_tree
 
         def model_has_safetensors(model_name_or_path: str) -> bool:
             if os.path.isdir(model_name_or_path):
                 file_list = os.listdir(model_name_or_path)
             else:
-                file_list = [rf.rfilename for rf in list_files_info(model_name_or_path)]
+                file_list = [rf.path for rf in list_repo_tree(model_name_or_path)]
             for f in file_list:
                 if f.endswith(".safetensors"):
                     return True
@@ -61,7 +58,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
             # We need to download the checkpoint files from HF
             if model_has_safetensors(self.model_name_or_path):
                 # Prioritize downloading safetensors if they are available
-                allow_patterns = ["*.safetensors", "*.json", "*.pt"]
+                allow_patterns = ["*.safetensors", "*.json"]
             else:
                 # Fallback to bin files when safetensors are not present
                 allow_patterns = ["*.bin", "*.json", "*.pt"]
@@ -83,7 +80,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         else:
             model_param_json_fname = "pytorch_model.bin.index.json"
             model_file_fname = "pytorch_model.bin"
-            self._checkpoint_load_fn = partial(torch.load, map_location="cpu")
+            self._checkpoint_load_fn = partial(torch.load, map_location="cpu", weights_only=False)
 
         model_param_json = os.path.join(self._local_checkpoint_dir, model_param_json_fname)
 
@@ -111,6 +108,12 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         for checkpoint in self._all_ckpt_paths:
             inference_logger().info(f"Loading checkpoint: {checkpoint}")
             checkpoint_sd = self._checkpoint_load_fn(checkpoint)
+
+            # If the model has tied embeddings, we need to make sure the lm_head weights are tied to the embeddings weights
+            if hasattr(self.model_config, "tie_word_embeddings") and self.model_config.tie_word_embeddings:
+                if self.model_config.model_type == "qwen2":
+                    checkpoint_sd["lm_head.weight"] = checkpoint_sd["model.embed_tokens.weight"]
+
             param_keys = list(checkpoint_sd.keys())
             for param_name in param_keys:
                 param = checkpoint_sd[param_name]

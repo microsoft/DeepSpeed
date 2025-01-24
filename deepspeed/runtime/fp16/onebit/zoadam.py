@@ -7,14 +7,16 @@ import types
 import torch
 import numpy as np
 from deepspeed.accelerator import get_accelerator
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 from deepspeed import comm as dist
 
 
 class ZeroOneAdam(torch.optim.Optimizer):
-    """Implements the 0/1 Adam algorithm. Currently GPU-only.
+    """
+    Implements the 0/1 Adam algorithm. Currently GPU-only.
     For usage example please see https://www.deepspeed.ai/tutorials/zero-one-adam/
     For technical details please read https://arxiv.org/abs/2202.06009
+
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups.
@@ -114,6 +116,10 @@ class ZeroOneAdam(torch.optim.Optimizer):
             from deepspeed.runtime.comm.hccl import HcclBackend
             self.using_pipeline = hasattr(self.deepspeed, 'pipeline_enable_backward_allreduce')
             self.comm_backend_handle = HcclBackend(self.deepspeed.mpu)
+        elif self.comm_backend_name == 'compressed':
+            from deepspeed.runtime.comm.compressed import CompressedBackend
+            self.using_pipeline = hasattr(self.deepspeed, 'pipeline_enable_backward_allreduce')
+            self.comm_backend_handle = CompressedBackend(self.deepspeed.mpu)
         self.size = self.comm_backend_handle.size
 
         self.divider = int(self.size * 8 / np.gcd(self.size, 8))
