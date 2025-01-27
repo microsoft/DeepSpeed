@@ -384,7 +384,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             if orig_group_numel <= left_boundary:
                 padding = curr_partition_size
             elif orig_group_numel < left_boundary + curr_partition_size:
-                padding = orig_group_numel - left_boundary
+                padding = left_boundary + curr_partition_size - orig_group_numel
             else:
                 padding = 0
             self.groups_padding.append(padding)
