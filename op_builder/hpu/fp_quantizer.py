@@ -46,7 +46,7 @@ class FPQuantizerBuilder(OpBuilder):
 
 
 class FPQuantizer:
-    PYTHON_IMPL = True
+    CUDA_IMPL = False
 
     @classmethod
     def selective_dequantize(cls, val_q, scales, indexes, group_size, q_mantisa_bits, q_exponent_bits):

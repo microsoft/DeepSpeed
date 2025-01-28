@@ -47,7 +47,7 @@ class FP_Quantize(Quantizer):
         super().__init__(group_size=quantization_config.group_size)
         if fp_quant_module is None:
             fp_quant_module = FPQuantizerBuilder().load()
-        self.is_python_impl = getattr(fp_quant_module, "PYTHON_IMPL", False)
+        self.cuda_impl = getattr(fp_quant_module, "CUDA_IMPL", True)
         self.q_config = quantization_config
 
         self.orig_dtype = None
@@ -85,7 +85,7 @@ class FP_Quantize(Quantizer):
         # group_size should be the minimal number between the defined group size and number of elements in tensor.
         group_size = int(min(self.q_config.group_size, input.numel()) * q_bits) // 8
         # CUDA quantization kernel saves the scale as (fp32) inside the quantized tensor for each group
-        if not self.is_python_impl:
+        if self.cuda_impl:
             group_size += 4
         # CUDA quantization kernel allocates tensors as uint8, but handles them as fp8 inside the kernel.
         self.input_q = torch.ones(self.num_groups, group_size, dtype=self.q_config.q_dtype, device=input.device)
@@ -95,7 +95,7 @@ class FP_Quantize(Quantizer):
         out = fp_quant_module.quantize(self.input_q, input, self.scale, group_size, stochastic_mode, q_bits,
                                        q_mantisa_bits)
         if return_meta_tensor:
-            if not self.is_python_impl:
+            if self.cuda_impl:
                 data, self.scale = out.split(group_size, dim=-1)
                 data = data.contiguous().reshape(input.shape)
             else:
@@ -136,11 +136,11 @@ class FP_Quantize(Quantizer):
             assert (0), \
                 f"Missing {q_bits}-dequantization, please add the template arguments for the kernel to support this precision!"
 
-        if scale is not None and not self.is_python_impl:
+        if scale is not None and self.cuda_impl:
             assert input_q.numel() == fp_out.numel(), \
             f'[De-quantization Error]: quantized data should have the same size as original tensor when scale is not None!'
             input_q = torch.cat([input_q.reshape(-1, self.q_config.group_size), scale], dim=-1).contiguous()
-        elif scale is not None and self.is_python_impl:
+        elif scale is not None and not self.cuda_impl:
             group_size = int(min(self.q_config.group_size, input_q.numel()) * q_bits) // 8
             input_q = input_q.reshape(-1, group_size)
 
@@ -174,7 +174,7 @@ class FP_Quantize(Quantizer):
             assert (0), \
                 f"Missing {q_bits}-dequantization, please add the template arguments for the kernel to support this precision!"
 
-        if scale is not None and not self.is_python_impl:
+        if scale is not None and self.cuda_impl:
             assert input_q.numel() == fp_out.numel(), \
             f'[De-quantization Error]: quantized data should have the same size as original tensor when scale is not None!'
             input_q = torch.cat([input_q.reshape(-1, self.q_config.group_size), scale], dim=-1).contiguous()

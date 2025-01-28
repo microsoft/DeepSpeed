@@ -26,10 +26,8 @@ from deepspeed.linear import QuantizationConfig
 def test_fp_quant(dtype, q_bits, M):
     device_name = get_accelerator().device_name()
     quantization_group_size = 128
-
-    quant_config = QuantizationConfig()
-    quant_config.q_dtype = FPQuantizerBuilder.get_default_quant_dtype()
-    quant_config.group_size = quantization_group_size
+    quant_config = QuantizationConfig(q_dtype=FPQuantizerBuilder.get_default_quant_dtype(),
+                                      group_size=quantization_group_size)
     fpq = FP_Quantize(quantization_config=quant_config)
 
     N = 8192
