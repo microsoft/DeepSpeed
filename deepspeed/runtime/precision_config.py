@@ -21,6 +21,7 @@ BFLOAT16 parameters should be of the format:
 BFLOAT16 = "bf16"
 BFLOAT16_OLD = "bfloat16"  # keeping for backwards compatibility
 
+
 def get_bfloat16_config(param_dict):
     bf16_config_dict = param_dict.get(BFLOAT16, None)
     if bf16_config_dict is None:
@@ -35,7 +36,7 @@ class DeepSpeedBF16Config(DeepSpeedConfigModel):
 
     enabled: bool = False
     """
-    Enable bfloat16 mixed-precision training/inference 
+    Enable bfloat16 mixed-precision training/inference
     """
 
     immediate_grad_update: bool = False
@@ -43,7 +44,7 @@ class DeepSpeedBF16Config(DeepSpeedConfigModel):
     Apply gradient updates immediately rather than delayed.
     """
 
-    check_grad_overflow: bool = False  
+    check_grad_overflow: bool = False
     """
     Check for gradient overflows and underflows
     """
@@ -69,28 +70,30 @@ FP16 parameters should be of the format:
 '''
 FP16 = "fp16"
 
+
 def get_float16_config(param_dict):
     fp16_config_dict = param_dict.get(FP16, {})
     return DeepSpeedFP16Config(fp16_config_dict)
+
 
 class DeepSpeedFP16Config(DeepSpeedConfigModel):
     """
     For float16 configuration
     """
 
-    enabled: bool = False 
+    enabled: bool = False
     """
     Enable fp16 mixed-precision training/inference
-    """    
+    """
 
-    auto_cast: bool = False 
+    auto_cast: bool = False
     """
     Automatically cast inputs to fp16
     """
 
     loss_scale: float = 0
     """
-    Loss scaling value. Default value of 0 means dynamic loss scaling instead of static loss scale. 
+    Loss scaling value. Default value of 0 means dynamic loss scaling instead of static loss scale.
     """
 
     initial_scale_power: int = 16
@@ -100,7 +103,7 @@ class DeepSpeedFP16Config(DeepSpeedConfigModel):
 
     loss_scale_window: 1000
     """
-    Iteration intervals for raising/lowering dynamic loss scale value. 
+    Iteration intervals for raising/lowering dynamic loss scale value.
     """
 
     hysteresis: int = 2
@@ -108,15 +111,12 @@ class DeepSpeedFP16Config(DeepSpeedConfigModel):
     Delay shift in dynamic loss scaling.
     """
 
-    consecutive_hysteresis: bool = False 
+    consecutive_hysteresis: bool = False
     """
-    Refill hysteresis if iteration does not overflow/underflow. 
-    """
-
-    min_loss_scale: int = 1 
-    """
-    Minimum dynamic loss scale value. 
+    Refill hysteresis if iteration does not overflow/underflow.
     """
 
-
-
+    min_loss_scale: int = 1
+    """
+    Minimum dynamic loss scale value.
+    """
