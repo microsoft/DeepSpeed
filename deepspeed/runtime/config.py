@@ -31,6 +31,7 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
 from ..inference.config import WeightQuantConfig
+from .validate_config import get_bfloat16_config
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -163,13 +164,6 @@ def get_fp16_enabled(param_dict):
         return False
 
 
-def get_bfloat16_enabled(param_dict):
-    for key in [BFLOAT16, BFLOAT16_OLD]:
-        if key in param_dict.keys():
-            return get_scalar_param(param_dict[key], BFLOAT16_ENABLED, BFLOAT16_ENABLED_DEFAULT)
-    return False
-
-
 def get_bfloat16_immediate_grad_update(param_dict):
     for key in [BFLOAT16, BFLOAT16_OLD]:
         if key in param_dict.keys():
@@ -193,8 +187,6 @@ def get_fp16_auto_cast(param_dict):
 def get_loss_scale(param_dict):
     if get_fp16_enabled(param_dict):
         return get_scalar_param(param_dict[FP16], FP16_LOSS_SCALE, FP16_LOSS_SCALE_DEFAULT)
-    elif get_bfloat16_enabled(param_dict):
-        return 1.0
     else:
         return FP16_LOSS_SCALE_DEFAULT
 
@@ -203,8 +195,6 @@ def get_initial_dynamic_scale(param_dict):
     if get_fp16_enabled(param_dict):
         initial_scale_power = get_scalar_param(param_dict[FP16], FP16_INITIAL_SCALE_POWER,
                                                FP16_INITIAL_SCALE_POWER_DEFAULT)
-    elif get_bfloat16_enabled(param_dict):
-        initial_scale_power = 0
     else:
         initial_scale_power = FP16_INITIAL_SCALE_POWER_DEFAULT
 
@@ -828,10 +818,9 @@ class DeepSpeedConfig(object):
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.fp16_auto_cast = get_fp16_auto_cast(param_dict)
-        self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
-        self.bfloat16_immediate_grad_update = get_bfloat16_immediate_grad_update(param_dict)
+        self.bfloat16_config = get_bfloat16_config(param_dict)
         assert not (self.fp16_enabled
-                    and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
+                    and self.bfloat16_config.enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(param_dict)
         self.amp_enabled = get_amp_enabled(param_dict)
         self.amp_params = get_amp_params(param_dict)

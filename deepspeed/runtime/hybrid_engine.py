@@ -80,7 +80,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
         if self._config.fp16_enabled:
             inference_dtype = torch.float16
-        elif self._config.bfloat16_enabled:
+        elif self._config.bfloat16_config.enabled:
             inference_dtype = torch.bfloat16
         else:
             inference_dtype = torch.float32

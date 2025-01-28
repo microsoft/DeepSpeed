@@ -839,7 +839,7 @@ class DeepSpeedEngine(Module):
         return self._config.fp16_enabled
 
     def bfloat16_enabled(self):
-        return self._config.bfloat16_enabled
+        return self._config.bfloat16_config.enabled
 
     def fp16_master_weights_and_gradients(self):
         return self._config.fp16_master_weights_and_gradients
@@ -1527,6 +1527,7 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
         optimizer = BF16_Optimizer(optimizer,
                                    self.param_names,
+                                   bfloat16_config=self._config.bfloat_config,
                                    mpu=self.mpu,
                                    clip_grad=clip_grad,
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
@@ -1534,7 +1535,6 @@ class DeepSpeedEngine(Module):
                                    timers=timers,
                                    grad_acc_dtype=self.get_data_types()[1],
                                    graph_harvesting=self.graph_harvesting(),
-                                   immediate_grad_update=self._config.bfloat16_immediate_grad_update,
                                    has_moe_layers=self.has_moe_layers)
 
         return optimizer
@@ -1544,6 +1544,13 @@ class DeepSpeedEngine(Module):
 
         mics_shard_size = self.mics_shard_size()
         model_dtype, gradient_accumulation_dtype = self.get_data_types()
+
+        if self.bfloat16_enabled():
+            check_grad_overflow = self._config.bfloat16_config.check_grad_overflow
+        elif self.fp16_enabled():
+            check_grad_overflow = True
+        else:
+            check_grad_overflow = False
 
         timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
 
@@ -1596,7 +1603,8 @@ class DeepSpeedEngine(Module):
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
                 gradient_accumulation_dtype=gradient_accumulation_dtype,
                 communication_data_type=self.communication_data_type,
-                elastic_checkpoint=self.zero_elastic_checkpoint())
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
+                check_grad_overflow=check_grad_overflow)
 
         elif zero_stage == ZeroStageEnum.weights:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
