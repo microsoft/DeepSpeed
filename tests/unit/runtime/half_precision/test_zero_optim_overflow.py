@@ -20,6 +20,7 @@ def has_inf_or_nan(x):
     inf_or_nan = nan.logical_or(inf)
     return inf_or_nan.float().max()
 
+
 def run_model_step(model, x_sample, y_label, grad_value):
     loss = model(x_sample, y_label)
     model.backward(loss)
@@ -90,7 +91,6 @@ class TestZeROFloat16(DistributedTest):
             if loss_scaler.cur_iter % expected_scale_window == 0:
                 expected_loss_scale *= 2
 
-
     def test_all_overflow(self, zero_stage, offload_optimizer):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -111,7 +111,7 @@ class TestZeROFloat16(DistributedTest):
                 "loss_scale": 0,
                 "initial_scale_power": initial_scale_power,
                 "loss_scale_window": 2,
-                "hysteresis": 1, 
+                "hysteresis": 1,
             },
             "zero_optimization": {
                 "stage": zero_stage,
@@ -145,8 +145,6 @@ class TestZeROFloat16(DistributedTest):
             assert loss_scaler.cur_scale == expected_loss_scale
             assert loss_scaler.cur_iter == (i + 1)
 
-
-
     def test_some_overflow(self, zero_stage, offload_optimizer):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
@@ -165,7 +163,7 @@ class TestZeROFloat16(DistributedTest):
                 "loss_scale": 0,
                 "initial_scale_power": initial_scale_power,
                 "loss_scale_window": 2,
-                "hysteresis": 1, 
+                "hysteresis": 1,
             },
             "zero_optimization": {
                 "stage": zero_stage,
@@ -204,7 +202,7 @@ class TestZeROFloat16(DistributedTest):
         expected_loss_scale /= (2**len(overflow_gradients))
         assert loss_scaler.cur_scale == expected_loss_scale
         assert loss_scaler.cur_iter == expected_iteration
-        
+
         # Run model scale_window + 1 times to increase scale once
         normal_gradients = np.random.uniform(-0.1, 0.1, expected_scale_window + 1)
         expected_iteration += len(normal_gradients)
@@ -234,8 +232,6 @@ class TestZeROFloat16(DistributedTest):
         expected_loss_scale /= (2**len(overflow_gradients))
         assert loss_scaler.cur_scale == expected_loss_scale
         assert loss_scaler.cur_iter == expected_iteration
-
-
 
 
 @pytest.mark.parametrize("zero_stage", [1, 2])
@@ -284,7 +280,6 @@ class TestZeROBFloat16(DistributedTest):
         assert model.skipped_steps == 0
         assert all([not has_inf_or_nan(p) for p in model.parameters()])
 
-
     def test_detect_grad_overflow(self, zero_stage, offload_optimizer):
         if not get_accelerator().is_bf16_supported():
             pytest.skip("bf16 is not supported")
@@ -323,10 +318,9 @@ class TestZeROBFloat16(DistributedTest):
 
         for i, (batch, grad_value) in enumerate(zip(data_loader, overflow_gradients)):
             run_model_step(model, batch[0], batch[1], grad_value)
-            assert model.skipped_steps == (i+ 1)
+            assert model.skipped_steps == (i + 1)
 
         assert all([not has_inf_or_nan(p) for p in model.parameters()])
-
 
     def test_ignore_grad_overflow(self, zero_stage, offload_optimizer):
         if not get_accelerator().is_bf16_supported():
@@ -369,5 +363,3 @@ class TestZeROBFloat16(DistributedTest):
 
         assert model.skipped_steps == 0
         assert all([has_inf_or_nan(p) for p in model.parameters()])
-
-
