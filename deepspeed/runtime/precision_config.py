@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigModel
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 #########################################
 # BFLOAT16 support
