@@ -1527,7 +1527,7 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
         optimizer = BF16_Optimizer(optimizer,
                                    self.param_names,
-                                   bfloat16_config=self._config.bfloat_config,
+                                   bfloat16_config=self._config.bfloat16_config,
                                    mpu=self.mpu,
                                    clip_grad=clip_grad,
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
