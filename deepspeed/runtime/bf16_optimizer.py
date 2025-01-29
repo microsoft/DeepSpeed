@@ -59,7 +59,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.grad_acc_dtype = grad_acc_dtype
 
         self.immediate_grad_update = bfloat16_config.immediate_grad_update
-        self.check_overflow = bfloat16_config.check_overflow
 
         self.clip_grad = clip_grad
         self.norm_type = norm_type
