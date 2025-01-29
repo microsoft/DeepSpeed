@@ -4,6 +4,13 @@
 # DeepSpeed Team
 
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
+from .fp16.loss_scaler import (
+    INITIAL_LOSS_SCALE,
+    SCALE_WINDOW,
+    DELAYED_SHIFT,
+    CONSECUTIVE_HYSTERESIS,
+    MIN_LOSS_SCALE,
+)
 
 #########################################
 # BFLOAT16 support
@@ -73,7 +80,7 @@ FP16 = "fp16"
 
 def get_float16_config(param_dict):
     fp16_config_dict = param_dict.get(FP16, {})
-    return DeepSpeedFP16Config(fp16_config_dict)
+    return DeepSpeedFP16Config(**fp16_config_dict)
 
 
 class DeepSpeedFP16Config(DeepSpeedConfigModel):
@@ -101,7 +108,7 @@ class DeepSpeedFP16Config(DeepSpeedConfigModel):
     For dynamic loss scaling, set initial loss scale to 2^{initial_scale_power}.
     """
 
-    loss_scale_window: 1000
+    loss_scale_window: int = 1000
     """
     Iteration intervals for raising/lowering dynamic loss scale value.
     """
@@ -120,3 +127,20 @@ class DeepSpeedFP16Config(DeepSpeedConfigModel):
     """
     Minimum dynamic loss scale value.
     """
+
+    fp16_master_weights_and_grads: bool = False
+    """
+    Maintain master weights in optimizer state as fp16 instead of fp32 (valid with DeepSpeedCPUAdam only).
+    """
+
+    def initial_dynamic_scale(self):
+        return 2**self.initial_scale_power
+
+    def dynamic_loss_scale_args(self):
+        return {
+            INITIAL_LOSS_SCALE: 2**self.initial_scale_power,
+            SCALE_WINDOW: self.loss_scale_window,
+            DELAYED_SHIFT: self.hysteresis,
+            CONSECUTIVE_HYSTERESIS: self.consecutive_hysteresis,
+            MIN_LOSS_SCALE: self.min_loss_scale,
+        }

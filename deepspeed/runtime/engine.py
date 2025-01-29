@@ -836,13 +836,13 @@ class DeepSpeedEngine(Module):
         return self._config.graph_harvesting
 
     def fp16_enabled(self):
-        return self._config.fp16_enabled
+        return self._config.float16_config.enabled
 
     def bfloat16_enabled(self):
         return self._config.bfloat16_config.enabled
 
     def fp16_master_weights_and_gradients(self):
-        return self._config.fp16_master_weights_and_gradients
+        return self._config.float16_config.fp16_master_weights_and_grads
 
     def amp_enabled(self):
         return self._config.amp_enabled
@@ -851,10 +851,10 @@ class DeepSpeedEngine(Module):
         return self._config.amp_params
 
     def fp16_auto_cast(self):
-        return self._config.fp16_auto_cast
+        return self._config.float16_config.auto_cast
 
     def loss_scale(self):
-        return self._config.loss_scale
+        return self._config.float16_config.loss_scale
 
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
@@ -920,13 +920,13 @@ class DeepSpeedEngine(Module):
         return self._config.gradient_clipping
 
     def dynamic_loss_scale(self):
-        return self._config.loss_scale == 0
+        return self._config.float16_config.loss_scale == 0
 
     def initial_dynamic_scale(self):
-        return self._config.initial_dynamic_scale
+        return self._config.float16_config.initial_dynamic_scale()
 
     def dynamic_loss_scale_args(self):
-        return self._config.dynamic_loss_scale_args
+        return self._config.float16_config.dynamic_loss_scale_args()
 
     def swap_tensor_config(self):
         return self._config.swap_tensor_config
