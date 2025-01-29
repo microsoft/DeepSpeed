@@ -54,8 +54,9 @@ class FP_Quantize(Quantizer):
                  q_bits=8,
                  q_mantisa_bits=3,
                  stochastic_mode=False,
-                 return_meta_tensor=False) -> torch.Tensor:
-        assert input.dtype == torch.bfloat16, "only support bf16 for now"
+                 return_meta_tensor=False,
+                 out=None) -> torch.Tensor:
+        assert input.dtype == torch.bfloat16, f"only support bf16 for now, dtype is {input.dtype}"
         if return_meta_tensor:
             assert q_bits == 8, "meta tensor is only supported with q_bit=8"
 
@@ -73,23 +74,23 @@ class FP_Quantize(Quantizer):
         else:
             assert (0), \
                 f"Missing {q_bits}-quantization, please add the template arguments for the kernel to support this precision!"
-        self.num_groups = input.numel() // self.group_size
-        self.input_q = torch.ones(self.num_groups,
-                                  int(self.group_size * q_bits) // 8 + 4,
-                                  dtype=torch.uint8,
-                                  device=input.device)
-        out = fp_quant_module.quantize(self.input_q, input, self.group_size, stochastic_mode, q_bits, q_mantisa_bits)
-        if return_meta_tensor:
-            data, self.scale = out.split(self.group_size, dim=-1)
-            data = data.contiguous().reshape(input.shape)
-            self.scale = self.scale.contiguous()
-            del self.input_q
-            del out
-            gc.collect()
-            get_accelerator().empty_cache()
-            return data, self.scale
 
-        return out
+        self.num_groups = input.numel() // self.group_size
+        self.input_q = torch.ones(
+            self.num_groups, int(self.group_size * q_bits) // 8 +
+            4, dtype=torch.uint8, device=input.device) if out is None else out
+        input_q_reshaped = fp_quant_module.quantize(self.input_q, input, self.group_size, stochastic_mode, q_bits,
+                                                    q_mantisa_bits)
+        if return_meta_tensor:
+            self.scales = input_q_reshaped[:, -4:].contiguous().reshape(-1, 4)
+            input_q_reshaped = self.input_q[:, :-4].contiguous().reshape(self.orig_shape)
+            del self.input_q
+            self.input_q = None
+            return input_q_reshaped, self.scales
+        return input_q_reshaped
+
+    def get_scales(self):
+        return fp_quant_module.get_scales(self.scales, self.num_groups)
 
     def to(self, *args, **kwargs):
         # Intermediate tensors may need to be moved to different devices
@@ -123,6 +124,7 @@ class FP_Quantize(Quantizer):
             f'[De-quantization Error]: quantized data should have the same size as original tensor when scale is not None!'
             input_q = torch.cat([input_q.reshape(-1, self.group_size), scale], dim=-1).contiguous()
         fp_quant_module.dequantize(fp_out, input_q, self.group_size, q_mantisa_bits, q_bits - q_mantisa_bits - 1)
+
         return fp_out
 
     def selective_dequantize(self,
@@ -150,11 +152,6 @@ class FP_Quantize(Quantizer):
         else:
             assert (0), \
                 f"Missing {q_bits}-dequantization, please add the template arguments for the kernel to support this precision!"
-
-        if scale is not None:
-            assert input_q.numel() == fp_out.numel(), \
-            f'[De-quantization Error]: quantized data should have the same size as original tensor when scale is not None!'
-            input_q = torch.cat([input_q.reshape(-1, self.group_size), scale], dim=-1).contiguous()
 
         fp_quant_module.selective_dequantize(fp_out, input_q, indexes, self.group_size, q_mantisa_bits,
                                              q_bits - q_mantisa_bits - 1)

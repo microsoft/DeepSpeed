@@ -62,7 +62,8 @@ class QuantizedParameter(nn.Parameter):
                 tensor.data = self.quantizer.quantize(tensor.data,
                                                       q_bits=self.quantization_config.q_bits,
                                                       q_mantisa_bits=self.quantization_config.mantissa_bits)
-            assert tensor.dtype == torch.uint8
+            assert (tensor.dtype == torch.int8), \
+                f"Quantize conversion dtype ({tensor.dtype}) error!"
 
     def dequantized(self) -> torch.Tensor:
         """
