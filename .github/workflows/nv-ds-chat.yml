@@ -44,8 +44,11 @@ jobs:
 
       - name: Install deepspeed
         run: |
+          pip list
           pip install transformers
+          pip list
           pip install .[dev]
+          pip list
           ds_report
 
       - name: Install deepspeed-chat
