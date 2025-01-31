@@ -374,6 +374,11 @@ class DeepSpeedEngine(Module):
 
         self._is_compiled = False
 
+        # Verify autocast setting
+        if self.torch_autocast_enabled():
+            assert not self.fp16_enabled(), "Cannot enable both torch autocast and fp16"
+            assert not self.bfloat16_enabled(), "Cannot enable both torch autocast and bfloat16"
+
     def _optimized_linear_offload_setup(self):
         self.optimized_linear_base_weight_sharding = False
         self.optimized_linear_lora_enabled = False
@@ -849,6 +854,12 @@ class DeepSpeedEngine(Module):
 
     def amp_params(self):
         return self._config.amp_params
+
+    def torch_autocast_enabled(self):
+        return self._config.torch_autocast_enabled
+
+    def torch_autocast_dtype(self):
+        return self._config.torch_autocast_dtype
 
     def fp16_auto_cast(self):
         return self._config.fp16_auto_cast
@@ -1909,7 +1920,10 @@ class DeepSpeedEngine(Module):
         if self.fp16_auto_cast():
             inputs = self._cast_inputs_half(inputs)
 
-        loss = self.module(*inputs, **kwargs)
+        with torch.autocast(device_type=get_accelerator().device_name(),
+                            dtype=self.torch_autocast_dtype(),
+                            enabled=self.torch_autocast_enabled()):
+            loss = self.module(*inputs, **kwargs)
 
         if self.zero_optimization_partition_weights():
             # Disable automated discovery of external parameters
