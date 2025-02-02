@@ -90,6 +90,7 @@ from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayer
 
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+from deepspeed.runtime.torch_autocast import init_autocast_params
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
@@ -311,6 +312,9 @@ class DeepSpeedEngine(Module):
         if not isinstance(model_parameters, list):
             model_parameters = list(model_parameters)
 
+        if self.torch_autocast_enabled():
+            init_autocast_params(self, self.torch_autocast_dtype())
+
         if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler()
@@ -373,11 +377,6 @@ class DeepSpeedEngine(Module):
         self.unflatten = _unflatten_dense_tensors
 
         self._is_compiled = False
-
-        # Verify autocast setting
-        if self.torch_autocast_enabled():
-            assert not self.fp16_enabled(), "Cannot enable both torch autocast and fp16"
-            assert not self.bfloat16_enabled(), "Cannot enable both torch autocast and bfloat16"
 
     def _optimized_linear_offload_setup(self):
         self.optimized_linear_base_weight_sharding = False
