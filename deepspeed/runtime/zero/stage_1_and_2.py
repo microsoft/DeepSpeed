@@ -459,8 +459,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # map between param_id and bool to specify if a param is in this partition
         self.is_param_in_current_partition = {}
 
-        comm_dtypes = get_all_autocast_dtypes([p for params in self.bit16_groups for p in params
-                                               ]) if is_autocast_initialized() else {self.communication_data_type}
+        if is_autocast_initialized():
+            comm_dtypes = get_all_autocast_dtypes([p for params in self.bit16_groups for p in params])
+            self.torch_autocast_gradscaler = torch.amp.GradScaler(device=get_accelerator().device_name())
+        else:
+            comm_dtypes = {self.communication_data_type}
+            self.torch_autocast_gradscaler = None
+
         self.ipg_buckets: Dict[torch.dtype, IPGBucket] = {dtype: IPGBucket() for dtype in comm_dtypes}
 
         self.params_already_reduced = []
@@ -1889,7 +1894,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #    self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
         #else:
         #    self.optimizer.step()
-        self.optimizer.step()
+        if self.torch_autocast_gradscaler:
+            self.torch_autocast_gradscaler.step(self.optimizer)
+            self.torch_autocast_gradscaler.update()
+        else:
+            self.optimizer.step()
         self.optimizer.param_groups = original_param_groups
 
         # We need to link optimizer state after the first step() call
@@ -2137,6 +2146,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.custom_loss_scaler:
             scaled_loss = self.external_loss_scale * loss
             scaled_loss.backward()
+        elif self.torch_autocast_gradscaler:
+            self.torch_autocast_gradscaler.scale(loss).backward(retain_graph=retain_graph)
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
