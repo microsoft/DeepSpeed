@@ -3,40 +3,26 @@
 
 # DeepSpeed Team
 
-import random
-import os
-import numpy as np
-from typing import Callable, Any
 from copy import deepcopy
 
 import pytest
 
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.cuda.amp import autocast, GradScaler
 
-from unit.common import DistributedTest, preferred_dtype, enable_determinism
-from unit.simple_model import SimpleModel, random_dataloader
+from unit.common import DistributedTest, enable_determinism
+from unit.simple_model import SimpleModel
 from unit.util import bf16_required_version_check
 
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.zero import GatheredParameters
-from deepspeed.git_version_info import torch_info
-from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
-
 
 RTOL = 0.01
 ATOL = 0.0
 
 
-def step_amp(baseline_model,
-                baseline_optimizer,
-                target_engine,
-                dtype,
-                baseline_scaler,
-                x, y,
-                rtol, atol):
+def step_amp(baseline_model, baseline_optimizer, target_engine, dtype, baseline_scaler, x, y, rtol, atol):
     # Runs the forward pass with autocasting.
     with torch.autocast(device_type="cuda", dtype=dtype):
         baseline_optimizer.zero_grad()
@@ -61,7 +47,9 @@ def compare_loss(zero_stage, dtype):
     lr = 0.001
 
     if dtype == torch.bfloat16 and not bf16_required_version_check():
-        raise ValueError("DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly")
+        raise ValueError(
+            "DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     config_dict = {
         "train_micro_batch_size_per_gpu": 1,
@@ -97,9 +85,7 @@ def compare_loss(zero_stage, dtype):
         target_model = deepcopy(model)
 
     ds_optimizer = torch.optim.Adam(target_model.parameters(), lr=lr)
-    target_engine, _, _, _ = deepspeed.initialize(config=config_dict,
-                                                                model=target_model,
-                                                                optimizer=ds_optimizer)
+    target_engine, _, _, _ = deepspeed.initialize(config=config_dict, model=target_model, optimizer=ds_optimizer)
     train_batch_size = config_dict["train_micro_batch_size_per_gpu"]
 
     xs = [torch.randn(train_batch_size, hidden_dim, device=device, dtype=torch.float32) for _ in range(iteration)]
