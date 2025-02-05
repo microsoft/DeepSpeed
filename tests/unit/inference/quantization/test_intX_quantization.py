@@ -314,6 +314,37 @@ class TestQuantizedInt(DistributedTest):
             assert type(model.self_attn.v_proj) is QuantizedLinear
             assert type(model.self_attn.out_proj) is QuantizedLinear
 
+    def test_wildcard_model_quantization(self, quantization_bits):
+        reset_random()
+
+        config = AutoConfig.from_pretrained('facebook/opt-125m')
+
+        with torch.no_grad():
+            model = OPTDecoderLayer(config).half().to(device)
+            bits = quantization_bits
+
+            ds_config = {
+                'weight_quantization': {
+                    'post_init_quant': {
+                        '*': {
+                            'num_bits': bits,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        },
+                    }
+                }
+            }
+
+            model = _init_group_wise_weight_quantization(model, ds_config)
+
+            assert type(model.fc1) is QuantizedLinear
+            assert type(model.fc2) is QuantizedLinear
+            assert type(model.self_attn.q_proj) is QuantizedLinear
+            assert type(model.self_attn.k_proj) is QuantizedLinear
+            assert type(model.self_attn.v_proj) is QuantizedLinear
+            assert type(model.self_attn.out_proj) is QuantizedLinear
+
     @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
     def test_quantized_linear(self, quantization_bits, group_dim):
         reset_random()

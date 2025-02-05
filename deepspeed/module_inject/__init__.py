@@ -6,5 +6,5 @@
 from .replace_module import replace_transformer_layer, revert_transformer_layer, ReplaceWithTensorSlicing, GroupQuantizer, generic_injection
 from .module_quantize import quantize_transformer_layer
 from .replace_policy import HFBertLayerPolicy
-from .layers import LinearAllreduce, LinearLayer, EmbeddingLayer, Normalize
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce, EmbeddingLayer, Normalize
 from .policy import DSPolicy

@@ -513,6 +513,98 @@ class TestLowCpuMemUsage(DistributedTest):
 
 
 @pytest.mark.seq_inference
+@pytest.mark.parametrize("model_w_task", [("tiiuae/falcon-7b", "text-generation")], ids=["falcon"])
+class TestAutoTP(DistributedTest):
+    world_size = 1
+
+    def test(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+    ):
+        # TODO: enable this test for H100 tests
+        pytest.skip("Not enough GPU memory for this on V100 runners")
+        model, task = model_w_task
+        dtype = torch.bfloat16
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
+        pipe = pipeline(task,
+                        model=model,
+                        tokenizer=tokenizer,
+                        torch_dtype=dtype,
+                        trust_remote_code=True,
+                        device=torch.device("cpu"),
+                        framework="pt")
+        #bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model, mp_size=self.world_size, replace_with_kernel_inject=False)
+        # Switch device to GPU so that input tensors are not on CPU
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
+        ds_output = pipe(query, **inf_kwargs)
+
+        #print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        #assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.seq_inference
+@pytest.mark.parametrize("model_w_task", [("tiiuae/falcon-7b", "text-generation")], ids=["falcon"])
+class TestAutoTPwithWeightQuant(DistributedTest):
+    world_size = 2
+
+    def test(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+    ):
+        # TODO: enable this test for H100 tests
+        pytest.skip("Not enough GPU memory for this on V100 runners")
+        model, task = model_w_task
+        dtype = torch.bfloat16
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
+        pipe = pipeline(task,
+                        model=model,
+                        tokenizer=tokenizer,
+                        torch_dtype=dtype,
+                        trust_remote_code=True,
+                        device=torch.device("cpu"),
+                        framework="pt")
+
+        pipe.model = deepspeed.init_inference(pipe.model, mp_size=self.world_size, replace_with_kernel_inject=False)
+        ds_config = {
+            "weight_quantization": {
+                "post_init_quant": {
+                    '*': {
+                        'num_bits': 4,
+                        'group_size': 32,
+                        'group_dim': 1,
+                        'symmetric': False
+                    },
+                }
+            }
+        }
+        from deepspeed.inference.quantization.quantization import _init_group_wise_weight_quantization
+        pipe.model = _init_group_wise_weight_quantization(pipe.model, ds_config)
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
+        ds_output = pipe(query, **inf_kwargs)
+
+        #print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        #assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.seq_inference
 @pytest.mark.parametrize(
     "model_w_task, injection_policy",
     [

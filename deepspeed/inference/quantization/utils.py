@@ -42,8 +42,9 @@ def tensor_round(tensor: Tensor) -> Tensor:
 
 class Quantizer:
 
-    def __init__(self, config: Dict) -> None:
+    def __init__(self, config: Dict, mp_group=None) -> None:
         self.config = config
+        self.mp_group = mp_group
         assert self.config['num_bits'] == 4 or self.config[
             'num_bits'] == 8, 'Only INT4 and INT8 quantization is supported.'
         assert self.config['symmetric'] == False, 'Only asymmetric quantization is supported at this moment.'
