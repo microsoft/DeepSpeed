@@ -799,10 +799,8 @@ class DeepSpeedEngine(Module):
     def zero_elastic_checkpoint(self):
         return self._config.zero_config.elastic_checkpoint
 
-    def zero_has_nvme_offload(self):
-        if not hasattr(self.optimizer, "swap_optimizer"):
-            return False
-        return self.optimizer.swap_optimizer or self.optimizer.params_in_nvme_and_cpu
+    def zero_nvme_offload_optimizer(self):
+        return getattr(self.optimizer, "swap_optimizer", False)
 
     def zero_max_live_parameters(self):
         return self._config.zero_config.max_live_parameters
@@ -2865,7 +2863,7 @@ class DeepSpeedEngine(Module):
             if not success:
                 self.optimizer._restore_from_bit16_weights()
 
-        if self.zero_has_nvme_offload():
+        if self.zero_nvme_offload_optimizer():
             from shutil import copytree, disk_usage
             offload_dir = self.optimizer.optimizer_swapper.swap_folder
             offload_ckpt_dir = os.path.join(load_dir, tag, "offloaded_tensors")
@@ -3120,7 +3118,7 @@ class DeepSpeedEngine(Module):
                 if bf16_mode is not self.bfloat16_enabled():
                     checkpoint_bit16 = BFLOAT16 if bf16_mode else FP16
                     engine_bit16 = BFLOAT16 if self.bfloat16_enabled() else FP16
-                    logger.warn(f'Loading {checkpoint_bit16} zero checkpoints into {engine_bit16} training engine')
+                    logger.warning(f'Loading {checkpoint_bit16} zero checkpoints into {engine_bit16} training engine')
                 return self._get_all_zero_checkpoint_state_dicts(zero_ckpt_names)
 
         return None
@@ -3205,7 +3203,7 @@ class DeepSpeedEngine(Module):
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
 
-        if self.zero_has_nvme_offload():
+        if self.zero_nvme_offload_optimizer():
             from shutil import copytree, disk_usage
             offload_dir = self.optimizer.optimizer_swapper.swap_folder
             offload_ckpt_dir = os.path.join(save_dir, tag, "offloaded_tensors")
@@ -3276,7 +3274,7 @@ class DeepSpeedEngine(Module):
 
                     local_expert_id = None
                     if not m:
-                        logger.warn(f'No expert found in key {key}.')
+                        logger.warning(f'No expert found in key {key}.')
                     else:
                         local_expert_id = m.group(1)
 
