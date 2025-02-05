@@ -58,6 +58,7 @@ jobs:
         pip install .[dev,autotuning]
 
     - name: Check container state
+      shell: bash
       run: |
         source ~/ds_env/bin/activate
         ldd --version
