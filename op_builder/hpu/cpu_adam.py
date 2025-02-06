@@ -15,6 +15,7 @@ class CPUAdamBuilder(CPUOpBuilder):
         super().__init__(name=self.NAME)
 
     def absolute_name(self):
+        print('test test CI')
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
