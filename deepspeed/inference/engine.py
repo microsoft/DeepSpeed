@@ -15,7 +15,6 @@ from packaging import version as pkg_version
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 from deepspeed.runtime.compiler import is_compile_supported
-
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject import replace_transformer_layer, generic_injection
@@ -594,7 +593,7 @@ class InferenceEngine(Module):
 
         if num_beams > 1:
             raise NotImplementedError("DeepSpeed does not support `num_beams` > 1, if this is important to you please "
-                                      "add your request to: https://github.com/microsoft/DeepSpeed/issues/2506")
+                                      "add your request to: https://github.com/deepspeedai/DeepSpeed/issues/2506")
 
         if ("input_ids" in kwargs) and (kwargs["input_ids"].dim() == 2):
             for input_tensor in kwargs["input_ids"]:
