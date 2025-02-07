@@ -42,6 +42,7 @@ jobs:
           nvidia-smi
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          pip install -U torch==2.4.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
           pip list
           pip install -U numpy==1.26.3
           pip list
@@ -67,7 +68,7 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          python -m pytest --color=yes --durations=0 --verbose -rF -m 'stable_diffusion' -k "TestStableDiffusion" unit/ --torch_ver="2.3" --cuda_ver="12"
+          python -m pytest --color=yes --durations=0 --verbose -rF -m 'stable_diffusion' -k "TestStableDiffusion" unit/ --torch_ver="2.4" --cuda_ver="12"
 
       - name: Open GitHub issue if weekly CI fails
         if: ${{ failure() && (github.event_name == 'schedule') }}
