@@ -124,7 +124,7 @@ class ColumnParallel(torch.autograd.Function):
         return None, grad_output
 
 
-class Replaced_Layer(nn.Module, ABC):
+class TensorParallel_Layer(nn.Module, ABC):
     """
     A base class for model layers with  tensor parallelism support.
     This class is designed to be extended by specific layers that require distributed
@@ -141,7 +141,7 @@ class Replaced_Layer(nn.Module, ABC):
 
     def __init__(self, mp_group: Optional[dist.ProcessGroup], **kwargs: Any):
         """
-        Initializes the Replaced_Layer with optional model parallelism group and layer name.
+        Initializes the TensorParallel_Layer with optional model parallelism group and layer name.
 
         Args:
             mp_group (Optional[dist.ProcessGroup]): The process group for model parallelism.
@@ -297,7 +297,7 @@ class GatherReplacedLayerParams:
             self.params[0].partition(self.params)
 
 
-class LinearAllreduce(Replaced_Layer):
+class LinearAllreduce(TensorParallel_Layer):
 
     def __init__(self, module, mp_group, **kwargs):
         super(LinearAllreduce, self).__init__(mp_group, **kwargs)
@@ -367,9 +367,9 @@ class LinearAllreduce(Replaced_Layer):
 
 
 #remove kwargs from partition.
-class LinearLayer(Replaced_Layer):
+class LinearLayer(TensorParallel_Layer):
 
-    def __init__(self, module, mp_group, skip_partition=False, **kwargs):
+    def __init__(self, module, mp_group=None, skip_partition=False, **kwargs):
         super(LinearLayer, self).__init__(mp_group, **kwargs)
         self.weight = module.weight
         self.bias = module.bias
