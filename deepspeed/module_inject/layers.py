@@ -381,7 +381,8 @@ class LinearLayer(TensorParallel_Layer):
             self.config_tp_params(self.bias)
 
     def forward(self, input):
-        input = ColumnParallel.apply(self.mp_group, input)
+        if self.mp_group is not None:
+            input = ColumnParallel.apply(self.mp_group, input)
         output = torch.matmul(input, self.weight.transpose(-1, -2))
         if self.bias is not None:
             output += self.bias
