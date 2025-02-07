@@ -42,12 +42,16 @@ jobs:
           nvidia-smi
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          pip list
+          pip install -U numpy==1.26.3
+          pip list
       - name: Install transformers
         run: |
           git clone https://github.com/huggingface/transformers
           cd transformers
           git rev-parse --short HEAD
           python -m pip install .
+          pip list
       - name: Install deepspeed
         run: |
           pip install image-similarity-measures
