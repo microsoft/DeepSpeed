@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'accelerator/**'
       - '.github/workflows/no-torch.yml'
+      - 'op_builder/**'
   schedule:
     - cron: "0 0 * * *"
 
@@ -18,7 +20,7 @@ permissions:
 
 jobs:
   unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +31,7 @@ jobs:
       - name: Python environment
         run: |
           pip uninstall torch --yes
+          pip install setuptools
           pip list
 
       - name: Build deepspeed

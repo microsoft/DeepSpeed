@@ -67,7 +67,7 @@ def get_default_compute_capabilities():
             # Special treatment of CUDA 11.0 because compute_86 is not supported.
             compute_caps += ";8.0"
         else:
-            compute_caps += ";8.0;8.6"
+            compute_caps += ";8.0;8.6;9.0"
     return compute_caps
 
 
@@ -76,7 +76,8 @@ def get_default_compute_capabilities():
 cuda_minor_mismatch_ok = {
     10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5"],
+    12: ["12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6",
+         "12.8"],  # There does not appear to be a CUDA Toolkit 12.7
 }
 
 
@@ -415,10 +416,11 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
-    def is_cuda_enable(self):
+    def get_cuda_compile_flag(self):
         try:
-            assert_no_cuda_mismatch(self.name)
-            return '-D__ENABLE_CUDA__'
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
+                return "-D__ENABLE_CUDA__"
         except MissingCUDAException:
             print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
                   "only cpu ops can be compiled!")
@@ -432,7 +434,7 @@ class OpBuilder(ABC):
                          "to detect the CPU architecture. 'lscpu' does not appear to exist on "
                          "your system, will fall back to use -march=native and non-vectorized execution.")
             return None
-        result = subprocess.check_output('lscpu', shell=True)
+        result = subprocess.check_output(['lscpu'])
         result = result.decode('utf-8').strip().lower()
 
         cpu_info = {}
@@ -610,8 +612,8 @@ class CUDAOpBuilder(OpBuilder):
 
         - `TORCH_CUDA_ARCH_LIST` may use ; or whitespace separators. Examples:
 
-        TORCH_CUDA_ARCH_LIST="6.1;7.5;8.6" pip install ...
-        TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6+PTX" pip install ...
+        TORCH_CUDA_ARCH_LIST="6.1;7.5;8.6;9.0;10.0" pip install ...
+        TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6 9.0 10.0+PTX" pip install ...
 
         - `cross_compile_archs` uses ; separator.
 
@@ -649,9 +651,9 @@ class CUDAOpBuilder(OpBuilder):
         args = []
         self.enable_bf16 = True
         for cc in ccs:
-            num = cc[0] + cc[2]
+            num = cc[0] + cc[1].split('+')[0]
             args.append(f'-gencode=arch=compute_{num},code=sm_{num}')
-            if cc.endswith('+PTX'):
+            if cc[1].endswith('+PTX'):
                 args.append(f'-gencode=arch=compute_{num},code=compute_{num}')
 
             if int(cc[0]) <= 7:
@@ -664,7 +666,7 @@ class CUDAOpBuilder(OpBuilder):
         Prune any compute capabilities that are not compatible with the builder. Should log
         which CCs have been pruned.
         """
-        return ccs
+        return [cc.split('.') for cc in ccs]
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
@@ -839,7 +841,7 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
 
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = self.is_cuda_enable()
+        CUDA_ENABLE = self.get_cuda_compile_flag()
         args += [
             CPU_ARCH,
             '-fopenmp',

@@ -5,8 +5,8 @@
 """
 DeepSpeed library
 
-To build wheel on Windows:
-1. Install pytorch, such as pytorch 1.12 + cuda 11.6.
+To build wheels on Windows:
+1. Install pytorch, such as pytorch 2.3 + cuda 12.1.
 2. Install visual cpp build tool.
 3. Include cuda toolkit.
 4. Launch cmd console with Administrator privilege for creating required symlink folders.
@@ -27,6 +27,7 @@ from setuptools import setup, find_packages
 from setuptools.command import egg_info
 import time
 import typing
+import shlex
 
 torch_available = True
 try:
@@ -157,10 +158,11 @@ if BUILD_OP_DEFAULT:
 
 def command_exists(cmd):
     if sys.platform == "win32":
-        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+        safe_cmd = shlex.split(f'{cmd}')
+        result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
         return result.wait() == 1
     else:
-        safe_cmd = ["bash", "-c", f"type {cmd}"]
+        safe_cmd = shlex.split(f"bash -c type {cmd}")
         result = subprocess.Popen(safe_cmd, stdout=subprocess.PIPE)
         return result.wait() == 0
 
@@ -200,13 +202,13 @@ for op_name, builder in ALL_OPS.items():
 print(f'Install Ops={install_ops}')
 
 # Write out version/git info.
-git_hash_cmd = "git rev-parse --short HEAD"
-git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
+git_hash_cmd = shlex.split("bash -c \"git rev-parse --short HEAD\"")
+git_branch_cmd = shlex.split("bash -c \"git rev-parse --abbrev-ref HEAD\"")
 if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
     try:
-        result = subprocess.check_output(git_hash_cmd, shell=True)
+        result = subprocess.check_output(git_hash_cmd)
         git_hash = result.decode('utf-8').strip()
-        result = subprocess.check_output(git_branch_cmd, shell=True)
+        result = subprocess.check_output(git_branch_cmd)
         git_branch = result.decode('utf-8').strip()
     except subprocess.CalledProcessError:
         git_hash = "unknown"
@@ -296,7 +298,7 @@ if sys.platform == "win32":
 else:
     scripts = [
         'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
-        'bin/ds_elastic'
+        'bin/ds_elastic', 'bin/ds_nvme_tune', 'bin/ds_io'
     ]
 
 start_time = time.time()
@@ -311,7 +313,7 @@ setup(name='deepspeed',
       url='http://deepspeed.ai',
       project_urls={
           'Documentation': 'https://deepspeed.readthedocs.io',
-          'Source': 'https://github.com/microsoft/DeepSpeed',
+          'Source': 'https://github.com/deepspeedai/DeepSpeed',
       },
       install_requires=install_requires,
       extras_require=extras_require,
@@ -319,9 +321,9 @@ setup(name='deepspeed',
       include_package_data=True,
       scripts=scripts,
       classifiers=[
-          'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
-          'Programming Language :: Python :: 3.10'
+          'Programming Language :: Python :: 3.10', 'Programming Language :: Python :: 3.11',
+          'Programming Language :: Python :: 3.12'
       ],
       license='Apache Software License 2.0',
       ext_modules=ext_modules,
