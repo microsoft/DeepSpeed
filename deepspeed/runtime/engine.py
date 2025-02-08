@@ -2089,7 +2089,7 @@ class DeepSpeedEngine(Module):
                 grads = None
                 self.buffered_allreduce_fallback(grads=grads, elements_per_buffer=bucket_size)
 
-    def _backward_prologue(self, loss):
+    def _backward_prologue(self, loss, scale_wrt_gas=True):
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
         if self.scale_wrt_gas is not None:
             scale_wrt_gas = self.scale_wrt_gas
@@ -2179,7 +2179,7 @@ class DeepSpeedEngine(Module):
             "must provide optimizer during init in order to use backward"
 
         self._start_timers(self.engine_timers.backward_timers)
-        loss = self._backward_prologue(loss)
+        loss = self._backward_prologue(loss, scale_wrt_gas)
         self._do_optimizer_backward(loss, retain_graph)
         self._backward_epilogue()
         self._stop_timers(self.engine_timers.backward_timers)
