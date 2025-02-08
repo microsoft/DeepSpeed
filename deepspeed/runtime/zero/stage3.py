@@ -102,7 +102,7 @@ def unwrap_model_for_generation(model):
             optimizer_offload = model.optimizer.parameter_offload
         elif model.optimizer is not None:
             optimizer_offload = model.optimizer
-        optimizer_offload._register_hooks_recursively(optimizer_offload.module)
+        optimizer_offload._register_deepspeed_module(optimizer_offload.module)
     return
 
 
@@ -1793,7 +1793,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             # Sum across all model parallel GPUs.
             if len(grad_norms) == 0:
-                # FIX https://github.com/microsoft/DeepSpeed/issues/3564
+                # FIX https://github.com/deepspeedai/DeepSpeed/issues/3564
                 total_norm_cuda = torch.tensor(0,
                                                dtype=gradients[0].dtype).to(get_accelerator().device_name()).double()
             else:
