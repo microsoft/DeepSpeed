@@ -340,10 +340,6 @@ class BF16_Optimizer(ZeROOptimizer):
         hp_grad.data.add_(lp.grad.data.to(hp_grad.dtype).view(hp_grad.shape))
         lp._hp_grad = hp_grad
         self.fp32_groups_has_gradients[group_idx][param_idx] = True
-        # if param_idx == 200:
-        print_rank_0(f"update_hp_grad self={id(self)} {group_idx=} {param_idx=} gnorm={float(lp.grad.norm().float())}",
-                     force=True)
-        #     import pdb; pdb.set_trace()
 
         # clear gradients
         if clear_lp_grads:
@@ -429,9 +425,6 @@ class BF16_Optimizer(ZeROOptimizer):
                 fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             bf16_partitions[partition_id].data.copy_(fp32_partition.data)
-            # print_rank_0(f'update_lp_params {i=} {partition_id=}', force=True)
-            # if i == 0:
-            #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
 
         all_gather_dp_groups(groups_flat=self.bf16_groups_flat,
                              partitioned_param_groups=self.bf16_partitioned_groups,
