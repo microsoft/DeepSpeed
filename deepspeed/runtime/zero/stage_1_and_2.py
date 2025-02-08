@@ -959,10 +959,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             Gradient computed twice for this partition. \
             Multiple gradient reduction is currently not supported"
 
-        # if param_id == 200:
-        # import pdb; pdb.set_trace()
-        # self.print_rank_0(
-        #     f"add_grad_to_bucket self={id(self)} {param_id=} {i=} gnorm={float(grad_reduc.norm().float())}")
         if self.contiguous_gradients:
             if param.numel() > self.reduce_bucket_size:
                 self.extra_large_param_to_reduce = param
@@ -1409,11 +1405,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     Multiple gradient reduction is currently not supported"
 
                 self.params_already_reduced[param_id] = True
-                # if param_id == 200:
-                #     # import pdb; pdb.set_trace()
-                grad_reduc = self.get_gradient_for_reduction(param)
-                # self.print_rank_0(
-                #     f"reduce_grads: self={id(self)} {param_id=} {i=} gnorm={float(grad_reduc.norm().float())}")
                 if self.partition_gradients:
                     if not self.is_param_in_current_partition[param_id]:
                         if self.overlap_comm and self.contiguous_gradients is False:
@@ -1445,8 +1436,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.reduce_ready_partitions_and_remove_grads(param, i)
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        import pdb
-        pdb.set_trace()
         if self.partition_gradients or self.is_gradient_accumulation_boundary:
             self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
@@ -1974,9 +1963,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-            # print_rank_0(f'update_lp_params {i=} {partition_id=}', force=True)
-            # if i == 0:
-            #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
+
         all_gather_dp_groups(groups_flat=self.bit16_groups_flat,
                              partitioned_param_groups=self.parallel_partitioned_bit16_groups,
                              dp_process_group=self.real_dp_process_group,
@@ -2061,8 +2048,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return inf_or_nan.float().max()
 
     def backward_prologue(self):
-        # import pdb; pdb.set_trace()
-        # self.print_rank_0(f"opt_bwd_prologue: {id(self)=}")
         self.micro_step_id += 1
         if self.contiguous_gradients and self.ipg_buffer is None:
             self.ipg_buffer = []
@@ -2092,16 +2077,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        # self.backward_prologue()
-        # self.print_rank_0(f'optim_bwd: {id(self)=} {id(loss)=}')
-
         if self.custom_loss_scaler:
             scaled_loss = self.external_loss_scale * loss
             scaled_loss.backward(retain_graph=retain_graph)
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
-
-        # self.backward_epilogue()
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
