@@ -32,8 +32,6 @@
 import importlib
 import inspect
 import functools
-import os
-import pkgutil
 
 from .abstract_accelerator import DeepSpeedAccelerator
 # During setup stage torch may not be installed, pass on no torch will
@@ -280,7 +278,6 @@ class SDAA_Accelerator(DeepSpeedAccelerator):
         except ImportError:
             return "deepspeed.ops.op_builder.sdaa"
 
-
     def _lazy_init_class_dict(self):
         if self.class_dict:
             return
@@ -291,7 +288,6 @@ class SDAA_Accelerator(DeepSpeedAccelerator):
         self.class_dict = {}
         for class_name, class_obj in inspect.getmembers(op_builder_module, inspect.isclass):
             self.class_dict[class_name] = class_obj
-
 
     # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, class_name):
@@ -311,7 +307,7 @@ class SDAA_Accelerator(DeepSpeedAccelerator):
         return BuildExtension
 
     def export_envs(self):
-        return ['NCCL','LD_LIBRARY', 'PATH']
+        return ['NCCL', 'LD_LIBRARY', 'PATH']
 
     def visible_devices_envs(self):
         return ['SDAA_VISIBLE_DEVICES']
