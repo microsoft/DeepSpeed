@@ -1817,20 +1817,17 @@ class DeepSpeedEngine(Module):
                                    dataloader_drop_last=self.dataloader_drop_last(),
                                    deepspeed_dataloader_config=deepspeed_dataloader_config)
 
-
     def train(self, mode=True):
         r""""""
 
         self.warn_unscaled_loss = True
         self.module.train(mode)
 
-
     def eval(self):
         r""""""
 
         self.warn_unscaled_loss = True
         self.module.train(False)
-
 
     def _scale_loss_by_gas(self, prescaled_loss, eval_micro_batches=None):
         # In pipeline evaluation, there is an option to use different micro-bs, which creates different number of
@@ -1853,7 +1850,6 @@ class DeepSpeedEngine(Module):
 
         return scaled_loss
 
-
     def _create_module_backward_pre_hook(self):
 
         def _module_backward_hook(module, grad_output):
@@ -1862,7 +1858,6 @@ class DeepSpeedEngine(Module):
 
         return self.module.register_full_backward_pre_hook(_module_backward_hook)
 
-
     def _create_module_forward_pre_hook(self):
 
         def _module_forward_pre_hook(module, inputs):
@@ -1870,14 +1865,12 @@ class DeepSpeedEngine(Module):
 
         return self.module.register_forward_pre_hook(_module_forward_pre_hook)
 
-
     def _create_module_forward_post_hook(self):
 
         def _module_forward_post_hook(module, input, output):
             self._forward_epilogue()
 
         return self.module.register_forward_hook(_module_forward_post_hook)
-
 
     def _forward_prologue(self, inputs, kwargs=None):
         if not self.autotuning_profile_model_info():
@@ -1933,7 +1926,6 @@ class DeepSpeedEngine(Module):
         if self.fp16_auto_cast():
             inputs = self._cast_inputs_half(inputs)
 
-
     def _forward_epilogue(self):
         if self.zero_optimization_partition_weights():
             # Disable automated discovery of external parameters
@@ -1950,7 +1942,6 @@ class DeepSpeedEngine(Module):
 
         if not self.autotuning_profile_model_info():
             see_memory_usage("Engine after forward", force=self.memory_breakdown())
-
 
     @instrument_w_nvtx
     def forward(self, *inputs, **kwargs):
@@ -1972,7 +1963,6 @@ class DeepSpeedEngine(Module):
 
         return loss
 
-
     def _cast_inputs_half(self, inputs):
         if isinstance(inputs, (list, tuple)):
             new_inputs = []
@@ -1988,7 +1978,6 @@ class DeepSpeedEngine(Module):
             return inputs.half()
         else:
             return inputs
-
 
     def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
@@ -2013,7 +2002,6 @@ class DeepSpeedEngine(Module):
             f"time (ms) | fwd: {fwd_time:.2f} (fwd_moe: {moe_time:.2f}, 1st_a2a: {falltoall:.2f}, 2nd_a2a: {salltoall:.2f}, top_k: {gate_time:.2f})",
             ranks=[0])
 
-
     @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
         # Pass (PP) gas boundary flag to optimizer (required for zero)
@@ -2030,7 +2018,6 @@ class DeepSpeedEngine(Module):
             else:
                 grads = None
                 self.buffered_allreduce_fallback(grads=grads, elements_per_buffer=bucket_size)
-
 
     def _backward_prologue(self, loss):
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
@@ -2057,7 +2044,6 @@ class DeepSpeedEngine(Module):
 
         return loss
 
-
     def _backward_epilogue(self):
         self._start_timers(self.engine_timers.backward_reduce_timers)
         if self.enable_backward_allreduce and not self.inside_no_sync_ctxt:
@@ -2065,7 +2051,6 @@ class DeepSpeedEngine(Module):
             self.allreduce_gradients()
         self._stop_timers(self.engine_timers.backward_reduce_timers)
         see_memory_usage("Engine after backward", force=self.memory_breakdown())
-
 
     def _do_optimizer_backward(self, loss, retain_graph):
         self._start_timers(self.engine_timers.backward_inner_timers)
@@ -2092,7 +2077,6 @@ class DeepSpeedEngine(Module):
                 loss.backward(retain_graph=retain_graph)
         self._stop_timers(self.engine_timers.backward_inner_timers)
 
-
     @contextmanager
     def no_sync(self):
         r"""
@@ -2113,7 +2097,6 @@ class DeepSpeedEngine(Module):
         finally:
             self.inside_no_sync_ctxt = False
 
-
     @instrument_w_nvtx
     def backward(self, loss, retain_graph=False, scale_wrt_gas=True):
         r"""Execute backward pass on the loss
@@ -2132,7 +2115,6 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.backward_timers)
 
         return loss
-
 
     def is_gradient_accumulation_boundary(self):
         """
