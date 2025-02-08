@@ -531,6 +531,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.partition_gradients or self.overlap_comm or self.use_grad_accum_attribute:
             self.create_gradient_handling_hooks()
 
+        self.ready_for_gradients = False
         self.custom_loss_scaler = False
         self.external_loss_scale = None
 
@@ -682,6 +683,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.ipg_buffer = None
             self.grads_in_partition = None
             self.grads_in_partition_offset = 0
+        self.ready_for_gradients = False
 
     def initialize_optimizer_states(self):
 
@@ -1428,8 +1430,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #####################################################################
 
     def process_gradients(self, param, i):
-        param_id = self.get_param_id(param)
-        self.print_rank_0(f"grad_hook: opt={id(self)} {param_id=} {i=}")
+        self.backward_prologue()
         if self.use_grad_accum_attribute:
             self._fill_param_grad_accum_attribute(param)
         if self.partition_gradients or self.overlap_comm:
@@ -2048,21 +2049,23 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return inf_or_nan.float().max()
 
     def backward_prologue(self):
-        self.micro_step_id += 1
-        if self.contiguous_gradients and self.ipg_buffer is None:
-            self.ipg_buffer = []
-            buf_0 = torch.empty(int(self.reduce_bucket_size),
-                                dtype=self.dtype,
-                                device=get_accelerator().current_device_name())
-            self.ipg_buffer.append(buf_0)
-
-            # Use double buffers to avoid data access conflict when overlap_comm is enabled.
-            if self.overlap_comm:
-                buf_1 = torch.empty(int(self.reduce_bucket_size),
+        if not self.ready_for_gradients:
+            self.micro_step_id += 1
+            if self.contiguous_gradients and self.ipg_buffer is None:
+                self.ipg_buffer = []
+                buf_0 = torch.empty(int(self.reduce_bucket_size),
                                     dtype=self.dtype,
                                     device=get_accelerator().current_device_name())
-                self.ipg_buffer.append(buf_1)
-            self.ipg_index = 0
+                self.ipg_buffer.append(buf_0)
+
+                # Use double buffers to avoid data access conflict when overlap_comm is enabled.
+                if self.overlap_comm:
+                    buf_1 = torch.empty(int(self.reduce_bucket_size),
+                                        dtype=self.dtype,
+                                        device=get_accelerator().current_device_name())
+                    self.ipg_buffer.append(buf_1)
+                self.ipg_index = 0
+            self.ready_for_gradients = True
 
     def backward_epilogue(self):
         # Only for Stage 1, Mode 2
@@ -2077,11 +2080,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
+        self.backward_prologue()
         if self.custom_loss_scaler:
             scaled_loss = self.external_loss_scale * loss
             scaled_loss.backward(retain_graph=retain_graph)
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        self.backward_epilogue()
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)

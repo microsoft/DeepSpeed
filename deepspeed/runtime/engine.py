@@ -274,7 +274,6 @@ class DeepSpeedEngine(Module):
 
         self.module_forward_pre_hook = self._create_module_forward_pre_hook()
         self.module_forward_post_hook = self._create_module_forward_post_hook()
-        self.module_backward_pre_hook = self._create_module_backward_pre_hook()
 
         # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
         self.param_names = {param: name for name, param in model.named_parameters()}
@@ -1919,14 +1918,6 @@ class DeepSpeedEngine(Module):
                 self.warn_unscaled_loss = False
 
         return scaled_loss
-
-    def _create_module_backward_pre_hook(self):
-
-        def _module_backward_hook(module, grad_output):
-            if hasattr(self.optimizer, 'backward_prologue'):
-                self.optimizer.backward_prologue()
-
-        return self.module.register_full_backward_pre_hook(_module_backward_hook)
 
     def _create_module_forward_pre_hook(self):
 
