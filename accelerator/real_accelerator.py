@@ -169,7 +169,7 @@ def get_accelerator():
                 # ensuring that we are free from CUDA initialization errors.
                 # While "torch.cuda.device_count() > 0" check ensures that       #ignore-cuda
                 # we won't try to do any CUDA calls when no device is available
-                # For reference: https://github.com/microsoft/DeepSpeed/pull/6810
+                # For reference: https://github.com/deepspeedai/DeepSpeed/pull/6810
                 if torch.cuda.device_count() > 0 and torch.cuda.is_available():  #ignore-cuda
                     accelerator_name = "cuda"
             except (RuntimeError, ImportError) as e:
@@ -178,7 +178,7 @@ def get_accelerator():
         if accelerator_name is None:
             # borrow this log from PR#5084
             if accel_logger is not None:
-                accel_logger.warn(
+                accel_logger.warning(
                     "Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it.")
             # cpu added as catch-all when accelerator detection fails
             accelerator_name = "cpu"
