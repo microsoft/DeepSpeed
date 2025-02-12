@@ -49,7 +49,7 @@ jobs:
 
       - name: Install deepspeed-chat
         run: |
-          BRANCH="loadams/torch-load-weights-only"
+          BRANCH="master"
           if [[ ! -z "${{ github.event.inputs.dse_branch }}" ]]; then
               BRANCH="${{ github.event.inputs.dse_branch }}"
           fi
