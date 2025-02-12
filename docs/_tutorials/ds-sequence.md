@@ -49,7 +49,7 @@ def forward():
 
 ```
 
-* **Add sequence parallel communication group**:  Note that DistributedAttention takes `local_attn` and `sequence_parallel_group` as the parameters, where local_attn can be your original attention block. You also need to build the sequence parallel nication group and pass that the DistributedAttention. One way to do this is to build the sequence parallel group at the model initialization stage.
+* **Add sequence parallel communication group**:  Note that DistributedAttention takes `local_attn` and `sequence_parallel_group` as the parameters, where local_attn can be your original attention block. You also need to build the sequence parallel communication group and pass that the DistributedAttention. One way to do this is to build the sequence parallel group at the model initialization stage.
 
 
 ```python
@@ -114,4 +114,4 @@ cd flash-attention
 python setup.py install
 ```
 
-You may also want to ensure your model configuration is compliant with FlashAttention's requirements. For instance, to achieve optimal performance, the head size should be divisible by 8. Refer to the document of FlashAttention for more details.
+You may also want to ensure your model configuration is compliant with FlashAttention's requirements. For instance, to achieve optimal performance, the head size should be divisible by 8. Refer to the FlashAttention documentation for more details.
