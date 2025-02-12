@@ -76,7 +76,7 @@ def get_sequence_parallel_group():
 
 ```
 
-In the Megatron-DeepSpeed exampele, to enable sequence parallelism, set the degree of parallelism using the --ds-sequence-parallel-size argument. You also need to ensure that the number of attention heads is divisible by this value.
+In the Megatron-DeepSpeed example, to enable sequence parallelism, set the degree of parallelism using the --ds-sequence-parallel-size argument. You also need to ensure that the number of attention heads is divisible by this value.
 We have prepared scripts for you to quickly get some examples for training GPT-3 like models with very long sequences:
 
 ```shell
