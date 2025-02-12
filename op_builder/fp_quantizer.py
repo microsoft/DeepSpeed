@@ -94,7 +94,6 @@ class FPQuantizerBuilder(CUDAOpBuilder):
         ]
 
     def extra_ldflags(self):
-        return ['-lcurand']
         if not self.is_rocm_pytorch():
             return ['-lcurand']
         else:
