@@ -4,13 +4,17 @@
 # DeepSpeed Team
 """
 DeepSpeed library
+
 To build wheels on Windows:
 1. Install pytorch, such as pytorch 2.3 + cuda 12.1.
 2. Install visual cpp build tool.
 3. Include cuda toolkit.
 4. Launch cmd console with Administrator privilege for creating required symlink folders.
+
+
 Create a new wheel via the following command:
 build_win.bat
+
 The wheel will be located at: dist/*.whl
 """
 
