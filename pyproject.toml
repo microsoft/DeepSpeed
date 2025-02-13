@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling"]
+0;10;1crequires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
 name = "deepspeed"
 #dynamic = ["version"]
-version = {file  = version.txt}
+version = {file = "version.txt"}
 description = "DeepSpeed library"
 readme = "README.md"
 license = "Apache Software License 2.0"
