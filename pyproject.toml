@@ -4,7 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deepspeed"
-dynamic = ["version"]
+#dynamic = ["version"]
+version = {file  = version.txt}
 description = "DeepSpeed library"
 readme = "README.md"
 license = "Apache Software License 2.0"
@@ -156,8 +157,8 @@ Documentation = "https://deepspeed.readthedocs.io"
 Homepage = "http://deepspeed.ai"
 Source = "https://github.com/deepspeedai/DeepSpeed"
 
-[tool.hatch.version]
-path = "deepspeed/__init__.py"
+#[tool.hatch.version]
+#path = "deepspeed/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
