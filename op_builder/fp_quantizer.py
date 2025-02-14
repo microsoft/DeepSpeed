@@ -78,7 +78,7 @@ class FPQuantizerBuilder(CUDAOpBuilder):
     def filter_ccs(self, ccs):
         ccs_retained = []
         ccs_pruned = []
-        for cc in ccs:
+        for cc in [cc.split('.') for cc in ccs]:
             if int(cc[0]) >= 8:
                 ccs_retained.append(cc)
             else:
@@ -94,7 +94,10 @@ class FPQuantizerBuilder(CUDAOpBuilder):
         ]
 
     def extra_ldflags(self):
-        return ['-lcurand']
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            return []
 
     def include_paths(self):
         return ['csrc/fp_quantizer/includes', 'csrc/includes']
