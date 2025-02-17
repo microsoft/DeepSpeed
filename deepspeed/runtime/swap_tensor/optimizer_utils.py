@@ -88,9 +88,6 @@ class OptimizerStateSwapInfo(object):
             t.release_memory()
             # tensor.data = torch.Tensor()
 
-    def get_swap_paths(self):
-        return [t.swap_path for t in self.tensors]
-
     def get_compute_tensors(self):
         return [t.compute_tensor for t in self.tensors]
 
