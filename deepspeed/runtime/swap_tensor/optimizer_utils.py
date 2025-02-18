@@ -211,10 +211,10 @@ class OptimizerSwapper(object):
             swap_info.tensors = [swap_info.tensors[0]]
             swap_info.has_state_tensors = False
 
-    def swappable_tensor(self, param=None, numel=None):
-        assert param is not None or numel is not None, "Either param or numel must be provided"
-        if param is not None:
-            return self.min_aio_bytes <= (param.numel() * self.swap_element_size)
+    def is_swappable_tensor(self, tensor=None, numel=None):
+        assert tensor is not None or numel is not None, "Either tensor or numel must be provided"
+        if tensor is not None:
+            return self.min_aio_bytes <= (tensor.numel() * self.swap_element_size)
         return self.min_aio_bytes <= (numel * self.swap_element_size)
 
     def init_timers(self):
@@ -254,7 +254,7 @@ class OptimizerSwapper(object):
 
         self._start_timer(SWAP_OUT_GRADIENT_TIMER)
         for tensor, offset in zip(aligned_gradients, aligned_offsets):
-            if not self.swappable_tensor(param=tensor):
+            if not self.is_swappable_tensor(tensor=tensor):
                 swap_info.unswapped_gradients[offset] = tensor
                 continue
 
@@ -440,7 +440,7 @@ class OptimizerSwapper(object):
         new_offsets = []
 
         for orig_tensor, orig_offset in zip(tensors, offsets):
-            if not self.swappable_tensor(param=orig_tensor):
+            if not self.is_swappable_tensor(tensor=orig_tensor):
                 new_tensors.append(orig_tensor)
                 new_offsets.append(orig_offset)
                 continue
@@ -484,7 +484,7 @@ class OptimizerSwapper(object):
 
         tensor_list = []
         for state_name, value in self.optimizer.state[parameter].items():
-            if torch.is_tensor(value):
+            if torch.is_tensor(value) and self.is_swappable_tensor(tensor=value):
                 value.ds_id = state_name + '-' + parameter.ds_id
                 tensor_list.append(value)
 

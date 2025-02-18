@@ -991,8 +991,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not self.swap_optimizer:
             return False
 
-        return self.optimizer_swapper.swappable_tensor(None,
-                                                       numel=self.fp16_partitioned_groups_flat_numel[sub_group_id])
+        return self.optimizer_swapper.is_swappable_tensor(None,
+                                                          numel=self.fp16_partitioned_groups_flat_numel[sub_group_id])
 
     def _partitioned_params_swap_out(self, i):
         offset = 0
@@ -2481,6 +2481,49 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # logger.info(f"[set_local_hp_param][update the params' value successfully]")
 
     ### Local API END ###
+
+    ### Vectorized API BEGIN ###
+    def update_fp32_grad_for_param_vectorized(self, update_func, param_list):
+        params_with_grad = [p for p in param_list if p.requires_grad]
+        if not params_with_grad:
+            return
+
+        if not get_accelerator().resolves_data_dependency():
+            self.reduce_and_partition_stream.synchronize()
+
+        subgroups = {}
+        for p in params_with_grad:
+            group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(p)]
+            param_entry = (p, dest_offset, num_elements)
+            if group_idx in subgroups.keys():
+                subgroups[group_idx].append(param_entry)
+            else:
+                subgroups[group_idx] = [param_entry]
+
+        for group_idx, group_params in subgroups.items():
+            # import pdb; pdb.set_trace()
+            if self._swappable_optimizer_subgroup(group_idx):
+                self._optimizer_states_and_gradient_swap_in(group_idx)
+
+            for param, dest_offset, num_elements in group_params:
+                if self.offload_optimizer:
+                    fp32_grad_part = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(
+                        0, dest_offset, num_elements)
+                else:
+                    fp32_grad_part = self.__param_id_to_grad_partition[param.ds_id]
+
+                fp32_grad_full = self._fp32_state_allgather(param, fp32_grad_part)
+                new_fp32_grad_full = update_func(fp32_grad_full, param)
+                my_rank = dist.get_rank(group=self.dp_process_group)
+                value_partition = new_fp32_grad_full.flatten().narrow(0,
+                                                                      fp32_grad_part.numel() * my_rank,
+                                                                      fp32_grad_part.numel())
+                fp32_grad_part.data.copy_(value_partition.data)
+
+            if self._swappable_optimizer_subgroup(group_idx):
+                self._writeback_swap_state(sub_group_id=group_idx, write_opt_state=False, write_gradients=True)
+
+    ### Vectorized API END ###
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):

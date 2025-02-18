@@ -254,7 +254,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         swap_paths = [grad.path for grad in param_gradients]
         SWAP_READ_GRADIENTS = 'swap_submit_read_gradient'
         SWAP_WAIT_GRADIENTS = 'swap_submit_wait_gradient'
-
+        # import pdb; pdb.set_trace()
         self._start_timer(SWAP_READ_GRADIENTS)
         swap_in_tensors(aio_handle, swap_buffers, swap_paths)
         self._stop_timer(SWAP_READ_GRADIENTS)
