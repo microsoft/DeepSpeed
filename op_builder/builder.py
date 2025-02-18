@@ -63,7 +63,7 @@ def get_default_compute_capabilities():
     compute_caps = DEFAULT_COMPUTE_CAPABILITIES
     # Update compute capability according to: https://en.wikipedia.org/wiki/CUDA#GPUs_supported
     import torch.utils.cpp_extension
-    if torch.utils.cpp_extension.CUDA_HOME is not None: 
+    if torch.utils.cpp_extension.CUDA_HOME is not None:
         if installed_cuda_version()[0] == 11:
             if installed_cuda_version()[1] >= 0:
                 compute_caps += ";8.0"
