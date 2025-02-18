@@ -72,7 +72,7 @@ def get_default_compute_capabilities():
             if installed_cuda_version()[1] >= 8:
                 compute_caps += ";9.0"
         elif installed_cuda_version()[0] == 12:
-            compute_caps += "8.0;8.6;9.0"
+            compute_caps += ";8.0;8.6;9.0"
             if installed_cuda_version()[1] >= 8:
                 compute_caps += ";10.0;12.0"
     return compute_caps
