@@ -43,7 +43,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install git+https://github.com/huggingface/transformers.git@fa56dcc2ab748a2d98218b4918742e25454ef0d2
+          pip install git+https://github.com/huggingface/transformers.git@48a309d0d21383f72a461d3c5e9b4c639f373bb9
           pip install .[dev]
           ds_report
 
