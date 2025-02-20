@@ -124,8 +124,12 @@ class TestOffloadStates(DistributedTest):
         with deepspeed.zero.Init(config_dict_or_path=config_dict):
             model = SimpleModel(hidden_dim, nlayers=4)
 
-        params = list(model.parameters())
-        param_groups = [{"params": params[::2], "weight_decay": 0.0}, {"params": params[1::2], "weight_decay": 0.1}]
-
+        param_groups = [{
+            "params": [p for n, p in model.named_parameters() if not 'bias' in n],
+            "weight_decay": 0.1
+        }, {
+            "params": [p for n, p in model.named_parameters() if 'bias' in n],
+            "weight_decay": 0.0
+        }]
         include = None if included_state is None else [included_state]
         run_model(model, param_groups, config_dict, hidden_dim, torch.bfloat16, include, pin_memory, non_blocking)
