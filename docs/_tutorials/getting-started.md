@@ -318,7 +318,7 @@ as the hostname.
 
 Also note that `CUDA_VISIBLE_DEVICES` can be used with `deepspeed` to control
 which devices should be used on a single node. So either of these would work
-to launch just on device 0+1 of the current node:
+to launch just on devices 0 and 1 of the current node:
 
 ```bash
 deepspeed --include localhost:0,1 ...
