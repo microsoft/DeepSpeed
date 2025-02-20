@@ -147,7 +147,7 @@ class TorchBackend(Backend):
         if not torch.distributed.is_initialized():
             # Windows torch builds do not come with lib_uv by default.
             # More information here: https://pytorch.org/tutorials/intermediate/TCPStore_libuv_backend.html
-            use_lib_uv = False if os.name == "nt" and required_torch_version(min_version=2.4) else True
+            use_libuv = False if os.name == "nt" and required_torch_version(min_version=2.4) else True
             torch.distributed.init_process_group(backend,
                                                  timeout=timeout,
                                                  init_method=init_method,
