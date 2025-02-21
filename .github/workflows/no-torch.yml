@@ -36,7 +36,7 @@ jobs:
 
       - name: Build deepspeed
         run: |
-          DS_BUILD_STRING=" " python -m build
+          DS_BUILD_STRING=" " python -m build --sdist
 
       - name: Open GitHub issue if nightly CI fails
         if: ${{ failure() && (github.event_name == 'schedule') }}
