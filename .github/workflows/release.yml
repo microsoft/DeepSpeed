@@ -26,6 +26,7 @@ jobs:
     - name: Build DeepSpeed
       run: |
         pip install setuptools
+        pip install build
         DS_BUILD_STRING=" " python -m build --sdist
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
