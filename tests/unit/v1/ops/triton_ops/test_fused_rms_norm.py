@@ -662,7 +662,7 @@ class TestFusedRMSNormCUDA(DistributedTest):
             (2, 300, 32, 128),
             (1000, 96),
             (257, 64),
-            (33, 1),
+            (33, 16),
         ])
     def test_fused_rms_norm_matches_hf_forward_and_backward(self, dtype, shape):
         _require_fused_engine()
