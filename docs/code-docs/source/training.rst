@@ -748,7 +748,9 @@ The compiler records it on the tagged inputs and shards along that dimension.
 Labels are sharded where the target of ``torch.nn.functional.cross_entropy`` still has the full label shape,
 so a causal shift such as ``labels[..., 1:]`` on the padded labels is applied before sharding and no target crosses a shard boundary.
 Each rank then returns the loss of the full sequence: AutoSP sums the loss and the number of non-ignored
-tokens over the sequence-parallel group, for both ``reduction="mean"`` and ``reduction="sum"``.
+tokens over the sequence-parallel group, for both ``reduction="mean"`` and ``reduction="sum"``. The per-token
+losses are summed in FP32, so half-precision training does not overflow the shard sum, and the result is returned
+in the dtype of the logits.
 Class-weighted cross entropy and ``reduction="none"`` are not supported.
 
 Memory Optimization

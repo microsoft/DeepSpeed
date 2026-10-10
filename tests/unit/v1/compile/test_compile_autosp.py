@@ -185,9 +185,11 @@ class TestAutoSPSeqDim(DistributedTest):
 class _CausalLMModel(torch.nn.Module):
     """Single-layer causal LM that shifts its labels inside the loss, like Hugging Face causal LMs."""
 
-    def __init__(self, reduction, vocab_size=64, hidden=32, num_heads=2):
+    def __init__(self, reduction, vocab_size=64, hidden=32, num_heads=2, keyword_args=False, logit_scale=1.0):
         super().__init__()
         self.reduction = reduction
+        self.keyword_args = keyword_args
+        self.logit_scale = logit_scale
         self.num_heads = num_heads
         self.embed = torch.nn.Embedding(vocab_size, hidden)
         self.pos_embed = torch.nn.Embedding(1024, hidden)
@@ -205,8 +207,13 @@ class _CausalLMModel(torch.nn.Module):
 
         attn = F.scaled_dot_product_attention(to_heads(q), to_heads(k), to_heads(v), is_causal=True)
         x = x + self.out(attn.transpose(1, 2).reshape(batch, seq_len, -1))
-        logits = self.head(x)
+        logits = self.head(x) * self.logit_scale
         shift_labels = F.pad(labels, (0, 1), value=-100)[..., 1:].contiguous()
+        if self.keyword_args:
+            return F.cross_entropy(input=logits.view(-1, logits.size(-1)),
+                                   target=shift_labels.view(-1),
+                                   ignore_index=-100,
+                                   reduction=self.reduction)
         return F.cross_entropy(logits.view(-1, logits.size(-1)),
                                shift_labels.view(-1),
                                ignore_index=-100,
@@ -219,9 +226,14 @@ class TestAutoSPCausalLoss(DistributedTest):
     non_daemonic_procs = True
 
     @pytest.mark.sequential
-    @pytest.mark.parametrize("zero_stage", [0, 1])
-    @pytest.mark.parametrize("reduction", ["mean", "sum"])
-    def test_matches_full_sequence_reference(self, zero_stage, reduction):
+    @pytest.mark.parametrize("zero_stage, reduction, keyword_args", [
+        (0, "mean", False),
+        (1, "mean", False),
+        (0, "sum", False),
+        (1, "sum", False),
+        (0, "mean", True),
+    ])
+    def test_matches_full_sequence_reference(self, zero_stage, reduction, keyword_args):
         import copy
         import deepspeed
         import deepspeed.comm as dist
@@ -247,7 +259,7 @@ class TestAutoSPCausalLoss(DistributedTest):
             return [t.to(device).contiguous() for t in (input_ids, labels, position_ids)]
 
         torch.manual_seed(0)
-        reference = _CausalLMModel(reduction, vocab_size=vocab_size).to(device)
+        reference = _CausalLMModel(reduction, vocab_size=vocab_size, keyword_args=keyword_args).to(device)
         reference_optimizer = torch.optim.SGD(reference.parameters(), lr=lr)
         model = copy.deepcopy(reference)
         config = {
@@ -290,6 +302,63 @@ class TestAutoSPCausalLoss(DistributedTest):
                                            rtol=1e-4,
                                            atol=1e-5,
                                            msg=lambda m, name=name: f"{name}: {m}")
+
+        engine.destroy()
+
+
+class TestAutoSPHalfPrecisionLoss(DistributedTest):
+    world_size = 2
+    non_daemonic_procs = True
+
+    @pytest.mark.sequential
+    def test_mean_loss_does_not_overflow_in_shard_sum(self):
+        import deepspeed
+        import deepspeed.comm as dist
+        from deepspeed.compile.passes.sp_compile import prepare_autosp_inputs
+
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU does not support this test yet")
+
+        seq_len, batch, vocab_size = 64, 2, 64
+        device = get_accelerator().current_device_name()
+
+        # Scaled logits make every token's loss large, so a shard's summed loss exceeds the FP16
+        # maximum (65504) while the mean the model returns stays well within range.
+        torch.manual_seed(0)
+        model = _CausalLMModel("mean", vocab_size=vocab_size, logit_scale=1e4).to(device).half()
+        reference = copy.deepcopy(model).float()
+        config = {
+            "train_micro_batch_size_per_gpu": batch,
+            "train_batch_size": batch,
+            "zero_optimization": {
+                "stage": 0
+            },
+            "compile": {
+                "deepcompile": True,
+                "passes": ["autosp"]
+            },
+            "sequence_parallel_size": self.world_size,
+        }
+        engine, _, _, _ = deepspeed.initialize(config=config, model=model)
+        engine.compile()
+
+        torch.manual_seed(100)
+        input_ids = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        labels = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch, seq_len).contiguous()
+
+        with torch.no_grad():
+            reference_loss = reference(input_ids, labels, position_ids)
+            loss = engine(*prepare_autosp_inputs(input_ids.clone(), labels.clone(), position_ids.clone())[:3])
+
+        local_tokens = batch * seq_len // self.world_size
+        assert reference_loss.item() * local_tokens > torch.finfo(torch.float16).max
+        assert loss.dtype == torch.float16
+        torch.testing.assert_close(loss.float(), reference_loss, rtol=1e-2, atol=0)
+        # Each rank returns the full-sequence loss, so the ranks agree.
+        losses = [torch.empty_like(loss) for _ in range(self.world_size)]
+        dist.all_gather(losses, loss)
+        assert all(torch.equal(other, loss) for other in losses)
 
         engine.destroy()
 
