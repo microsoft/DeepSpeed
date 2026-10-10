@@ -172,6 +172,18 @@ def gather_attn_mask_queries(gm: GraphModule, attn_mask: Node, q: Node, k: Node)
     mask_meta = get_node_shape_meta(attn_mask)
     if mask_meta is None or mask_meta.ndim < 2:
         return attn_mask
+    # Without sharding every rank already holds the full mask, and its full key dimension is
+    # indistinguishable from a sharded one.
+    if sp_dp_registry.sp_size() == 1:
+        return attn_mask
+
+    if mask_meta.ndim == 3 and mask_meta.shape[0] != 1:
+        # SDPA aligns a 3D mask as [heads, queries, keys]; add the batch dimension so the head
+        # redistribution below sees heads in dimension 1.
+        with gm.graph.inserting_after(attn_mask):
+            attn_mask = gm.graph.call_function(torch.unsqueeze, args=(attn_mask, 0))
+        attn_mask.meta["val"] = mask_meta.unsqueeze(0)
+        mask_meta = attn_mask.meta["val"]
 
     q_meta = get_node_shape_meta(q)
     mask_keys = mask_meta.shape[-1]

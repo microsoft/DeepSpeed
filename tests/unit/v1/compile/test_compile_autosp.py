@@ -207,7 +207,7 @@ class _MaskedAttentionModel(torch.nn.Module):
         super().__init__()
         self.num_heads = num_heads
         # Optional learnable distance bias added to the mask: shared by all heads, per head on the
-        # local query rows, or per head over the full query sequence.
+        # local query rows (as a 4D or a batch-free 3D mask), or per head over the full query sequence.
         self.bias = bias
         self.embed = torch.nn.Embedding(vocab_size, hidden)
         self.pos_embed = torch.nn.Embedding(1024, hidden)
@@ -238,7 +238,10 @@ class _MaskedAttentionModel(torch.nn.Module):
         def to_heads(t):
             return t.view(batch, seq_len, self.num_heads, -1).transpose(1, 2)
 
-        if self.bias is not None:
+        if self.bias == "per_head_3d":
+            # SDPA reads a 3D mask as [heads, queries, keys] and broadcasts it over the batch.
+            mask = self.biased_mask(position_ids, attention_mask)[0]
+        elif self.bias is not None:
             mask = self.biased_mask(position_ids, attention_mask)
         elif local_keys:
             # Keys taken from the sharded position ids only cover this rank's own shard.
@@ -318,7 +321,7 @@ class TestAutoSPAttentionMask(DistributedTest):
         engine.destroy()
 
     @pytest.mark.sequential
-    @pytest.mark.parametrize("bias", ["shared", "per_head", "full_query_per_head"])
+    @pytest.mark.parametrize("bias", ["shared", "per_head", "per_head_3d", "full_query_per_head"])
     def test_learnable_mask_matches_full_sequence_gradients(self, bias):
         import copy
         import deepspeed
@@ -425,6 +428,57 @@ class TestAutoSPAttentionMask(DistributedTest):
 
 # Plain pytest classes — distributed state is mocked where needed, and the remaining
 # tests perform pure IR-level graph rewrites.
+
+
+class TestAutoSPAttentionMaskWithoutSharding(DistributedTest):
+    world_size = 1
+    non_daemonic_procs = True
+
+    @pytest.mark.sequential
+    def test_full_mask_matches_reference(self):
+        import copy
+        import deepspeed
+        from deepspeed.compile.passes.sp_compile import prepare_autosp_inputs
+
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU does not support this test yet")
+
+        seq_len, batch, vocab_size = 16, 2, 64
+        device = get_accelerator().current_device_name()
+
+        torch.manual_seed(0)
+        reference = _MaskedAttentionModel(vocab_size=vocab_size).to(device)
+        config = {
+            "train_micro_batch_size_per_gpu": batch,
+            "train_batch_size": batch,
+            "zero_optimization": {
+                "stage": 0
+            },
+            "compile": {
+                "deepcompile": True,
+                "passes": ["autosp"]
+            },
+            "sequence_parallel_size": 1,
+        }
+        engine, _, _, _ = deepspeed.initialize(config=config, model=copy.deepcopy(reference))
+        engine.compile()
+
+        input_ids = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        labels = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch, seq_len).contiguous()
+        attention_mask = torch.ones(batch, seq_len, dtype=torch.long, device=device)
+        attention_mask[0, seq_len - 3:] = 0
+
+        with torch.no_grad():
+            reference_loss = reference(input_ids, labels, position_ids, attention_mask)
+        autosp_inputs = prepare_autosp_inputs(input_ids.clone(), labels.clone(), position_ids.clone(),
+                                              attention_mask.clone())
+        # With one rank the mask's full key dimension equals the local sequence length; it must
+        # not be mistaken for a sharded one.
+        loss = engine(*autosp_inputs)
+        torch.testing.assert_close(loss.detach(), reference_loss, rtol=1e-4, atol=1e-5)
+
+        engine.destroy()
 
 
 class TestSDPANodesCompile:
