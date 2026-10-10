@@ -45,7 +45,7 @@ class AsyncIOBuilder(OpBuilder):
         SIMD_WIDTH = self.simd_width()
         TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[0:2])
         if TORCH_MAJOR >= 2 and TORCH_MINOR >= 1:
-            CPP_STD = '-std=c++17'
+            CPP_STD = self.cpp_standard()
         else:
             CPP_STD = '-std=c++14'
         return [
