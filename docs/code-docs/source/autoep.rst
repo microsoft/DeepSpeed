@@ -56,13 +56,16 @@ Transformers build that exposes the matching config/model classes,
 
 **ZeRO compatibility:** Stages 0, 1, and 2, plus constrained Stage 3
 support. Stage 3 requires AutoEP-managed MoE layers and does not support native
-DeepSpeed MoE layers, AutoTP, tensor model parallelism from ``mpu``, sequence
+DeepSpeed MoE layers, tensor model parallelism from ``mpu``, sequence
 parallelism, hpZeRO secondary tensor groups, non-1 expert tensor
-parallelism, or quantized gradients. Stage 3 AutoEP checkpoints are saved
+parallelism, or quantized gradients. AutoTP folding
+(``tensor_parallel.autotp_size > 1``) works at Stage 3 as at stages 0 to 2,
+including models built under ``deepspeed.zero.Init``. Stage 3 AutoEP checkpoints are saved
 partition-natively in the ``zero_pp_rank_*`` shard files and support
 same-topology load, module-only loads (``load_module_only``),
 optimizer-state-free loads (``load_optimizer_states=False``), and Universal
-Checkpoint conversion. Optimizer-including Universal Checkpoint loads can
+Checkpoint conversion, except with AutoTP folding. Optimizer-including
+Universal Checkpoint loads can
 resume with a different data-parallel world size, a different ``autoep_size``,
 or both, when the target ``autoep_size`` divides the model's expert count.
 Weights-only/module-only Universal Checkpoint loads use the converted
@@ -306,6 +309,76 @@ as collective wait time on every expert-parallel rank. The top-level
 ``disable_python_gc`` option addresses this. It is process-wide rather than
 AutoEP-specific, so it is documented with the general configuration options.
 
+**Fused RMSNorm (experimental):**
+
+RMSNorm is a model module rather than an AutoEP expert-parallel component, so
+it is not configured under ``expert_parallel``. DeepSpeed provides an opt-in
+installer that runs Hugging Face RMSNorm modules with fused Triton kernels:
+
+.. code-block:: python
+
+    from deepspeed.ops.triton_ops.fused_rms_norm import replace_rms_norm
+
+    replaced = replace_rms_norm(model)
+
+The installer adds a process-wide class dispatcher, with a per-instance opt-in
+marker. Other instances of those classes keep their original eager forward
+until explicitly selected. Shallow/deep copies and ``torch.nn.DataParallel``
+replicas retain their live opt-in and use their own weights and epsilon rather
+than the original receiver.
+The HF module classes, Parameters and state-dict keys are unchanged.
+Full-model checkpoints saved with ``torch.save(model, ...)`` can be loaded
+with ``torch.load(..., weights_only=False)``. Loading clears the opt-in, so the
+loaded model runs eager until ``replace_rms_norm(model)`` is called again, even
+if this process already has a dispatcher installed for another instance. No
+fused dispatcher needs to be serialized.
+
+The kernels reproduce the RMSNorm expression of Llama-style models: the
+variance and normalization are computed in FP32, the normalized value is cast
+back to the input dtype once, and only then multiplied by the weight (gamma).
+A class name ending in ``RMSNorm`` with a 1-D ``weight`` and a
+``variance_epsilon`` does not imply that order: ``GptOssRMSNorm``, for one,
+multiplies by the weight before the cast, and ``Olmo2RMSNorm`` moved to that
+order between Transformers releases. The installer therefore replaces only
+instances of the classes in ``SUPPORTED_RMS_NORM_CLASSES``: the RMSNorm
+classes of Llama, Mistral, Mixtral, Phi-3, Qwen2, Qwen2-MoE, Qwen3, Qwen3-MoE,
+DeepSeek-V2 and DeepSeek-V3. A module is replaced only if it still runs its
+class's own ``forward`` and is at most 2048 wide, so subclasses, modules whose
+``forward`` was already patched or wrapped (by another kernel installer or by
+an earlier call) and wider norms are left alone. Replaced modules keep their
+own weight Parameter and ``variance_epsilon``. The return value is the number
+of modules replaced: 193 for Qwen3-30B-A3B, four per decoder layer plus the
+final norm.
+
+A replaced module runs the kernels when its input and weight are bfloat16 or
+float16 CUDA tensors of the same dtype and Triton is available. For any other
+input it runs its class's own eager forward, so the result is exactly eager's,
+and logs a warning once. The installer can therefore run before the model is
+moved to the GPU. ``fused_rms_norm(hidden, weight, eps)`` in the same module
+applies the kernels directly and raises on unsupported inputs instead.
+
+Where the kernels run, results are not bitwise identical to eager RMSNorm: the
+kernels' FP32 reductions sum in a different order, so a small fraction of
+outputs and gradients differ in their last bits.
+
+Requirements and limits:
+
+- The kernels need CUDA with Triton. On ROCm or without Triton, replaced
+  modules run eager.
+- bfloat16 or float16, with the input and the weight in the same dtype. Other
+  inputs run eager, including float32 weights under autocast.
+- Norms wider than 2048 are not replaced. That covers the hidden size and head
+  dimension of Qwen3-30B-A3B; in models with a wider hidden size, such as
+  Qwen3-235B-A22B (4096), only the narrower norms, such as the 128-wide query
+  and key norms, are replaced.
+- Any leading shape. Non-contiguous inputs and weights are copied before the
+  kernels run. The output and the input gradient the kernels produce are
+  contiguous, whereas eager RMSNorm follows the strides of its input and of
+  the incoming gradient.
+- First-order gradients for the input and the weight; the epsilon is a
+  constant. Differentiating those gradients again (double backward) raises.
+  ``torch.compile`` and ``torch.func`` transforms are not covered.
+
 **Fused weighted restore (experimental):**
 
 After the combine all-to-all, AutoEP holds one row per routed assignment and has
@@ -424,9 +497,12 @@ Requirements and limits:
 - ``autoep_size`` must divide ``num_experts`` for all detected MoE layers.
 - ``autoep_size=1`` is valid: all experts remain local (no AllToAll), useful
   for functional testing on a single GPU.
-- AutoEP currently cannot be combined with AutoTP
-  (``tensor_parallel.autotp_size > 1``) or tensor model parallelism from
-  ``mpu``; support is planned as follow-up work.
+- AutoEP combines with AutoTP (``tensor_parallel.autotp_size > 1``) by
+  folding: on the same ranks, AutoTP shards the layers its partition
+  specification names and AutoEP distributes the routed experts. Folding
+  supports ZeRO stages 0 to 3 with ``expert_tensor_parallel_size=1``, and
+  rejects ZeRO optimizer or parameter offload and DeepCompile. Tensor model
+  parallelism from ``mpu`` is not supported.
 - AutoEP with ZeRO Stage 3 is supported only without sequence parallelism,
   hpZeRO secondary tensor groups, non-1 expert tensor parallelism, or
   quantized gradients.
