@@ -47,6 +47,14 @@ def disable(func):
     return func
 
 
+def lazy_disable(func):
+    # torch._disable_dynamo imports torch._dynamo on the first call instead of when decorating, so decorating at
+    # import time does not slow down import deepspeed. It caches the disabled function from torch 2.4.
+    if required_torch_version(min_version=2.4):
+        return torch._disable_dynamo(func)
+    return disable(func)
+
+
 def enable(min_version=None):
     """
     Decorator factory to enable compiling of a function if the minimum PyTorch version requirement is met.

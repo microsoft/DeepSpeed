@@ -14,8 +14,6 @@ import os
 os.environ.setdefault("PYTORCH_NVML_BASED_CUDA_CHECK", "1")
 
 import argparse
-import sys
-import types
 import json
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 import torch
@@ -39,7 +37,7 @@ from . import module_inject
 from .accelerator import get_accelerator
 from .constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
-from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER, MUON_OPTIMIZER
+from .runtime.engine import MUON_OPTIMIZER
 from .runtime.base_optimizer import DeepSpeedOptimizer
 from .runtime.dataloader import DeepSpeedDataLoader
 from .runtime.hybrid_engine import DeepSpeedHybridEngine
@@ -47,17 +45,15 @@ from .runtime.pipe.engine import PipelineEngine
 from .runtime.pipe.dualpipev import DualPipeVEngine, DualPipeVModule
 from .inference.engine import InferenceEngine
 from .inference.config import DeepSpeedInferenceConfig
-from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from .module_inject import replace_transformer_layer, revert_transformer_layer, set_autotp_mode
+from .module_inject import replace_transformer_layer, set_autotp_mode
 
 from .utils import log_dist, OnDevice, logger
 from .comm.comm import init_distributed
 
-from .runtime import zero, domino
-from .runtime.compiler import is_compile_supported
+from .runtime import zero
 
 from .pipe import PipelineModule
 

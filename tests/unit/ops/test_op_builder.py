@@ -306,8 +306,10 @@ def test_forked_child_can_use_cuda_after_importing_deepspeed():
 def test_import_deepspeed_defers_device_queries_compilation_and_transformers():
     # These used to run at "import deepspeed" and made it seconds slower: probing every op builder
     # and the module level availability checks query the GPUs (several seconds without GPU
-    # persistence mode), @jit_script_compat called torch.compile, and transformers was imported
-    # eagerly. With the accelerator given explicitly, the import must do none of them.
+    # persistence mode), @jit_script_compat called torch.compile, @compiler.disable imported
+    # torch._dynamo, and transformers was imported eagerly. With the accelerator given explicitly,
+    # the import must do none of them. torch._dynamo is only checked from torch 2.4, the first
+    # version whose torch._disable_dynamo (used by compiler.lazy_disable) caches the disabled function.
     # deepspeed.compile.backend is checked because it imports torch._dynamo and torch._inductor.
     from deepspeed.accelerator import get_accelerator
 
@@ -326,6 +328,9 @@ def test_import_deepspeed_defers_device_queries_compilation_and_transformers():
         "assert not calls, calls",
         "assert 'transformers' not in sys.modules, 'transformers was imported'",
         "assert 'deepspeed.compile.backend' not in sys.modules, 'deepspeed.compile.backend was imported'",
+        "from deepspeed.utils.torch import required_torch_version",
+        "if required_torch_version(min_version=2.4):",
+        "    assert 'torch._dynamo' not in sys.modules, 'torch._dynamo was imported'",
     ])
     env = os.environ.copy()
     env["DS_ACCELERATOR"] = get_accelerator().device_name()
