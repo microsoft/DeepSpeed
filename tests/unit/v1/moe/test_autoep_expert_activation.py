@@ -71,6 +71,12 @@ def _written_out(gate, up, activation, alpha, limit):
     raise AssertionError(f"{activation}: add it here when adding a built-in form")
 
 
+def _assert_bf16_gemm_close(actual, expected):
+    # Rounding error through several GEMMs/activation operations scales with the tensor magnitude,
+    # not each near-zero element. Reuse the grouped-GEMM suite's existing 2% magnitude-scaled bound.
+    torch.testing.assert_close(actual.double(), expected.double(), rtol=2e-2, atol=2e-2 * expected.abs().max().item())
+
+
 class TestApplyExpertActivation:
 
     def test_swiglu_oai_known_values(self):
@@ -244,16 +250,10 @@ class TestGroupedExpertsActivation:
         out_loop.backward(grad_out)
         out_grouped.backward(grad_out)
 
-        # The paths differ only in bf16 rounding: the fused kernel rounds once after fp32 math, the
-        # eager ops once per op. A matmul then sums the rounded values, so the absolute error of an
-        # output or gradient scales with the largest magnitude in that tensor, not with each element.
-        def assert_same(got, want):
-            torch.testing.assert_close(got, want, rtol=2e-2, atol=2e-2 * want.abs().max().item())
-
-        assert_same(out_grouped, out_loop)
-        assert_same(x_grouped.grad, x_loop.grad)
+        _assert_bf16_gemm_close(out_grouped, out_loop)
+        _assert_bf16_gemm_close(x_grouped.grad, x_loop.grad)
         for name in ("w1", "w2", "w3"):
-            assert_same(getattr(grouped, name).grad, getattr(loop, name).grad)
+            _assert_bf16_gemm_close(getattr(grouped, name).grad, getattr(loop, name).grad)
 
     def test_for_loop_path_does_not_need_the_triton_kernel(self, monkeypatch):
         # The for-loop path is the reference path and runs on CPU tensors. It must not reach the
@@ -272,6 +272,16 @@ class TestGroupedExpertsActivation:
 
 class TestFusedGateUp:
     """gate_up_impl="fused": one grouped GEMM over the concatenated gate and up weights."""
+
+    def test_gemm_error_bound_accepts_rounding_but_rejects_incorrect_values(self):
+        expected = torch.tensor([1.0, -0.25, 0.0, 2.0], dtype=torch.float64)
+        rounded = expected.to(torch.bfloat16)
+        rounded[0] = torch.nextafter(rounded[0], torch.full_like(rounded[0], float("inf")))
+        _assert_bf16_gemm_close(rounded, expected)
+        incorrect = rounded.clone()
+        incorrect[0] += 0.25
+        with pytest.raises(AssertionError):
+            _assert_bf16_gemm_close(incorrect, expected)
 
     @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
     def test_packed_activation_matches_the_separate_halves(self, activation):
@@ -343,9 +353,8 @@ class TestFusedGateUp:
 
     @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
     def test_matches_separate_with_skewed_and_empty_experts(self, activation):
-        # Forward values and weight gradients are the separate path's; the input gradient sums both projections
-        # inside one FP32 GEMM accumulation. Compare relative L2 errors against the same represented weights
-        # in FP64, retaining the existing 5% relative slack instead of promising strict elementwise equality.
+        # Different valid GEMM algorithms need not round identically. Check both paths against FP64 with
+        # the same represented weights, retaining the existing magnitude-scaled and input-gradient L2 bounds.
         if get_accelerator().device_name() != "cuda" or not hasattr(torch, "_grouped_mm"):
             pytest.skip("needs CUDA with torch._grouped_mm and FP64")
         device = get_accelerator().current_device_name()
@@ -375,11 +384,23 @@ class TestFusedGateUp:
         out_separate.backward(grad_out)
         out_fused.backward(grad_out)
         x_reference = x.double().requires_grad_(True)
-        reference(x_reference, counts).backward(grad_out.double())
+        out_reference = reference(x_reference, counts)
+        out_reference.backward(grad_out.double())
 
-        torch.testing.assert_close(out_fused, out_separate, rtol=0, atol=0)
-        for name in ("w1", "w2", "w3"):
-            torch.testing.assert_close(getattr(fused, name).grad, getattr(separate, name).grad, rtol=0, atol=0)
+        for output in (out_fused, out_separate):
+            _assert_bf16_gemm_close(output, out_reference)
+        weight_reference = reference
+        if EXPERT_ACTIVATIONS[activation].uses_limit:
+            # BF16 projection rounding can cross a clamp's derivative discontinuity. Use independent
+            # dense BF16 matmuls for the parameter-gradient reference instead of changing the bound.
+            weight_reference = copy.deepcopy(separate)
+            weight_reference.use_grouped_mm = False
+            weight_reference.zero_grad()
+            weight_reference(x.clone().requires_grad_(True), counts).backward(grad_out)
+        for experts in (fused, separate):
+            for name in ("w1", "w2", "w3"):
+                _assert_bf16_gemm_close(getattr(experts, name).grad, getattr(weight_reference, name).grad)
+                assert not getattr(experts, name).grad[1].any()
 
         def relative_error(got):
             return ((got.double() - x_reference.grad).norm() / x_reference.grad.norm()).item()
@@ -416,21 +437,19 @@ class TestFusedGateUp:
                 fused_hidden = hidden.clone().requires_grad_(True)
                 actual = checkpoint(fused, fused_hidden, counts, use_reentrant=True) if recompute else fused(
                     fused_hidden, counts)
-                torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+                _assert_bf16_gemm_close(actual, expected)
                 actual.backward(upstream)
                 expected.backward(upstream)
                 for name in ("w1", "w2", "w3"):
-                    torch.testing.assert_close(getattr(fused, name).grad, getattr(separate, name).grad, rtol=0, atol=0)
+                    _assert_bf16_gemm_close(getattr(fused, name).grad, getattr(separate, name).grad)
                     assert not getattr(fused, name).grad[1].any()
             separate_optimizer.step()
             fused_optimizer.step()
             for name in ("w1", "w2", "w3"):
                 fused_weight, reference_weight = getattr(fused, name), getattr(separate, name)
-                torch.testing.assert_close(fused_weight, reference_weight, rtol=0, atol=0)
-                torch.testing.assert_close(fused_optimizer.state[fused_weight]["momentum_buffer"],
-                                           separate_optimizer.state[reference_weight]["momentum_buffer"],
-                                           rtol=0,
-                                           atol=0)
+                _assert_bf16_gemm_close(fused_weight, reference_weight)
+                _assert_bf16_gemm_close(fused_optimizer.state[fused_weight]["momentum_buffer"],
+                                        separate_optimizer.state[reference_weight]["momentum_buffer"])
             assert tuple(fused.state_dict()) == ("w1", "w2", "w3")
             separate_optimizer.zero_grad()
             fused_optimizer.zero_grad()
@@ -444,8 +463,17 @@ class TestFusedGateUp:
                 fused = GroupedExperts(**shape, **settings, gate_up_impl="fused").to(device=device,
                                                                                      dtype=torch.bfloat16)
                 fused.load_state_dict(state["experts"])
+                for name in ("w1", "w2", "w3"):
+                    torch.testing.assert_close(getattr(fused, name), state["experts"][name], rtol=0, atol=0)
                 fused_optimizer = torch.optim.SGD(fused.parameters(), lr=0.01, momentum=0.9)
                 fused_optimizer.load_state_dict(state["optimizer"])
+                assert fused_optimizer.state_dict()["param_groups"] == state["optimizer"]["param_groups"]
+                saved_parameter_ids = state["optimizer"]["param_groups"][0]["params"]
+                for parameter, saved_id in zip(fused.parameters(), saved_parameter_ids):
+                    torch.testing.assert_close(fused_optimizer.state[parameter]["momentum_buffer"],
+                                               state["optimizer"]["state"][saved_id]["momentum_buffer"],
+                                               rtol=0,
+                                               atol=0)
 
 
 class TestPresetAndConfig:

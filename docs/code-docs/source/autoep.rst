@@ -264,6 +264,14 @@ where ``"separate"`` adds two results rounded to the input dtype, so the input g
 the last bits. The numerical regression compares relative L2 errors with an
 FP64 reference using the same represented BF16 parameters; it does not claim
 universal bitwise equivalence or accuracy improvement.
+Forward and parameter-gradient checks use the grouped-GEMM tests' existing
+BF16 bound (2% relative plus 2% of the reference tensor's maximum magnitude).
+The clamped activations' parameter gradients use an independent dense BF16
+reference because rounding a projection across the clamp boundary changes
+its derivative discontinuously; smooth forms use the FP64 reference.
+The input-gradient relative-L2 bound is unchanged. Cross-algorithm training
+checks allow the same rounding scale, while reloading each parameter and
+optimizer momentum tensor must still preserve its saved values exactly.
 
 The packed SwiGLU Triton path supports first-order gradients only:
 ``create_graph=True`` raises instead of silently dropping its second derivative.
