@@ -111,9 +111,8 @@ def aggregate_loss(local_loss_sum: torch.Tensor, local_valid_tokens: torch.Tenso
 
     loss = local_loss_sum.clone()
     dist.all_reduce(loss, group=group)
-    # The engine averages gradients over every rank, SP ranks included, so the
-    # local gradient is scaled by sp_size for that average to recover the full-sequence gradient.
-    grad_scale = torch.full_like(loss, sp_size())
+    # The engine sums gradients over the SP group, which adds up the contribution of every shard.
+    grad_scale = torch.ones_like(loss)
     if average:
         valid_tokens = local_valid_tokens.clone()
         dist.all_reduce(valid_tokens, group=group)

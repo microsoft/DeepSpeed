@@ -614,13 +614,12 @@ def create_symbolic_slice_indices(
     return slice_all, slice_range
 
 
-def shard_tensor_node(gm: GraphModule, tensor_node: Node, seq_dim: Optional[int] = None) -> Node:
+def shard_tensor_node(gm: GraphModule, tensor_node: Node):
     from .fx import find_node_by_name, get_node_shape_meta, replace_node_users
     val = get_node_shape_meta(tensor_node)
     assert val is not None, f"Node {tensor_node.name} has no shape metadata"
 
-    if seq_dim is None:
-        seq_dim = get_autosp_seq_dim(tensor_node)
+    seq_dim = get_autosp_seq_dim(tensor_node)
     seq_len = val.shape[seq_dim]
 
     assert isinstance(
@@ -645,4 +644,3 @@ def shard_tensor_node(gm: GraphModule, tensor_node: Node, seq_dim: Optional[int]
         )
 
     replace_node_users(tensor_node, sliced_node, exclude=[sliced_node])
-    return sliced_node
