@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import AutoTPMeta, get_shard_size_list
+from deepspeed.sequence import linear_cross_entropy
 from deepspeed.sequence.linear_cross_entropy import vocab_parallel_linear_cross_entropy
 from unit.common import DistributedTest
 
@@ -96,6 +97,20 @@ def test_fp16_loss_scale_does_not_overflow():
         torch.testing.assert_close(got.grad, want.grad)
 
 
+def test_fp16_hidden_gradient_blocks_that_cancel_stay_finite():
+    # Each vocabulary entry contributes +-131072 to the scaled hidden gradient, which overflows
+    # fp16 alone, but the contributions cancel, so the result must not depend on vocab blocking.
+    hidden = _leaf(torch.zeros(4, 1, dtype=torch.float16))
+    weight = torch.full((2, 1), 8.0, dtype=torch.float16)
+    target = torch.zeros(4, dtype=torch.long)
+    reference = _leaf(hidden)
+
+    (vocab_parallel_linear_cross_entropy(hidden, weight, target) * 65536).backward()
+    (F.cross_entropy(F.linear(reference, weight).float(), target) * 65536).backward()
+
+    torch.testing.assert_close(hidden.grad, reference.grad)
+
+
 def test_fp16_product_cancelled_by_bias_stays_finite():
     # The product 256 * 256 overflows fp16 but the bias brings the logits back to 32, as in F.linear.
     hidden = _leaf(torch.tensor([[256.0]], dtype=torch.float16))
@@ -144,12 +159,28 @@ def test_hidden_gradient_sums_many_vocab_entries_exactly():
     torch.testing.assert_close(hidden.grad, reference.grad)
 
 
-def test_autocast_low_precision_activations_with_fp32_parameters():
+class _LegacyAutocastTorch:
+    """``torch`` as seen by code on PyTorch < 2.4, which has no device-aware autocast getters."""
+
+    def __getattr__(self, name):
+        if name == "get_autocast_dtype":
+            raise AttributeError(name)
+        return getattr(torch, name)
+
+    @staticmethod
+    def is_autocast_enabled():
+        return torch.is_autocast_enabled("cuda")
+
+
+@pytest.mark.parametrize("legacy_autocast_api", [False, True])
+def test_autocast_low_precision_activations_with_fp32_parameters(monkeypatch, legacy_autocast_api):
     hidden, weight, bias, target = _inputs()
     hidden = _leaf(hidden.bfloat16())
     weight, bias = _leaf(weight), _leaf(bias)
     reference = [_leaf(hidden), _leaf(weight), _leaf(bias)]
 
+    if legacy_autocast_api:
+        monkeypatch.setattr(linear_cross_entropy, "torch", _LegacyAutocastTorch())
     with torch.autocast("cpu", dtype=torch.bfloat16):
         actual = vocab_parallel_linear_cross_entropy(hidden, weight, target, bias=bias)
         logits = F.linear(*reference)

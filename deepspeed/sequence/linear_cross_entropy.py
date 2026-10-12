@@ -53,7 +53,8 @@ def _accumulate_matmul(accumulator, mat1, mat2):
             return
         except _MIXED_GEMM_ERRORS:
             _MIXED_GEMM_UNSUPPORTED.add(device_type)
-    accumulator.add_(torch.mm(mat1, mat2))
+    # A low-precision block product can overflow even when the sum over all blocks is finite.
+    accumulator.addmm_(mat1.to(accumulator.dtype), mat2.to(accumulator.dtype))
 
 
 def _fp32_logits(hidden, weight, bias=None, row_offset=None):
@@ -78,6 +79,24 @@ def _fp32_logits(hidden, weight, bias=None, row_offset=None):
     # does not overflow a low-precision output first.
     logits = torch.nn.functional.linear(hidden, weight, bias).float()
     return logits if row_offset is None else logits.add_(row_offset)
+
+
+def _autocast_dtype(device_type):
+    """The active autocast dtype for ``device_type``, or ``None`` when autocast is off."""
+    if hasattr(torch, "get_autocast_dtype"):
+        if torch.is_autocast_enabled(device_type):
+            return torch.get_autocast_dtype(device_type)
+        return None
+    # PyTorch < 2.4 only has per-device getters, and CUDA uses the unsuffixed ones.
+    if device_type == "cuda":
+        enabled, dtype = torch.is_autocast_enabled(), torch.get_autocast_gpu_dtype
+    else:
+        is_enabled = getattr(torch, f"is_autocast_{device_type}_enabled", None)
+        enabled = is_enabled is not None and is_enabled()
+        dtype = getattr(torch, f"get_autocast_{device_type}_dtype", None)
+    if enabled and dtype is not None:
+        return dtype()
+    return None
 
 
 class _VocabParallelLinearCrossEntropy(torch.autograd.Function):
@@ -228,9 +247,8 @@ def vocab_parallel_linear_cross_entropy(hidden,
         tp_world_size = dist.get_world_size(tp_group) if tp_group is not None else 1
         chunk_size = _default_chunk_rows(num_tokens, global_vocab_size, tp_world_size, hidden.shape[1])
     device_type = hidden.device.type
-    if torch.is_autocast_enabled(device_type):
-        compute_dtype = torch.get_autocast_dtype(device_type)
-    else:
+    compute_dtype = _autocast_dtype(device_type)
+    if compute_dtype is None:
         compute_dtype = torch.promote_types(hidden.dtype, weight.dtype)
 
     with torch.autocast(device_type, enabled=False):
