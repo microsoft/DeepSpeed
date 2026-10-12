@@ -21,15 +21,20 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
-# Skip Triton import for AMD due to pytorch-triton-rocm module breaking device API in DeepSpeed
-if not (hasattr(torch.version, 'hip') and torch.version.hip is not None):
-    try:
-        import triton  # noqa: F401 # type: ignore
-        HAS_TRITON = True
-    except ImportError:
-        HAS_TRITON = False
-else:
-    HAS_TRITON = False
+
+def _has_triton():
+    from .ops.triton_ops._triton import is_triton_available
+    return is_triton_available()
+
+
+def __getattr__(name):
+    # HAS_TRITON is computed on first access because importing triton slows down import deepspeed. Assigning
+    # deepspeed.HAS_TRITON = False still turns DeepSpeed's Triton kernels off, since they read this attribute.
+    if name == "HAS_TRITON":
+        globals()["HAS_TRITON"] = _has_triton()
+        return globals()["HAS_TRITON"]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 from . import ops
 from . import module_inject
