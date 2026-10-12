@@ -54,7 +54,7 @@ If the work is duplicate, trivial busywork, or an unproposed new feature, **do n
 - Formatting: yapf (column_limit=119, `.style.yapf`) + flake8 (`.flake8`).
 - Always verify changed files pass pre-commit checks before committing: `pre-commit run --files <changed_files>`. Only check modified files, not the entire codebase. Config: `.pre-commit-config.yaml`.
 - `check-torchdist` hook: NEVER directly import torch's distributed module. Use `import deepspeed.comm as dist` instead.
-- New files require license header:
+- New source files (`.py`, `.c`/`.cpp`/`.cu`/`.h`, and the other extensions matched by the `check-license` hook) require license header:
   ```
   # SPDX-License-Identifier: Apache-2.0
   # DeepSpeed Team

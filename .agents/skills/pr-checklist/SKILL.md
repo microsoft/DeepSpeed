@@ -144,15 +144,17 @@ maintenance.
 
 New features additionally follow the three-step process in
 [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#new-feature-contribution-guidelines): proposal issue
-and design discussion *first*, then implementation (code + unit tests + docs + tutorial, plus a
-DeepSpeedExamples PR), then maintenance commitment with the author's GitHub username recorded as a
-contact. If a feature PR arrives with no linked proposal issue, flag it — that is a process gap the
-author should close before maintainers invest review time.
+and design discussion *first*, then implementation (code + unit tests + docs + tutorial, plus an
+examples PR to DeepSpeedExamples or Megatron-DeepSpeed), then maintenance commitment with the
+author's GitHub username recorded as a contact. If a feature PR arrives with no linked proposal
+issue, flag it — that is a process gap the author should close before maintainers invest review
+time.
 
 #### 1.4: Accelerator and device portability
 
 This is DeepSpeed-specific and one of the most common sources of review churn. DeepSpeed runs on
-CUDA, ROCm, XPU, HPU, NPU, MLU, SDAA, MPS, and CPU.
+CUDA, ROCm, XPU, HPU, NPU, MLU, SDAA, SUPA, MPS, and CPU (see `SUPPORTED_ACCELERATOR_LIST` in
+`accelerator/real_accelerator.py`).
 
 - **Never call `torch.cuda.*`.** Use `get_accelerator()` from `deepspeed.accelerator`. The
   `check-torchcuda` pre-commit hook enforces this; the `#ignore-cuda` escape is for genuinely
@@ -162,12 +164,15 @@ CUDA, ROCm, XPU, HPU, NPU, MLU, SDAA, MPS, and CPU.
 - Avoid hard-coded `"cuda"` / `"nccl"` strings, `.cuda()` calls, device indices, and
   `torch.cuda.Stream`/`Event` types; route them through the accelerator interface
   (`get_accelerator().device_name()`, `.communication_backend_name()`, `.Stream()`, etc.).
-- If you add a method to `accelerator/abstract_accelerator.py`, every concrete accelerator needs an
-  implementation — not just `cuda_accelerator.py`. A missing override is an `AttributeError` for a
-  vendor at runtime, and their CI is nightly, so it will be found late.
+- If you add a method to `accelerator/abstract_accelerator.py`, decide which kind it is. An
+  `@abc.abstractmethod` needs an implementation in every concrete accelerator — not just
+  `cuda_accelerator.py` — or that vendor's accelerator can no longer be instantiated and
+  `get_accelerator()` fails with a `TypeError` for every user on that hardware. A concrete method
+  with a default body is safe to add, but the default must be correct for the vendors you cannot
+  test. Either way, vendor CI is path-filtered or nightly, so a mistake surfaces late.
 - New kernels: check whether `op_builder/` needs per-accelerator entries
-  (`op_builder/{cpu,hpu,npu,xpu,mlu,sdaa,mps}/`) and whether the op degrades gracefully when the
-  builder is unavailable. `no-torch` CI builds the sdist with no torch installed, so import-time
+  (`op_builder/{cpu,hpu,npu,xpu,mlu,sdaa,supa,mps}/`) and whether the op degrades gracefully when
+  the builder is unavailable. `no-torch` CI builds the sdist with no torch installed, so import-time
   code must not require torch or a device.
 - If you need to special-case an accelerator, ask what attribute of the device you actually depend
   on and detect that attribute instead of the device name (`is_bf16_supported()`,
@@ -330,22 +335,27 @@ Frequent sources in this repo:
 
 #### 2.4: CI integration, and what CI does not cover
 
-DeepSpeed's CI is a fleet of per-hardware workflows in `.github/workflows/` (34 of them). Know which
-one covers your change, and whether it runs on your PR at all:
+DeepSpeed's CI is a fleet of per-hardware workflows in `.github/workflows/`. Know which one covers
+your change, and whether it runs on your PR at all. The list below reflects the triggers at the time
+of writing; a workflow file with no `on:` block (or one that is entirely commented out) is disabled,
+so check the file rather than trusting its name:
 
-- `formatting` (pre-commit) and `dco` run on every PR. `python` and `no-torch` cover packaging and
-  torch-free import.
-- `cpu-torch-latest`, `nv-torch-latest-v100`, `nv-inference`, `nv-torch-nightly-v100`,
-  `nv-flash-attn`, `nv-sd`, and the integration workflows (`nv-transformers-v100`,
-  `nv-accelerate-v100`, `nv-lightning-v100`, `nv-mii`, `nv-ds-chat`) cover the mainline paths.
-- **Vendor accelerator workflows are path-filtered or nightly.** `hpu-gaudi2`, `xpu-max1100`,
-  `xpu-compile`, `amd-mi200`, `mps-torch-latest`, `nv-a6000` only run on PRs that touch their
-  declared paths (and otherwise on a nightly schedule). If your change can affect a vendor path but
-  does not match the filter, it gets **no** PR coverage — consider whether the filter should be
-  extended, and say what you validated instead.
-- **`modal-torch-latest` does not run its GPU tests on a plain PR push.** It previews a
-  diff-selected test list cheaply on the PR and executes in the merge queue, to conserve GPU quota.
-  See [`TEST_SELECTION.md`](../../../.github/workflows/TEST_SELECTION.md).
+- `formatting` (pre-commit), `dco`, `python`, and `cpu-torch-latest` run on every PR. `no-torch`
+  (torch-free import of the sdist) runs on PRs that touch `accelerator/` or `op_builder/`.
+- The remaining NVIDIA workflows are path-filtered: `nv-inference` (inference v1), `nv-a6000`
+  (inference v2), `nv-flash-attn` (sequence parallelism), `nv-sd` (stable diffusion), and
+  `nv-ds-chat` (ZeRO + hybrid engine) each run only on PRs that touch their declared paths. The
+  `*-v100` workflows (`nv-torch-latest-v100`, `nv-torch-nightly-v100`, `nv-transformers-v100`,
+  `nv-accelerate-v100`, `nv-mii`, `nv-lightning-v100`) have no triggers and provide no coverage.
+- **Vendor accelerator workflows are path-filtered, and most also run nightly.** `hpu-gaudi2`,
+  `xpu-max1100`, `xpu-compile`, `amd-mi200`, and `mps-torch-latest` run on PRs that touch their
+  declared paths and otherwise on a nightly schedule; `nv-a6000` and `nv-ds-chat` have no schedule,
+  so a change outside their filter gets no automatic coverage at all. If your change can affect a
+  vendor path but does not match the filter, it gets **no** PR coverage — consider whether the
+  filter should be extended, and say what you validated instead.
+- **`modal-torch-latest` and `modal-accelerate` do not run their GPU tests on a plain PR push.**
+  They preview a diff-selected test list cheaply on the PR and execute in the merge queue, to
+  conserve GPU quota. See [`TEST_SELECTION.md`](../../../.github/workflows/TEST_SELECTION.md).
 
 For the diff-based selector (`ci/tests_fetcher.py`), preview what CI will run before asking for
 review:
@@ -359,8 +369,12 @@ The selector traces static imports. If your change is reached only dynamically �
 plugin/registry lookup, JIT op builds, injection at `deepspeed.initialize()` time — the relevant
 tests will not be selected unless there is a `DYNAMIC_EDGES` entry in `ci/tests_fetcher.py`. Adding
 such a code path means checking whether `DYNAMIC_EDGES` needs an entry. Use `[test all]` in a commit
-message to force the full suite when in doubt. Note that `ci/*` changes only take effect once
-merged, so validate them via a `pull_request`-triggered run or the `modal` CLI.
+message to force the full suite when in doubt. Note that the Modal workflows run under
+`pull_request_target`, which deliberately executes the trusted base copy of `ci/*`, so a PR that
+changes the selector or launcher cannot prove its new end-to-end path by running itself. Before
+merge, validate `ci/*` changes with unit and static checks and, only where separately authorized
+Modal credentials are available, a direct Modal smoke run; do not describe mock coverage as live
+CI evidence (see the "Consequence" note in `TEST_SELECTION.md`).
 
 Add or update a workflow when new tests need resources no current workflow provides. Where CI cannot
 exercise the changed path at all, document the missing coverage, the resource constraint, and the
@@ -434,7 +448,8 @@ New features must include documentation updates — this is a hard requirement, 
 - User-facing features → a tutorial under `docs/_tutorials/`
 - Public API additions → the API reference under `docs/code-docs/source/`
 - Usage examples → `examples/`, and for a full feature, a companion PR to
-  [DeepSpeedExamples](https://github.com/deepspeedai/DeepSpeedExamples)
+  [DeepSpeedExamples](https://github.com/deepspeedai/DeepSpeedExamples) or
+  [Megatron-DeepSpeed](https://github.com/deepspeedai/Megatron-DeepSpeed)
 
 Check that existing docs describing the changed behavior were updated too; stale tutorials are a
 recurring source of user issues.
@@ -451,8 +466,9 @@ under `.github/ISSUE_TEMPLATE/` as a guide to the context maintainers expect
 
 #### 4.1: DCO sign-off
 
-Every non-merge commit needs a `Signed-off-by` line (`git commit -s`), checked by the DCO app. Take
-the name and email from `git config user.name` / `git config user.email`.
+Every non-merge commit needs a `Signed-off-by` line (`git commit -s`), checked by the required
+`DCO / required` workflow (`.github/workflows/dco.yml`). Take the name and email from
+`git config user.name` / `git config user.email`.
 
 When reviewing: commit trailers are **not** visible in a diff. Never report a missing sign-off from
 the diff alone — verify first, and flag it only if the trailer is genuinely absent:
