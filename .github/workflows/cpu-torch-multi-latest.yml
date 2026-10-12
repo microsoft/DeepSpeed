@@ -275,22 +275,4 @@ jobs:
         # sentinel means the run died before this step (setup/install), which triage
         # reports separately.
         if: always()
-        run: |
-          case "${MULTIRANK_EXIT:-none}" in
-            none)
-              echo "the test step never ran" >&2
-              exit 1
-              ;;
-            0)
-              echo "multi-rank suite passed"
-              exit 0
-              ;;
-            124)
-              echo "DS_CI_FAILURE_CLASS=timeout"
-              exit 1
-              ;;
-            *)
-              echo "DS_CI_FAILURE_CLASS=test"
-              exit "${MULTIRANK_EXIT}"
-              ;;
-          esac
+        run: python ci/classify_multirank_exit.py "${MULTIRANK_EXIT:-none}"
