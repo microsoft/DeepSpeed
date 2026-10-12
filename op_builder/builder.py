@@ -13,10 +13,6 @@ import subprocess
 import shlex
 import shutil
 import tempfile
-import distutils.ccompiler
-import distutils.log
-import distutils.sysconfig
-from distutils.errors import CompileError, LinkError
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -343,6 +339,12 @@ class OpBuilder(ABC):
         and then distutils is used to compile that program and link it with the specified libraries.
         Returns True if both the compile and link are successful, False otherwise.
         '''
+        # Imported here because distutils pulls in setuptools, which slows down import deepspeed.
+        import distutils.ccompiler
+        import distutils.log
+        import distutils.sysconfig
+        from distutils.errors import CompileError, LinkError
+
         tempdir = None  # we create a temporary directory to hold various files
         filestderr = None  # handle to open file to which we redirect stderr
         oldstderr = None  # file descriptor for stderr
