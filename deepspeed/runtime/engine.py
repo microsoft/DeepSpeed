@@ -147,7 +147,6 @@ from deepspeed.compile.passes.contract import validate_schedule
 from deepspeed.compile.passes import (zero_1_and_2_compile, zero3_compile, prefetch, selective_gather,
                                       offload_parameters, offload_adam_states, offload_activation)
 from deepspeed.compile.z3_eager_fallback import deepcompile_z3_forward_context
-from deepspeed.compile.init_tp import init_autotp
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -5793,6 +5792,8 @@ class DeepSpeedEngine(Module):
                            "rank of the TP group.")
 
         compile_kwargs['fullgraph'] = True
+        # Imported here because init_tp imports the custom ops, and registering them slows down import deepspeed.
+        from deepspeed.compile.init_tp import init_autotp
         return init_autotp(self.module)
 
     def get_deepcompile_backend(self, backend, compile_kwargs, schedule):
