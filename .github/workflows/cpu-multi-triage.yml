@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# DeepSpeed Team
 name: cpu-multi-triage
 
 # Regression triage for the nightly cpu-torch-multi-latest multi-rank run.

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# DeepSpeed Team
 name: cpu-torch-multi-latest
 
 # Multi-rank CPU suite.
