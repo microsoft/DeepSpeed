@@ -1003,6 +1003,12 @@ smoke coverage used for this AutoEP surface produced the following version gates
 | -------------------------------------------------------------------------------------------------------------- | -------- |
 | How the DeepEP route applies one FP32 routing weight to each received row at the existing `score_apply` boundary. `"auto"` resolves to `"eager"`, preserving `(rows.float() * weights).to(rows.dtype)`. `"fused"` is experimental and uses a separate Triton pointwise operator for that per-row product only; it does not perform the top-k reduction or move the BF16/FP16 rounding point. It requires `comm_backend="deepep"`, `autoep_size > 1`, CUDA, Triton, contiguous bfloat16/float16 rows shaped `[N, H]`, and contiguous FP32 weights shaped `[N, 1]` on the same device; DeepEP dispatch currently supports BF16 rows only. Fused weight gradients can differ from eager due to FP32 summation order. Unsupported configurations fail rather than falling back. | `"auto"` |
 
+***gate_up_impl***: [string]
+
+| Description                                                                                                    | Default  |
+| -------------------------------------------------------------------------------------------------------------- | -------- |
+| How the grouped experts compute their gate and up projections. `"separate"` runs two grouped GEMMs. `"fused"` is experimental and runs one `torch._grouped_mm` over the gate and up weights concatenated on each call, followed by an activation that reads the two halves of its output in place; for `swiglu` this is a Triton kernel with first-order gradients only (`create_graph=True` raises). Parameters, checkpoints and optimizer state keep the separate `w1`/`w3` layout. The forward expression and parameter-gradient semantics are unchanged, but exact numerical equality is not guaranteed across GEMM shapes/backends; the input gradient accumulates both projections in one FP32 GEMM instead of adding two rounded results. Requires `use_grouped_mm=true` and the `torch._grouped_mm` path (set `disable_triton_grouped_mm=true` on devices that prefer the Triton grouped GEMM); unsupported configurations fail rather than falling back. | `"separate"` |
+
 ***route_norm***: [boolean]
 
 | Description                                                                                                     | Default |
@@ -1136,9 +1142,9 @@ Use a built-in preset but override specific naming/weight fields for a fine-tune
 
 **Constraints:**
 - `autoep_size` must divide `num_experts` for all detected MoE layers
-- AutoEP currently cannot be combined with AutoTP (`tensor_parallel.autotp_size > 1`); support is planned as follow-up work
-- AutoEP with ZeRO Stage 3 is supported only without AutoTP, sequence parallelism, hpZeRO secondary tensor groups, non-1 `expert_tensor_parallel_size`, or quantized gradients
-- ZeRO Stage 3 saves AutoEP checkpoints partition-natively and supports same-topology save/load, module-only loads, optimizer-state-skipping loads, and universal checkpoint conversion. Universal loads can resume at a different data-parallel world size, a different `autoep_size`, or both (when the target `autoep_size` divides the expert count), including weights-only/module-only loads from the converted `fp32.pt` parameter files
+- AutoEP combines with AutoTP (`tensor_parallel.autotp_size > 1`) by folding them onto the same ranks, at ZeRO stages 0 to 3, with `expert_tensor_parallel_size` 1 and without ZeRO offload or DeepCompile
+- AutoEP with ZeRO Stage 3 is supported only without sequence parallelism, hpZeRO secondary tensor groups, non-1 `expert_tensor_parallel_size`, or quantized gradients
+- ZeRO Stage 3 saves AutoEP checkpoints partition-natively and supports same-topology save/load, module-only loads, optimizer-state-skipping loads, and universal checkpoint conversion (not yet with AutoTP folding). Universal loads can resume at a different data-parallel world size, a different `autoep_size`, or both (when the target `autoep_size` divides the expert count), including weights-only/module-only loads from the converted `fp32.pt` parameter files
 
 ### Python cyclic garbage collection
 

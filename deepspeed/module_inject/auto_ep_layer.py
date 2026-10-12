@@ -29,8 +29,9 @@ from deepspeed.module_inject.auto_ep_config import AutoEPConfig, MoELayerSpec, r
 from deepspeed.module_inject.auto_ep_folding import mark_autoep_folding_router_parameter
 from deepspeed.ops.triton_ops import autoep_fused_token_ops as fused_token_ops
 from deepspeed.utils import logger
-from deepspeed.module_inject.auto_ep_comm import (COMM_BACKEND, DEEPEP_BACKEND, assert_dtype_supported, deepep_combine,
-                                                  deepep_dispatch, new_exchange_scope, shared_exchange)
+from deepspeed.module_inject.auto_ep_comm import (COMM_BACKEND, DEEPEP_BACKEND, DeepEPCheckpointReplay,
+                                                  assert_dtype_supported, deepep_combine, deepep_dispatch,
+                                                  new_exchange_scope, shared_exchange)
 from deepspeed.moe.ep_router import TokenChoiceTopKRouter
 from deepspeed.moe.ep_count import count_tokens_per_expert
 from deepspeed.moe.ep_experts import GroupedExperts
@@ -637,6 +638,7 @@ class AutoEPMoELayer(nn.Module):
             activation=spec.expert_activation,
             activation_alpha=spec.expert_activation_alpha,
             activation_limit=spec.expert_activation_limit,
+            gate_up_impl=config.gate_up_impl,
         )
         _copy_parameter_data(self.experts.w1, w1)
         _copy_parameter_data(self.experts.w2, w2)
@@ -714,6 +716,8 @@ class AutoEPMoELayer(nn.Module):
         self.comm_num_sm = config.comm_num_sm
         self.comm_qp_margin = config.comm_qp_margin
         self._deepep_exchange = None
+        # Per layer, unlike the shared exchange: a checkpoint recompute must find this layer's forward handle.
+        self._deepep_replay = DeepEPCheckpointReplay()
         self.comm_max_tokens_per_rank = config.comm_max_tokens_per_rank
 
     def _start_async_split_plan(self, num_tokens_per_expert: torch.Tensor) -> _PendingSplitPlan:
@@ -836,8 +840,11 @@ class AutoEPMoELayer(nn.Module):
                 "job will produce, normally train_micro_batch_size_per_gpu * maximum padded sequence length, or "
                 'set comm_backend="comm".')
 
-        received, recv_weights, exchange = deepep_dispatch(self._deepep_exchange, tokens, ro.selected_experts,
-                                                           ro.top_scores)
+        received, recv_weights, exchange = deepep_dispatch(self._deepep_exchange,
+                                                           tokens,
+                                                           ro.selected_experts,
+                                                           ro.top_scores,
+                                                           replay=self._deepep_replay)
         handle = exchange.last_handle
 
         # combine reads exactly the rows the handle says arrived, taken from
@@ -936,6 +943,13 @@ class AutoEPMoELayer(nn.Module):
 
     def _forward(self, hidden_states: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         bsz, seqlen, hdim = hidden_states.shape
+        folded_tp = self.folding_group_handles is not None and self.folding_group_handles.spec.tp_size > 1
+        if folded_tp:
+            # Tensor-parallel layers before this one need the same input gradient on every TP peer;
+            # see average_gradient_over_tp.
+            from deepspeed.moe.ep_tp_dispatch import average_gradient_over_tp
+            hidden_states = average_gradient_over_tp(hidden_states, self.tp_group,
+                                                     self.folding_group_handles.spec.tp_size)
         x = hidden_states.reshape(-1, hdim)  # [T, H]
 
         # Fail all ranks before any collective can stall.
@@ -950,7 +964,6 @@ class AutoEPMoELayer(nn.Module):
         # Router
         ro: RouterOutput = RouterOutput(*self.router(x, self.expert_bias))
 
-        folded_tp = self.folding_group_handles is not None and self.folding_group_handles.spec.tp_size > 1
         pending_plan = None
         if self.async_split_plan and self.ep_size > 1 and self.comm_backend == COMM_BACKEND:
             if folded_tp:
