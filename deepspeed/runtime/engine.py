@@ -124,6 +124,7 @@ from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayer
 
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from deepspeed.runtime.torch_autocast import init_autocast_params, get_default_autocast_lower_precision_modules, autocast_if_enabled
+from deepspeed.runtime.keep_in_fp32 import keep_in_fp32_pattern, keep_buffers_in_fp32, buffers_to_keep_in_fp32
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
@@ -598,7 +599,12 @@ class DeepSpeedEngine(Module):
         # weights for the rest of __init__, which is where ZeRO partitioning allocates.
         del autoep_replacement_sources
         if self.autotp_size() > 1:
-            self._configure_tensor_parallel(model, self.tensor_parallel_config())
+            autotp_replacement_sources = self._configure_tensor_parallel(model, self.tensor_parallel_config())
+            # AutoTP replaces the weights it shards when the model was built under zero.Init.
+            _remap_client_optimizer_after_module_replacement(self.client_optimizer, model, autotp_replacement_sources)
+            if eager_model_parameters:
+                _remap_model_parameters_after_module_replacement(model_parameters, model, autotp_replacement_sources)
+            del autotp_replacement_sources
             # Head counts were recorded against the whole model; the parameters are shards now.
             from deepspeed import resolve_per_head_muon_after_sharding
             resolve_per_head_muon_after_sharding(model)
@@ -940,7 +946,7 @@ class DeepSpeedEngine(Module):
     def _configure_tensor_parallel(self, model, tp_config):
         self._configure_tensor_parallel_states(model)
         configure_tensor_parallel_runtime(tp_config)
-        self._apply_autotp_partitioning(model, tp_config)
+        return self._apply_autotp_partitioning(model, tp_config)
 
     def _configure_tensor_parallel_states(self, model):
         """
@@ -1007,8 +1013,12 @@ class DeepSpeedEngine(Module):
                                                                             with_kwargs=True)
 
     def _apply_autotp_partitioning(self, model, tp_config):
+        """Shard the model with AutoTP. Returns the ``ReplacementSourceMap`` of the parameters AutoTP
+        replaced instead of resharding in place (weights of a model built under zero.Init)."""
+        from deepspeed.module_inject.auto_ep_layer import ReplacementSourceMap
+
         if getattr(model, "ds_autotp_parsed", False):
-            return
+            return ReplacementSourceMap()
         if get_accelerator().is_available() and self.local_rank >= 0:
             get_accelerator().set_device(self.local_rank)
 
@@ -1094,11 +1104,11 @@ class DeepSpeedEngine(Module):
             finalize_autotp(autotp,
                             attach_uc_metadata=True,
                             require_vocab_parallel_lm_head=tp_config.vocab_parallel_lm_head is True)
-            return
+            return autotp.replacement_sources
 
         if tp_size <= 1:
             setattr(model, "ds_autotp_parsed", True)
-            return
+            return ReplacementSourceMap()
 
         from deepspeed.module_inject import replace_transformer_layer
         if hf_tp_plan:
@@ -1184,7 +1194,7 @@ class DeepSpeedEngine(Module):
                 finalize_autotp(autotp,
                                 attach_uc_metadata=True,
                                 require_vocab_parallel_lm_head=use_vocab_parallel_lm_head)
-                return
+                return autotp.replacement_sources
             log_dist(
                 f"AutoTP: effective HuggingFace tp_plan could not be converted; falling back to heuristic AutoTP. "
                 f"styles={sorted(set(hf_tp_plan.values()))!r}",
@@ -1210,15 +1220,24 @@ class DeepSpeedEngine(Module):
             vocab_head_autotp.set_tensor_parallel_config(tp_size, tp_config.tensor_parallel.tp_group)
             vocab_head_autotp._resolve_vocab_parallel_lm_head()
 
+        replacement_sources = ReplacementSourceMap()
         parser_dict = AutoTP.tp_parser(model)
         for client_module, injection_policy in parser_dict:
             tp_config.injection_policy_tuple = injection_policy
-            replace_transformer_layer(client_module, model, None, tp_config, model_config, training_mode=True)
+            replace_transformer_layer(client_module,
+                                      model,
+                                      None,
+                                      tp_config,
+                                      model_config,
+                                      training_mode=True,
+                                      replacement_sources=replacement_sources)
 
         if vocab_head_autotp is not None:
             vocab_head_autotp._replace_vocab_parallel_lm_head()
+            replacement_sources.update(vocab_head_autotp.replacement_sources)
         finalize_autotp(attach_uc_metadata=True,
                         require_vocab_parallel_lm_head=tp_config.vocab_parallel_lm_head is True)
+        return replacement_sources
 
     def __del__(self):
         try:
@@ -1835,8 +1854,12 @@ class DeepSpeedEngine(Module):
 
         return param_dtype, buffer_dtype
 
-    def _cast_module_mixed_precision(self, param_dtype, buffer_dtype, is_zero_init_model):
-        """Cast params to param_dtype; cast buffers only when buffer_dtype is set."""
+    def _cast_module_mixed_precision(self, param_dtype, buffer_dtype, is_zero_init_model, keep_pattern=None):
+        """Cast params to param_dtype; cast buffers only when buffer_dtype is set.
+
+        Buffers whose names match keep_pattern stay in fp32 (data_types.keep_in_fp32_modules,
+        deepspeed/runtime/keep_in_fp32.py).
+        """
         # ZeRO-Init params are already at the configured dtype and partitioned, so
         # the per-parameter cast applies only in the non-zero-init path.
         if param_dtype is not None and not is_zero_init_model:
@@ -1845,8 +1868,15 @@ class DeepSpeedEngine(Module):
                     p.data = p.data.to(param_dtype)
 
         # Buffers are never ZeRO-partitioned.
+        kept = set()
+        if keep_pattern is not None:
+            kept = {id(b) for b in buffers_to_keep_in_fp32(self.module, keep_pattern)}
+            # Also upcasts a listed buffer that arrives in a lower precision.
+            keep_buffers_in_fp32(self.module, keep_pattern)
         if buffer_dtype is not None:
             for b in self.module.buffers(recurse=True):
+                if id(b) in kept:
+                    continue
                 if b.dtype in CASTABLE_DTYPES and b.dtype != buffer_dtype:
                     b.data = b.data.to(buffer_dtype)
 
@@ -2060,7 +2090,8 @@ class DeepSpeedEngine(Module):
             # Cast params only; preserve fp32 buffers (e.g. rotary inv_freq)
             # unless buffer_dtype is set. Replaces blanket module.half()/bfloat16().
             param_dtype, buffer_dtype = self._mixed_precision_dtypes()
-            self._cast_module_mixed_precision(param_dtype, buffer_dtype, is_zero_init_model)
+            keep_pattern = keep_in_fp32_pattern(self.module, self._config.keep_in_fp32_modules, param_dtype)
+            self._cast_module_mixed_precision(param_dtype, buffer_dtype, is_zero_init_model, keep_pattern)
         else:
             self.__check_params(self.module, torch.float)
 
@@ -2191,10 +2222,6 @@ class DeepSpeedEngine(Module):
                                  "Use AutoEP or choose ZeRO stage 1/2.")
         if not autoep_layers:
             raise AssertionError("MoE not supported with Stage 3")
-        autotp_size = self.autotp_size()
-        if autotp_size not in (0, 1):
-            raise AssertionError("AutoEP with ZeRO Stage 3 does not support AutoTP yet "
-                                 f"(tensor_parallel.autotp_size={autotp_size}).")
         if self.sequence_parallel_size != 1:
             raise AssertionError("AutoEP with ZeRO Stage 3 does not support sequence parallelism yet "
                                  f"(sequence_parallel_size={self.sequence_parallel_size}).")
@@ -2685,7 +2712,9 @@ class DeepSpeedEngine(Module):
 
         elif zero_stage == ZeroStageEnum.weights:
             self._validate_zero3_moe_compatibility()
-            if self.has_moe_layers:
+            # AutoTP shards must be partitioned over the data-parallel group only; the group a
+            # parameter already got from deepspeed.zero.Init is kept.
+            if self.has_moe_layers or self.autotp_size() > 1:
                 self._resolve_zero3_param_placement()
             if isinstance(optimizer, DummyOptim):
                 log_dist("Creating ZeRO Offload", ranks=[0])
@@ -3075,8 +3104,12 @@ class DeepSpeedEngine(Module):
         folding_spec = getattr(self, "_autoep_folding_spec", None)
         if folding_spec is None or folding_spec.tp_size <= 1 or not dist.is_initialized():
             return
-        if (isinstance(self.optimizer, ZeROOptimizer) and getattr(self.optimizer, "partition_gradients", False)
-                and getattr(self.optimizer, "autoep_folding_tp_group", None) is not None):
+        # ZeRO-2 and ZeRO-3 correct each gradient in their reduce hooks. A ZeRO-3 gradient still
+        # waiting in the reduce bucket has been corrected already, and correcting it again here
+        # would divide a routed-expert gradient by the TP size twice.
+        if (isinstance(self.optimizer, ZeROOptimizer)
+                and getattr(self.optimizer, "autoep_folding_tp_group", None) is not None and
+            (getattr(self.optimizer, "partition_gradients", False) or self.zero_optimization_partition_weights())):
             return
         tp_group = groups.get_tensor_model_parallel_group()
         if tp_group is None:
@@ -4033,6 +4066,11 @@ class DeepSpeedEngine(Module):
         return "dense"
 
     def _autoep_zero_optimizer_param_families(self):
+        # The per-parameter record below assumes ZeRO-1/2, where each parameter group has one partition
+        # group. ZeRO-3 partitions each sub-group over its own group, records those partitions in its
+        # optimizer state (ds_zero_partition_groups), and refuses a checkpoint whose partitions differ.
+        if self.zero_optimization_partition_weights():
+            return None
         optimizer = self.optimizer
         real_dp_groups = getattr(optimizer, "real_dp_process_group", [])
         partition_counts = getattr(optimizer, "partition_count", [])
