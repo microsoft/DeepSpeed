@@ -340,8 +340,10 @@ your change, and whether it runs on your PR at all. The list below reflects the 
 of writing; a workflow file with no `on:` block (or one that is entirely commented out) is disabled,
 so check the file rather than trusting its name:
 
-- `formatting` (pre-commit), `dco`, `python`, and `cpu-torch-latest` run on every PR. `no-torch`
-  (torch-free import of the sdist) runs on PRs that touch `accelerator/` or `op_builder/`.
+- `formatting` (pre-commit) and `dco` run on every PR. `python` and `cpu-torch-latest` run on every
+  PR except documentation-only changes (`docs/`, `blogs/`, and Markdown files, as decided by
+  `ci/check_paths.py`). `no-torch` (torch-free import of the sdist) runs on PRs that touch
+  `accelerator/` or `op_builder/`.
 - The remaining NVIDIA workflows are path-filtered: `nv-inference` (inference v1), `nv-a6000`
   (inference v2), `nv-flash-attn` (sequence parallelism), `nv-sd` (stable diffusion), and
   `nv-ds-chat` (ZeRO + hybrid engine) each run only on PRs that touch their declared paths. The
@@ -371,10 +373,11 @@ tests will not be selected unless there is a `DYNAMIC_EDGES` entry in `ci/tests_
 such a code path means checking whether `DYNAMIC_EDGES` needs an entry. Use `[test all]` in a commit
 message to force the full suite when in doubt. Note that the Modal workflows run under
 `pull_request_target`, which deliberately executes the trusted base copy of `ci/*`, so a PR that
-changes the selector or launcher cannot prove its new end-to-end path by running itself. Before
-merge, validate `ci/*` changes with unit and static checks and, only where separately authorized
-Modal credentials are available, a direct Modal smoke run; do not describe mock coverage as live
-CI evidence (see the "Consequence" note in `TEST_SELECTION.md`).
+changes the selector or launcher cannot prove its new end-to-end path by running itself. The
+`formatting` workflow runs `ci/test_tests_fetcher.py` from the PR's own tree, so put selector
+changes under test there; beyond that, validate with static checks and, only where separately
+authorized Modal credentials are available, a direct Modal smoke run. Do not describe mock coverage
+as live CI evidence (see the "Consequence" note in `TEST_SELECTION.md`).
 
 Add or update a workflow when new tests need resources no current workflow provides. Where CI cannot
 exercise the changed path at all, document the missing coverage, the resource constraint, and the
