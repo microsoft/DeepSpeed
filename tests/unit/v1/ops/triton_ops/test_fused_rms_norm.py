@@ -687,6 +687,8 @@ class TestFusedRMSNormCUDA(DistributedTest):
             (7, 128),
             (5, 2048),
             (3, 130),
+            # First width beyond the narrow cutoff: it must retain the wide-path accuracy contract.
+            (3, 129),
             # Narrow norms run several rows per program; these cover partial last blocks and masked columns.
             (4099, 128),
             (2, 300, 32, 128),
