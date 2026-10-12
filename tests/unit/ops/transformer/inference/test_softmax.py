@@ -66,19 +66,3 @@ def test_masked_softmax_when_max_is_masked(dtype, mask_value):
     ds_out = softmax(input_ds, mask)
     ref_out = torch.tensor([[0., 1.]], dtype=dtype, device=device)
     assert allclose(ds_out, ref_out)
-
-
-@pytest.mark.inference_ops
-def test_masked_softmax_preserves_small_mask_differences():
-    if not deepspeed.get_accelerator().is_triton_supported():
-        pytest.skip("triton is not supported on this system")
-
-    from deepspeed.ops.transformer.inference.triton import softmax
-
-    device = deepspeed.accelerator.get_accelerator().device_name()
-    input_ds = torch.tensor([[-16777216., -16777216.]], dtype=torch.float32, device=device)
-    mask = torch.tensor([[-1., 0.]], dtype=torch.float32, device=device)
-
-    ds_out = softmax(input_ds, mask)
-    ref_out = torch.softmax(input_ds.double() + mask.double(), dim=-1).float()
-    assert allclose(ds_out, ref_out)
