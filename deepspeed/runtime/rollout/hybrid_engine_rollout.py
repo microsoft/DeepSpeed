@@ -1030,8 +1030,8 @@ class HybridEngineRollout(RolloutEngine):
         prefill_cache = self._create_static_cache(StaticCache, module.config, batch_size, max_len, device, model_dtype)
         # Hybrid models take a per-type mask dict (GDN must see None; a 2D
         # mask corrupts its conv-state init); standard models take a tensor.
-        is_hybrid = "linear_attention" in (getattr(getattr(module.config, "text_config", module.config),
-                                                  "layer_types", None) or [])
+        is_hybrid = "linear_attention" in (getattr(getattr(module.config, "text_config", module.config), "layer_types",
+                                                   None) or [])
         prefill_mask = {"full_attention": None, "linear_attention": None} if is_hybrid else prompt_attn
         prefill_out = module(
             prompt_ids,
