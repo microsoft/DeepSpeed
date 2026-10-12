@@ -1,4 +1,3 @@
-<!-- This file is duplicated as CLAUDE.md and AGENTS.md. Keep them in sync. -->
 # AGENTS.md — Workspace-level instructions for AI coding agents
 
 > These rules apply to **all** AI-assisted contributions to `deepspeedai/DeepSpeed`.

@@ -8,7 +8,7 @@ description: Prepare a DeepSpeed change for human PR review or re-review, or ana
 This SKILL systematically enforces DeepSpeed's code quality and contribution standards during the
 pull request process, to reduce the burden of manual code review on maintainers.
 
-It assumes the repo-level rules in [`AGENTS.md`](../../../AGENTS.md) (duplicated as `CLAUDE.md`) and
+It assumes the repo-level rules in [`AGENTS.md`](../../../AGENTS.md) and
 [`CONTRIBUTING.md`](../../../CONTRIBUTING.md) are already in context; this checklist adds the
 review-time judgement that those rule lists do not cover.
 
@@ -103,6 +103,17 @@ implementations by design (ZeRO 1/2 vs 3, fp16 vs bf16 optimizers, per-accelerat
 - When adding functionality, look for parallels with existing designs and take the opportunity to
   simplify and unify, rather than adding a third variant alongside two others.
 
+Not all replication is equal. The distinction that matters is whether the copies are coupled:
+
+- **Replication that couples is not allowed.** If two pieces of code only work together because
+  their replicated mechanism is the same (a packing format, a naming scheme, an ordering
+  assumption), then editing one copy silently breaks the other. Extract the shared mechanism to
+  one place and have both callers use it.
+- **Incidental replication is allowed** when all three hold: the duplicated code is not a utility
+  function (otherwise put it in `runtime/utils.py` or the relevant shared module); changing one
+  copy does not break the mechanism the other copy participates in; and the copies live in
+  different modules, so each evolves with its own owner rather than drifting apart inside one file.
+
 Justify any duplication that exists to isolate new functionality from existing workflows.
 
 #### 1.3: Complexity
@@ -158,6 +169,11 @@ CUDA, ROCm, XPU, HPU, NPU, MLU, SDAA, MPS, and CPU.
   (`op_builder/{cpu,hpu,npu,xpu,mlu,sdaa,mps}/`) and whether the op degrades gracefully when the
   builder is unavailable. `no-torch` CI builds the sdist with no torch installed, so import-time
   code must not require torch or a device.
+- If you need to special-case an accelerator, ask what attribute of the device you actually depend
+  on and detect that attribute instead of the device name (`is_bf16_supported()`,
+  `is_triton_supported()`, `is_synchronized_device()`, ...). A `device_name() == "cuda"` check
+  silently excludes every other vendor that has the same capability. If no existing method
+  expresses the attribute, propose a new `abstract_accelerator` interface for it.
 
 #### 1.5: Correctness and compatibility
 
