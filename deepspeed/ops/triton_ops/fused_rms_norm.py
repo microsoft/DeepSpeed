@@ -250,11 +250,12 @@ def _block_n(n_cols: int) -> int:
     return max(16, triton.next_power_of_2(n_cols))
 
 
-def _narrow_block_m(n_cols: int):
-    """Rows per program for the narrow kernels, or None where the row kernels apply."""
-    if n_cols > _NARROW_MAX_COLS:
+def _narrow_block_m(n_rows: int, n_cols: int):
+    """Rows per narrow program, capped to the input, or None when unused."""
+    if n_rows == 0 or n_cols > _NARROW_MAX_COLS:
         return None
-    return _NARROW_BLOCK_ELEMENTS // _block_n(n_cols)
+    max_rows = _NARROW_BLOCK_ELEMENTS // _block_n(n_cols)
+    return min(max_rows, triton.next_power_of_2(n_rows))
 
 
 class _FusedRMSNorm(torch.autograd.Function):
@@ -269,7 +270,7 @@ class _FusedRMSNorm(torch.autograd.Function):
         ctx.save_for_backward(hidden, weight, rstd)
         ctx.n_cols = n_cols
 
-        block_m = _narrow_block_m(n_cols)
+        block_m = _narrow_block_m(n_rows, n_cols)
         if n_rows > 0 and block_m is not None:
             _rms_norm_narrow_forward_kernel[(triton.cdiv(n_rows, block_m), )](
                 hidden,
@@ -307,7 +308,7 @@ class _FusedRMSNorm(torch.autograd.Function):
         if n_rows == 0:
             return grad_hidden, torch.zeros_like(weight), None
 
-        block_m = _narrow_block_m(n_cols)
+        block_m = _narrow_block_m(n_rows, n_cols)
         if block_m is not None:
             n_row_blocks = triton.cdiv(n_rows, block_m)
             partial = torch.empty((n_row_blocks, n_cols), dtype=torch.float32, device=hidden.device)

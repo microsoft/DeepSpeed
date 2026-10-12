@@ -32,6 +32,29 @@ RMS_NORM_CLASSES = (
     "transformers.models.qwen3.modeling_qwen3.Qwen3RMSNorm",
     QWEN3_MOE_RMS_NORM,
 )
+NARROW_TILE_CASES = (
+    (0, 128, None),
+    (1, 1, 1),
+    (3, 1, 4),
+    (1, 7, 1),
+    (3, 16, 4),
+    (1, 64, 1),
+    (1, 96, 1),
+    (1, 128, 1),
+    (3, 128, 4),
+    (15, 128, 16),
+    (16, 128, 16),
+    (17, 128, 32),
+    (31, 128, 32),
+    (32, 128, 32),
+    (33, 128, 32),
+    (255, 16, 256),
+    (256, 16, 256),
+    (257, 16, 256),
+    (8192, 128, 32),
+    (1, 129, None),
+    (3, 2048, None),
+)
 
 
 def _rms_norm():
@@ -126,10 +149,10 @@ def _check_fused_rms_norm_matches_hf_forward_and_backward(dtype, shape):
     _assert_ulp_close(fused_weight.grad, eager_weight.grad, max_ulp=8, min_frac_within_1=0.95, label="dgamma")
 
 
-def _check_fused_rms_norm_width_one_has_nonzero_input_gradient(dtype):
+def _check_fused_rms_norm_width_one_has_nonzero_input_gradient(dtype, n_rows=257):
     device = _device()
     eps = 0.25
-    hidden = torch.linspace(0.25, 0.75, 257, device=device).to(dtype).reshape(-1, 1)
+    hidden = torch.linspace(0.25, 0.75, n_rows, device=device).to(dtype).reshape(-1, 1)
     weight = torch.ones((1, ), dtype=dtype, device=device)
     upstream = torch.ones_like(hidden)
 
@@ -673,6 +696,19 @@ def test_replace_rms_norm_model_round_trip_preserves_outputs_and_gradients():
     _check_replace_rms_norm_model_round_trip_preserves_outputs_and_gradients("cpu")
 
 
+@pytest.mark.parametrize("n_rows,n_cols,block_m", NARROW_TILE_CASES)
+def test_fused_rms_norm_narrow_tile_size(monkeypatch, n_rows, n_cols, block_m):
+    rms_norm = _rms_norm()
+    if rms_norm.triton is None:
+        # The scheduling contract is host-side; only Triton's integer helper needs a CPU stand-in.
+        def next_power_of_2(value):
+            return 1 << (value - 1).bit_length()
+
+        monkeypatch.setattr(rms_norm, "triton", types.SimpleNamespace(next_power_of_2=next_power_of_2))
+    # Pin the short-input bug: a single row must not allocate a full 4096-element tile.
+    assert rms_norm._narrow_block_m(n_rows, n_cols) == block_m
+
+
 @pytest.mark.skipif(os.environ.get("DS_ACCELERATOR") == "cpu", reason="fused RMSNorm needs CUDA and Triton")
 class TestFusedRMSNormCUDA(DistributedTest):
     # Fresh workers also tolerate CUDA state created while other test modules are being collected.
@@ -701,6 +737,29 @@ class TestFusedRMSNormCUDA(DistributedTest):
     def test_fused_rms_norm_matches_hf_forward_and_backward(self, dtype, shape):
         _require_fused_engine()
         _check_fused_rms_norm_matches_hf_forward_and_backward(dtype, shape)
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+    def test_fused_rms_norm_narrow_tiles(self, monkeypatch, dtype):
+        _require_fused_engine()
+        rms_norm = _rms_norm()
+        tiles = []
+
+        def record_launch(run, *args, **kwargs):
+            tiles.append(kwargs["BLOCK_M"])
+            return run(*args, **kwargs)
+
+        # Record real launches so a cap applied to only one pass cannot satisfy the regression.
+        for kernel in (rms_norm._rms_norm_narrow_forward_kernel, rms_norm._rms_norm_narrow_backward_kernel):
+            monkeypatch.setattr(kernel, "run", functools.partial(record_launch, kernel.run))
+
+        for n_rows, n_cols, block_m in NARROW_TILE_CASES:
+            tiles.clear()
+            if n_cols == 1:
+                _check_fused_rms_norm_width_one_has_nonzero_input_gradient(dtype, n_rows)
+            else:
+                _check_fused_rms_norm_matches_hf_forward_and_backward(dtype, (n_rows, n_cols))
+            expected_tiles = [] if block_m is None else [block_m, block_m]
+            assert tiles == expected_tiles, (n_rows, n_cols, tiles)
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
     def test_fused_rms_norm_width_one_has_nonzero_input_gradient(self, dtype):
