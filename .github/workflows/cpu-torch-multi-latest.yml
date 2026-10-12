@@ -263,9 +263,20 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          overall=0
-          HF_HOME=/tmp/hf_home timeout 120m pytest $PYTEST_OPTS --maxfail=100000 --forked -n 4 unit/ --ignore=unit/v1 --torch_ver="$TORCH_TEST_VERSION" || overall=$?
-          HF_HOME=/tmp/hf_home timeout 25m pytest $PYTEST_OPTS --maxfail=100000 --forked -m 'sequential' unit/ --torch_ver="$TORCH_TEST_VERSION" || overall=$?
+          parallel_exit=0
+          sequential_exit=0
+          HF_HOME=/tmp/hf_home timeout 120m pytest $PYTEST_OPTS --maxfail=100000 --forked -n 4 unit/ --ignore=unit/v1 --torch_ver="$TORCH_TEST_VERSION" || parallel_exit=$?
+          HF_HOME=/tmp/hf_home timeout 25m pytest $PYTEST_OPTS --maxfail=100000 --forked -m 'sequential' unit/ --torch_ver="$TORCH_TEST_VERSION" || sequential_exit=$?
+          # A timeout (124) outranks the other phase's failures: the budget ran
+          # out, so more failures may remain undiscovered. Without this, the
+          # outcome depended on which phase happened to run last.
+          overall=$sequential_exit
+          if [ "$parallel_exit" -ne 0 ]; then
+            overall=$parallel_exit
+          fi
+          if [ "$parallel_exit" -eq 124 ] || [ "$sequential_exit" -eq 124 ]; then
+            overall=124
+          fi
           echo "MULTIRANK_EXIT=$overall" >> "$GITHUB_ENV"
           exit 0
 
