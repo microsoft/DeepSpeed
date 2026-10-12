@@ -19,12 +19,11 @@ except ImportError:
 def cpp_standard():
     import torch
     torch_major, torch_minor = map(int, torch.__version__.split('.')[0:2])
-    # PyTorch headers require C++20 from 2.12 on; a later -std flag overrides the one torch adds.
+    # PyTorch headers require C++17 on 2.x and C++20 from 2.12 on; a later -std flag overrides
+    # the one torch adds.
     if (torch_major, torch_minor) >= (2, 12):
         return '-std=c++20'
-    if (torch_major, torch_minor) >= (2, 1):
-        return '-std=c++17'
-    return '-std=c++14'
+    return '-std=c++17'
 
 
 class SYCLOpBuilder(OpBuilder):
