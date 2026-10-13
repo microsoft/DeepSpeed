@@ -19,7 +19,7 @@ from deepspeed.utils import safe_get_local_fp32_param, safe_get_local_grad, safe
 from deepspeed.utils import safe_set_local_fp32_param, safe_set_local_grad, safe_set_local_optimizer_state
 from deepspeed.utils import safe_update_full_grad_vectorized
 from deepspeed.utils.mixed_precision_linkage import link_hp_params
-from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.ops.aio import AsyncIOBuilder
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.swap_tensor import MIN_SWAPPABLE_BYTES
@@ -242,8 +242,19 @@ class TestTensorFragmentGet(DistributedTest):
 class TestZeroBf16Fp32GradAccum(DistributedTest):
     world_size = 2
 
-    @pytest.mark.parametrize('zero_stage', [2, 3])
-    def test_safe_get_full_grad_preserves_fp32_accumulated_average(self, zero_stage):
+    @pytest.mark.parametrize(
+        'zero_stage, zero_options',
+        [
+            pytest.param(1, {}, id="stage1"),
+            pytest.param(2, {}, id="stage2"),
+            pytest.param(2, {"offload_optimizer": {
+                "device": "cpu"
+            }}, id="stage2-cpu-offload"),
+            pytest.param(2, {"contiguous_gradients": False}, id="stage2-noncontiguous"),
+            pytest.param(3, {}, id="stage3"),
+        ],
+    )
+    def test_safe_get_full_grad_preserves_fp32_accumulated_average(self, zero_stage, zero_options):
         # Catches storing or accumulating fp32 communication results in a bf16 partition.
         if not get_accelerator().is_bf16_supported():
             pytest.skip("requires bf16")
@@ -268,6 +279,7 @@ class TestZeroBf16Fp32GradAccum(DistributedTest):
             },
             "zero_optimization": {
                 "stage": zero_stage,
+                **zero_options,
             }
         }
 
@@ -282,16 +294,51 @@ class TestZeroBf16Fp32GradAccum(DistributedTest):
             if not engine.is_gradient_accumulation_boundary():
                 engine.step()
 
-        if zero_stage == 2:
-            stored_grad = next(grad for grad in engine.optimizer.averaged_gradients[0]
-                               if not getattr(grad, "_zero_padding", False))
-            assert stored_grad.dtype == torch.float32
-
         grad = safe_get_full_grad(engine.module.weight)
         expected = torch.full((4, ), 1.00390625, dtype=torch.float32, device=engine.device)
         assert grad.dtype == torch.float32
         torch.testing.assert_close(grad, expected, rtol=0, atol=0)
 
+        engine.destroy()
+
+    def test_dynamic_gradient_offload_preserves_optimizer_input(self):
+        if not get_accelerator().is_bf16_supported():
+            pytest.skip("requires bf16")
+
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "communication_data_type": "fp32",
+            "zero_allow_untested_optimizer": True,
+            "optimizer": {
+                "type": "SGD",
+                "params": {
+                    "lr": 1.0
+                }
+            },
+            "bf16": {
+                "enabled": True
+            },
+            "data_types": {
+                "grad_accum_dtype": "fp32"
+            },
+            "zero_optimization": {
+                "stage": 2,
+            },
+        }
+
+        model = ScaleModel()
+        engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        x = torch.arange(1, 5, dtype=torch.bfloat16, device=engine.device)
+        engine.backward(engine(x))
+        engine.offload_states(include=[OffloadStateTypeEnum.lp_grads], pin_memory=False)
+        engine.reload_states()
+
+        weight_before = engine.module.weight.detach().clone()
+        replacement_grad = torch.zeros(4, dtype=torch.float32, device=engine.device)
+        safe_set_full_grad(engine.module.weight, replacement_grad)
+        engine.step()
+
+        torch.testing.assert_close(engine.module.weight, weight_before, rtol=0, atol=0)
         engine.destroy()
 
 

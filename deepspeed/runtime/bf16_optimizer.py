@@ -503,6 +503,10 @@ class BF16_Optimizer(ZeROOptimizer):
     def backward_epilogue(self, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
         if update_hp_grads:
             self.update_hp_grads(clear_lp_grads=clear_lp_grads)
+            if self.grad_acc_dtype == torch.float32 and self.is_gradient_accumulation_boundary():
+                # The public gradient API checks param.grad first, so drop low-precision staging gradients after
+                # their fp32 accumulation buffers are complete.
+                self.clear_lp_grads(set_to_none=True)
 
     @torch.no_grad()
     def _update_hp_grad(self, lp, group_idx, param_idx, clear_lp_grads):
