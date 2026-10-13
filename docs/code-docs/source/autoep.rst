@@ -199,6 +199,33 @@ constructed, including when the caller supplied a lazily initialized process
 group. This initialization does not run on subsequent forwards. The standard
 ``comm`` and ``autoep_size=1`` paths are unchanged.
 
+Received rows and routing weights are passed through without a prefix slice
+when their buffers already contain exactly the arrived rows. Overallocated
+buffers are still trimmed independently to the handle's row count. This avoids
+redundant slice-gradient zero-fills and copies during checkpoint recomputation;
+it changes neither row weighting nor DeepEP's communication volume.
+
+Both reentrant and non-reentrant activation checkpointing are supported with
+DeepEP. The order in which DeepEP delivers rows depends on arrival timing, and a
+non-reentrant checkpoint keeps the forward pass's autograd nodes, together with
+the dispatch handle they hold. A non-reentrant recompute therefore repeats the
+forward's dispatch on that handle rather than dispatching afresh, so the expert
+activations it restores are in the order the backward expects. A recompute is
+matched to its forward pass by requiring each micro-batch to run backward before
+the layer's next forward, as gradient accumulation does; a recompute that could
+belong to more than one live forward pass raises an error rather than guessing.
+This also rejects interleaving a retained graph with a newer forward, even if
+the retained graph has already been replayed once. Repeating backward on one
+retained graph without another live forward remains supported. An inner
+non-reentrant checkpoint nested under a reentrant checkpoint records its fresh
+graph-building dispatch during the outer backward and reuses that layout for
+the inner recompute.
+Use reentrant checkpointing for schedules that run several forwards before their
+backwards. With PyTorch's default early stop, a non-reentrant recompute ends once
+the expert activations are restored, so it does not repeat the combine when
+nothing after the combine in the checkpointed region saves activations, for
+example a layer without shared experts.
+
 On 16 H100s across two nodes, replaying routing captured from real training,
 DeepEP reduced payload AllToAll time from roughly 100 ms to 48 ms per step. A
 full SFT step on Qwen3.5-MoE went from roughly 325 ms to 266 ms, a 1.2x speedup
@@ -233,6 +260,66 @@ SMs. The default of 12 was chosen by measuring whole steps: 8 SMs gave a median
 ``comm_qp_margin`` exists because DeepEP's automatic queue-pair count assumes
 it is alone on the fabric, which exhausts the queue pairs ZeRO and the
 data-parallel groups have already claimed in a training step.
+
+**Fused gate and up projections (experimental):**
+
+The grouped experts compute two projections of the same input, ``gate`` with
+``w1`` and ``up`` with ``w3``, before the expert activation. ``gate_up_impl``
+selects whether they run as two grouped GEMMs or as one:
+
+.. code-block:: json
+
+    {
+      "expert_parallel": {
+        "enabled": true,
+        "autoep_size": 8,
+        "gate_up_impl": "fused"
+      }
+    }
+
+``"separate"`` (default) keeps the existing two GEMMs. ``"fused"`` concatenates
+``w1`` and ``w3`` on each call and runs one ``torch._grouped_mm`` with twice the
+output columns. The activation then reads the two halves of that output in
+place: ``swiglu`` uses a Triton kernel, and the other forms run their usual
+expression on views of the halves. The parameters are not changed, so
+checkpoints, universal checkpoints, expert tensor parallelism and optimizer
+state, including Muon's per-expert treatment of ``w1`` and ``w3``, see the same
+layout as before.
+
+The forward expression and parameter-gradient semantics are unchanged. Exact
+output and weight-gradient equality was observed in the tested H100 cases,
+not guaranteed for all GEMM backends, shapes or hardware. In the
+backward pass, one input-gradient GEMM accumulates both projections in FP32,
+where ``"separate"`` adds two results rounded to the input dtype, so the input gradient can differ in
+the last bits. The numerical regression compares relative L2 errors with an
+FP64 reference using the same represented BF16 parameters; it does not claim
+universal bitwise equivalence or accuracy improvement.
+Forward and parameter-gradient checks use the grouped-GEMM tests' existing
+BF16 bound (2% relative plus 2% of the reference tensor's maximum magnitude).
+The clamped activations' parameter gradients use an independent dense BF16
+reference because rounding a projection across the clamp boundary changes
+its derivative discontinuously; smooth forms use the FP64 reference.
+The input-gradient relative-L2 bound is unchanged. Cross-algorithm training
+checks allow the same rounding scale, while reloading each parameter and
+optimizer momentum tensor must still preserve its saved values exactly.
+
+The packed SwiGLU Triton path supports first-order gradients only:
+``create_graph=True`` raises instead of silently dropping its second derivative.
+Forward and backward launch on the input device's current stream, restoring
+the caller's device. Other activations keep their existing eager expression.
+
+Most of the saving is in the backward pass: one input-gradient GEMM instead of
+two, and no separate addition. On Qwen3-30B-A3B with 8 H100s (expert parallel
+size 8, micro-batch 4, 16 accumulation steps, sequence length 4096, DeepEP and
+reentrant activation checkpointing), a full optimizer step went from 22.02 s to
+21.60 s (-1.9%) in two pairs using an equivalent benchmark prototype in the
+same allocation, with unchanged peak
+allocated memory and about 0.4 GB more reserved memory.
+
+``"fused"`` is rejected, rather than silently ignored, when the experts would
+not run ``torch._grouped_mm``: with ``use_grouped_mm=false``, or on devices that
+select the Triton grouped GEMM (compute capability below 9.0) unless
+``disable_triton_grouped_mm=true``.
 
 **DeepEP row weighting implementation (experimental):**
 
@@ -515,3 +602,45 @@ Requirements and limits:
 - DeepSeek-V2 and DeepSeek-V3 AutoEP do not support load-balance expert bias
   yet. The built-in DeepSeek presets disable it by default; explicit non-null
   values fail.
+
+Chunked causal-LM loss
+----------------------
+
+Long sequences with large vocabularies spend much of their peak memory on the
+language-model loss rather than on the model. Hugging Face's
+``ForCausalLMLoss`` upcasts the full ``[tokens, vocab]`` logits to FP32 and
+keeps an FP32 log-softmax for backward, and backward allocates two more FP32
+tensors of the same size. At 8,192 tokens and Qwen3's 151,936-token
+vocabulary each is about 5 GB, and all of them are live when backward starts,
+which is where AutoEP training memory peaks.
+
+``install_chunked_causal_lm_loss`` replaces that loss with one that computes
+the same FP32 cross entropy without them: forward keeps only the logits it was
+given plus one FP32 value per token, and backward recomputes the softmax and
+writes the gradient directly in the logits' dtype. On CUDA a Triton kernel does
+each pass in a single read of the logits (``backend="triton"``); the PyTorch
+backend (``backend="torch"``) does the same arithmetic in blocks of rows and
+runs anywhere. The default ``"auto"`` picks Triton when it can run; naming a
+backend that cannot run raises. The
+loss, the label shifting, ``ignore_index`` and ``num_items_in_batch``
+normalization follow ``ForCausalLMLoss``; gradients may differ from it by one
+BF16/FP16 rounding step where the FP32 evaluation order lands on a rounding
+boundary. It has no second derivative: backward with ``create_graph=True``
+raises. It is opt-in, and it refuses models whose ``loss_function`` is not
+the stock ``ForCausalLMLoss``:
+
+.. code-block:: python
+
+    from deepspeed.runtime.chunked_cross_entropy import install_chunked_causal_lm_loss
+
+    install_chunked_causal_lm_loss(model)
+    engine, optimizer, _, _ = deepspeed.initialize(model=model, config=ds_config)
+
+Class-index targets must have dtype ``torch.long``. Other dtypes, including
+floating-point and boolean labels, are rejected instead of being converted.
+When ``shift_labels`` is provided, it is the target used by the loss; unused
+``labels`` are not dtype-checked. ``block_rows`` must be a positive integer
+or ``None`` for automatic sizing, even when the selected backend does not use
+row blocking. Invalid settings are rejected before a backend runs. A model
+with a non-writable stock ``loss_function`` raises an actionable error rather
+than being silently left unmodified.
