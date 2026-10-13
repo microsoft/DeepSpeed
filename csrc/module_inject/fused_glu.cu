@@ -161,17 +161,23 @@ __global__ void decode_step_graph_kernel(const __nv_bfloat16* __restrict__ logit
                                          bool* __restrict__ mask,
                                          int64_t* __restrict__ out_buf,
                                          int vocab_size,
-                                         int max_len)
+                                         int max_len,
+                                         int pos_stride)
 {
+    // One block per row: each block argmaxes its row's logits and advances
+    // its own write_pos entry (pos_stride 1); a scalar pos (stride 0) is
+    // only valid with a single block.
     __shared__ int s_idx[1024];
     __shared__ float s_val[1024];
 
+    const int row = blockIdx.x;
+    const __nv_bfloat16* lg = logits + (long)row * vocab_size;
     int tid = threadIdx.x;
     int local_idx = 0;
     float local_val = -INFINITY;
 
     for (int v = tid; v < vocab_size; v += blockDim.x) {
-        float val = __bfloat162float(logits[v]);
+        float val = __bfloat162float(lg[v]);
         if (val > local_val) {
             local_val = val;
             local_idx = v;
@@ -195,18 +201,18 @@ __global__ void decode_step_graph_kernel(const __nv_bfloat16* __restrict__ logit
 
     if (tid == 0) {
         int64_t best = (int64_t)s_idx[0];
-        token_out[0] = best;
+        token_out[row] = best;
         // The output token becomes the NEXT step's input; write it one
         // position ahead so it does not overwrite the current position
         // (which holds the token being processed this step).
-        int64_t new_pos = write_pos[0] + 1;
-        write_pos[0] = new_pos;
-        out_buf[new_pos] = best;
+        int64_t new_pos = write_pos[row * pos_stride] + 1;
+        if (pos_stride != 0 || row == 0) write_pos[row * pos_stride] = new_pos;
+        out_buf[(long)row * max_len + new_pos] = best;
         // new_pos is the slot the token just written will occupy during the
         // NEXT replay, matching the Python loop's reveal-before-replay
         // convention; revealing new_pos+1 would unmask an unwritten slot
         // and mask the current one for layers still on native SDPA.
-        if (new_pos < max_len) { mask[new_pos] = true; }
+        if (new_pos < max_len) { mask[(long)row * max_len + new_pos] = true; }
     }
 }
 
@@ -218,17 +224,26 @@ void decode_step_graph(at::Tensor logits,
 {
     TORCH_CHECK(logits.is_cuda() && logits.scalar_type() == at::ScalarType::BFloat16,
                 "logits must be CUDA bf16");
-    int vocab = (int)logits.numel();
+    TORCH_CHECK(logits.dim() == 2, "logits must be [batch, vocab]");
+    const int batch = (int)logits.size(0);
+    int vocab = (int)logits.size(1);
     int max_len = (int)mask.size(-1);
+    TORCH_CHECK(token_out.numel() == batch, "token_out must have one entry per row");
+    TORCH_CHECK(mask.numel() == (int64_t)batch * max_len, "mask must be [batch, ..., max_len]");
+    TORCH_CHECK(out_buf.numel() == (int64_t)batch * max_len, "out_buf must be [batch, max_len]");
+    TORCH_CHECK(write_pos.numel() == batch || (write_pos.numel() == 1 && batch == 1),
+                "write_pos must have one entry per row (a scalar only for batch 1)");
+    const int pos_stride = write_pos.numel() == batch ? 1 : 0;
     auto stream = at::cuda::getCurrentCUDAStream();
-    decode_step_graph_kernel<<<1, 1024, 0, stream>>>(
+    decode_step_graph_kernel<<<batch, 1024, 0, stream>>>(
         reinterpret_cast<const __nv_bfloat16*>(logits.data_ptr<at::BFloat16>()),
         token_out.data_ptr<int64_t>(),
         write_pos.data_ptr<int64_t>(),
         mask.data_ptr<bool>(),
         out_buf.data_ptr<int64_t>(),
         vocab,
-        max_len);
+        max_len,
+        pos_stride);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 

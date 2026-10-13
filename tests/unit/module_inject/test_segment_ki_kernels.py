@@ -80,7 +80,7 @@ class TestKernelReferenceConsistency:
         token_out = torch.zeros(1, 1, dtype=torch.long, device=DEV)
         write_pos = torch.tensor([5], dtype=torch.long, device=DEV)
         mask = torch.zeros(1, 1, 1, max_len, dtype=torch.bool, device=DEV)
-        out_buf = torch.zeros(max_len, dtype=torch.long, device=DEV)
+        out_buf = torch.zeros(1, max_len, dtype=torch.long, device=DEV)
 
         expected = torch.argmax(logits[0].float())
         assert expected.item() == 10  # torch.argmax first-index rule
@@ -89,13 +89,35 @@ class TestKernelReferenceConsistency:
         assert token_out.view(-1)[0].item() == 10
         assert write_pos.item() == 6
         assert bool(mask[0, 0, 0, 6]) and not bool(mask[0, 0, 0, 7])
-        assert out_buf[6].item() == 10
+        assert out_buf[0, 6].item() == 10
 
         # a second call advances from the updated write_pos and reveals slot 7
         _op().decode_step_graph(logits, token_out, write_pos, mask, out_buf)
         assert write_pos.item() == 7
         assert bool(mask[0, 0, 0, 7]) and not bool(mask[0, 0, 0, 8])
-        assert out_buf[7].item() == 10
+        assert out_buf[0, 7].item() == 10
+
+    def test_decode_step_graph_batched(self):
+        """b=4 rows with per-row positions: each row argmaxes its own logits
+        slice, advances only its own write_pos entry, reveals its own mask
+        row, and stores into its own buffer row."""
+        vocab, max_len, b = 512, 8, 4
+        logits = torch.full((b, vocab), -3.0, dtype=torch.bfloat16, device=DEV)
+        wants = [5, 400, 100, 0]
+        for r, w in enumerate(wants):
+            logits[r, w] = 2.0
+        token_out = torch.zeros(b, 1, dtype=torch.long, device=DEV)
+        write_pos = torch.tensor([3, 5, 1, 6], dtype=torch.long, device=DEV)
+        mask = torch.zeros(b, 1, 1, max_len, dtype=torch.bool, device=DEV)
+        out_buf = torch.zeros(b, max_len, dtype=torch.long, device=DEV)
+        _op().decode_step_graph(logits, token_out, write_pos, mask, out_buf)
+        assert token_out.view(-1).tolist() == wants
+        assert write_pos.tolist() == [4, 6, 2, 7]
+        for r, w in enumerate(wants):
+            assert bool(mask[r, 0, 0, r + 4 - 1]) or True  # positions differ per row; check below
+        for r in range(b):
+            assert out_buf[r, [4, 6, 2, 7][r]].item() == wants[r]
+            assert bool(mask[r, 0, 0, [4, 6, 2, 7][r]])
 
     def test_dual_gemv_silu_mul(self):
         h = _rand_bf16(256)

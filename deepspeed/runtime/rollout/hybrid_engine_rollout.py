@@ -1064,7 +1064,9 @@ class HybridEngineRollout(RolloutEngine):
         next_token = prefill_out.logits[:, -1, :].argmax(dim=-1, keepdim=True)
 
         # --- Copy prefill KV into DeepSpeedStaticCache ---
-        write_pos = torch.tensor(prompt_len, dtype=torch.long, device=device)
+        # per-row positions: the batched step and decode-attention kernels
+        # advance one entry per sequence (a shared scalar would race)
+        write_pos = torch.full((batch_size, ), prompt_len, dtype=torch.long, device=device)
         ds_cache = DeepSpeedStaticCache(
             module.config,
             batch_size=batch_size,
@@ -1106,10 +1108,9 @@ class HybridEngineRollout(RolloutEngine):
         # plain 4-D tensor for standard full-attention ones.
         decode_mask = {"full_attention": static_attn, "linear_attention": None} if is_hybrid else static_attn
 
-        full_token_buf = torch.zeros(max_len, dtype=torch.long, device=device)
-        if batch_size == 1:
-            full_token_buf[:prompt_len] = prompt_ids.view(-1)
-        full_token_buf[prompt_len] = next_token.view(-1)[0]  # first generated token
+        full_token_buf = torch.zeros(batch_size, max_len, dtype=torch.long, device=device)
+        full_token_buf[:, :prompt_len] = prompt_ids
+        full_token_buf[:, prompt_len] = next_token.view(-1)  # first generated token per row
 
         write_pos.fill_(prompt_len)
 
@@ -1196,7 +1197,7 @@ class HybridEngineRollout(RolloutEngine):
                 # only accepts CUDA bf16 logits — fp16 models must keep the
                 # PyTorch argmax path instead of failing during capture.
                 is_greedy = sampling is None or sampling.temperature <= 0.0
-                if (graph_op is not None and batch_size == 1 and is_greedy and static_logits.dtype is torch.bfloat16
+                if (graph_op is not None and is_greedy and static_logits.dtype is torch.bfloat16
                         and get_accelerator().on_accelerator(static_logits)):
                     graph_op.decode_step_graph(static_logits[:, -1, :].contiguous(), static_token.view(batch_size, 1),
                                                write_pos, static_attn, full_token_buf)
@@ -1246,15 +1247,19 @@ class HybridEngineRollout(RolloutEngine):
             eos_check_every = 16
             for step in range(max_new_tokens - 1):
                 get_accelerator().replay_graph(graph)
-                if step % eos_check_every == eos_check_every - 1:
-                    tok_val = static_token.view(-1)[0].item()
-                    if tok_val == eos_token_id:
-                        # step is response-relative; the buffer also carries the
-                        # prompt prefix, so pad from the buffer-absolute slot
-                        # after the EOS (which sits at prompt_len + step + 1).
-                        full_token_buf[prompt_len + step + 2:] = pad_token_id
+                if eos_token_id is not None and step % eos_check_every == eos_check_every - 1:
+                    if bool((static_token.view(-1) == eos_token_id).all().item()):
                         break
-            gen_ids = full_token_buf[prompt_len:prompt_len + max_new_tokens].unsqueeze(0)
+            # pad each row's tail after its own first EOS (response region only;
+            # a prompt may legitimately contain the EOS id as content)
+            if eos_token_id is not None:
+                resp = full_token_buf[:, prompt_len:]
+                is_eos = resp == eos_token_id
+                first_eos = torch.where(is_eos.any(dim=1),
+                                        is_eos.float().argmax(dim=1), torch.full_like(write_pos[0], resp.shape[1]))
+                for r in (first_eos < resp.shape[1]).nonzero(as_tuple=True)[0].tolist():
+                    full_token_buf[r, prompt_len + first_eos[r].item() + 1:] = pad_token_id
+            gen_ids = full_token_buf[:, prompt_len:prompt_len + max_new_tokens]
             return torch.cat([prompt_ids, gen_ids], dim=1)
 
         eos_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
