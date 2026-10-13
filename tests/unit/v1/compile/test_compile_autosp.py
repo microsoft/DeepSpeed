@@ -183,12 +183,25 @@ class TestAutoSPSeqDim(DistributedTest):
 
 
 class _CausalLMModel(torch.nn.Module):
-    """Single-layer causal LM whose labels are already shifted to the next token, like ``shift_labels``."""
+    """
+    Single-layer causal LM whose labels are already shifted to the next token, like ``shift_labels``.
+    ``reduction`` is either a reduction name or the reduction keyword arguments of the cross entropy.
+    """
 
-    def __init__(self, reduction, vocab_size=64, hidden=32, num_heads=2, keyword_args=False, logit_scale=1.0):
+    def __init__(self,
+                 reduction,
+                 vocab_size=64,
+                 hidden=32,
+                 num_heads=2,
+                 keyword_args=False,
+                 logit_scale=1.0,
+                 probability_targets=False,
+                 autocast_dtype=None):
         super().__init__()
-        self.reduction = reduction
+        self.reduction_kwargs = {"reduction": reduction} if isinstance(reduction, str) else reduction
         self.keyword_args = keyword_args
+        self.probability_targets = probability_targets
+        self.autocast_dtype = autocast_dtype
         self.logit_scale = logit_scale
         self.num_heads = num_heads
         self.embed = torch.nn.Embedding(vocab_size, hidden)
@@ -207,16 +220,23 @@ class _CausalLMModel(torch.nn.Module):
 
         attn = F.scaled_dot_product_attention(to_heads(q), to_heads(k), to_heads(v), is_causal=True)
         x = x + self.out(attn.transpose(1, 2).reshape(batch, seq_len, -1))
+        if self.autocast_dtype is None:
+            return self.loss(x, labels)
+        with torch.autocast(device_type=x.device.type, dtype=self.autocast_dtype):
+            return self.loss(x, labels)
+
+    def loss(self, x, labels):
         logits = self.head(x) * self.logit_scale
+        if self.probability_targets:
+            labels = F.one_hot(labels, logits.size(-1)).float().view(-1, logits.size(-1))
+        else:
+            labels = labels.reshape(-1)
         if self.keyword_args:
             return F.cross_entropy(input=logits.view(-1, logits.size(-1)),
-                                   target=labels.reshape(-1),
+                                   target=labels,
                                    ignore_index=-100,
-                                   reduction=self.reduction)
-        return F.cross_entropy(logits.view(-1, logits.size(-1)),
-                               labels.reshape(-1),
-                               ignore_index=-100,
-                               reduction=self.reduction)
+                                   **self.reduction_kwargs)
+        return F.cross_entropy(logits.view(-1, logits.size(-1)), labels, ignore_index=-100, **self.reduction_kwargs)
 
 
 class TestAutoSPCausalLoss(DistributedTest):
@@ -225,16 +245,22 @@ class TestAutoSPCausalLoss(DistributedTest):
     non_daemonic_procs = True
 
     @pytest.mark.sequential
-    @pytest.mark.parametrize("zero_stage, reduction, keyword_args, explicit_mesh, empty_shard", [
-        (0, "mean", False, False, False),
-        (1, "mean", False, False, False),
-        (0, "sum", False, False, False),
-        (1, "sum", False, False, False),
-        (0, "mean", True, False, False),
-        (0, "mean", False, False, True),
-        (0, "mean", False, True, False),
-        (1, "sum", False, True, False),
-    ])
+    @pytest.mark.parametrize(
+        "zero_stage, reduction, keyword_args, explicit_mesh, empty_shard",
+        [
+            (0, "mean", False, False, False),
+            (1, "mean", False, False, False),
+            (0, "sum", False, False, False),
+            (1, "sum", False, False, False),
+            (0, "mean", True, False, False),
+            (0, "mean", False, False, True),
+            (0, "mean", False, True, False),
+            (1, "sum", False, True, False),
+            # The deprecated argument overrides the default mean reduction.
+            (0, {
+                "size_average": False
+            }, True, False, False),
+        ])
     def test_matches_full_sequence_reference(self, zero_stage, reduction, keyword_args, explicit_mesh, empty_shard):
         import copy
         import deepspeed
@@ -333,6 +359,67 @@ class TestAutoSPCausalLoss(DistributedTest):
             engine.compile()
         engine.destroy()
 
+    @pytest.mark.parametrize("zero_stage", [2, 3])
+    def test_rejects_zero_stages_without_autosp(self, zero_stage):
+        import deepspeed
+
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU does not support this test yet")
+
+        model = _CausalLMModel("mean").to(get_accelerator().current_device_name())
+        config = {
+            "train_micro_batch_size_per_gpu": 2,
+            "zero_optimization": {
+                "stage": zero_stage
+            },
+            "compile": {
+                "deepcompile": True,
+                "passes": ["autosp"]
+            },
+            "sequence_parallel_size": 2,
+        }
+        # These stages compile without AutoSP, so each rank would train on its full sequence while the
+        # engine summed gradients over the sequence parallel ranks.
+        with pytest.raises(ValueError, match="AutoSP does not support ZeRO stage"):
+            deepspeed.initialize(config=config, model=model, optimizer=torch.optim.SGD(model.parameters(), lr=0.1))
+
+    @pytest.mark.sequential
+    @pytest.mark.parametrize("reduction, probability_targets, error", [
+        ({
+            "reduce": False
+        }, False, "reduction 'mean' or 'sum'"),
+        ("mean", True, "class index targets only"),
+    ])
+    def test_rejects_unsupported_cross_entropy(self, reduction, probability_targets, error):
+        import deepspeed
+        from deepspeed.compile.passes.sp_compile import prepare_autosp_inputs
+
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU does not support this test yet")
+
+        seq_len, batch, vocab_size = 16, 2, 64
+        device = get_accelerator().current_device_name()
+        config = {
+            "train_micro_batch_size_per_gpu": batch,
+            "compile": {
+                "deepcompile": True,
+                "passes": ["autosp"]
+            },
+            "sequence_parallel_size": 2,
+        }
+        model = _CausalLMModel(reduction, vocab_size=vocab_size, probability_targets=probability_targets)
+        engine, _, _, _ = deepspeed.initialize(config=config, model=model)
+        engine.compile()
+
+        # A per-token loss cannot be combined over the shards, and probability targets have no ignored
+        # tokens to count, so the full-sequence loss would be wrong.
+        input_ids = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        labels = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch, seq_len).contiguous()
+        with pytest.raises(Exception, match=error):
+            engine(*prepare_autosp_inputs(input_ids, labels, position_ids)[:3])
+        engine.destroy()
+
 
 class TestAutoSPHalfPrecisionLoss(DistributedTest):
     world_size = 2
@@ -387,6 +474,50 @@ class TestAutoSPHalfPrecisionLoss(DistributedTest):
         losses = [torch.empty_like(loss) for _ in range(self.world_size)]
         dist.all_gather(losses, loss)
         assert all(torch.equal(other, loss) for other in losses)
+
+        engine.destroy()
+
+    @pytest.mark.sequential
+    def test_autocast_loss_keeps_cross_entropy_dtype(self):
+        import deepspeed
+        from deepspeed.compile.passes.sp_compile import prepare_autosp_inputs
+
+        skip_on_arch(min_arch=8)
+        if not bf16_required_version_check():
+            pytest.skip("BFloat16 is not supported")
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU does not support this test yet")
+
+        seq_len, batch, vocab_size = 16, 2, 64
+        device = get_accelerator().current_device_name()
+        torch.manual_seed(0)
+        model = _CausalLMModel("mean", vocab_size=vocab_size, autocast_dtype=torch.bfloat16).to(device)
+        reference = copy.deepcopy(model)
+        config = {
+            "train_micro_batch_size_per_gpu": batch,
+            "train_batch_size": batch,
+            "compile": {
+                "deepcompile": True,
+                "passes": ["autosp"]
+            },
+            "sequence_parallel_size": self.world_size,
+        }
+        engine, _, _, _ = deepspeed.initialize(config=config, model=model)
+        engine.compile()
+
+        torch.manual_seed(100)
+        input_ids = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        labels = torch.randint(0, vocab_size, (batch, seq_len), device=device)
+        position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch, seq_len).contiguous()
+
+        with torch.no_grad():
+            reference_loss = reference(input_ids, labels, position_ids)
+            loss = engine(*prepare_autosp_inputs(input_ids.clone(), labels.clone(), position_ids.clone())[:3])
+
+        # Autocast runs cross entropy in FP32, so the loss must not be rounded to the BF16 logits.
+        assert reference_loss.dtype == torch.float32
+        assert loss.dtype == reference_loss.dtype
+        torch.testing.assert_close(loss, reference_loss, rtol=1e-2, atol=1e-2)
 
         engine.destroy()
 

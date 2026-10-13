@@ -12,6 +12,7 @@ from torch._subclasses.fake_tensor import FakeTensorMode, maybe_get_fake_mode
 from torch.fx import GraphModule, Node
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.experimental.symbolic_shapes import ShapeEnv
+from torch.nn._reduction import legacy_get_string
 
 from deepspeed.compile import constants
 
@@ -171,12 +172,21 @@ def pass_shard_label_ids(gm: GraphModule, example_inputs):
         if weight is not None:
             raise RuntimeError("AutoSP does not support class-weighted cross entropy on sequence-sharded labels")
         reduction = _get_cross_entropy_arg(loss_node, "reduction", 6, "mean")
+        size_average = _get_cross_entropy_arg(loss_node, "size_average", 3, None)
+        reduce = _get_cross_entropy_arg(loss_node, "reduce", 5, None)
+        if size_average is not None or reduce is not None:
+            # The deprecated arguments override reduction inside cross entropy.
+            reduction = legacy_get_string(size_average, reduce, emit_warning=False)
         if reduction not in ("mean", "sum"):
             raise RuntimeError(f"AutoSP supports cross entropy with reduction 'mean' or 'sum', got {reduction!r}")
         ignore_index = _get_cross_entropy_arg(loss_node, "ignore_index", 4, -100)
 
         target_node = _get_cross_entropy_arg(loss_node, "target", 1, None)
-        input_node = _get_cross_entropy_arg(loss_node, "input", 0, None)
+        if get_node_shape_meta(target_node).dtype.is_floating_point:
+            # Class probability targets have no ignore_index, so counting valid tokens does not apply.
+            raise RuntimeError("AutoSP supports cross entropy with class index targets only, not class probabilities")
+        # Under autocast, cross entropy returns FP32 even for half-precision logits.
+        loss_dtype = get_node_shape_meta(loss_node).dtype
         with gm.graph.inserting_after(target_node):
             valid_mask = gm.graph.call_function(operator.ne, args=(target_node, ignore_index))
         with gm.graph.inserting_after(valid_mask):
@@ -188,6 +198,11 @@ def pass_shard_label_ids(gm: GraphModule, example_inputs):
             loss_node.update_kwarg("reduction", "none")
         else:
             loss_node.update_arg(6, "none")
+        for name, position in (("size_average", 3), ("reduce", 5)):
+            if name in loss_node.kwargs:
+                loss_node.update_kwarg(name, None)
+            elif len(loss_node.args) > position:
+                loss_node.update_arg(position, None)
 
         with gm.graph.inserting_after(loss_node):
             token_losses = gm.graph.call_method("float", args=(loss_node, ))
@@ -200,7 +215,7 @@ def pass_shard_label_ids(gm: GraphModule, example_inputs):
             global_loss = gm.graph.call_function(operator.getitem, args=(aggregated, 0))
         with gm.graph.inserting_after(global_loss):
             # Return the loss in the dtype cross entropy would have produced.
-            output_loss = gm.graph.call_method("type_as", args=(global_loss, input_node))
+            output_loss = gm.graph.call_method("to", args=(global_loss, loss_dtype))
         loss_node.replace_all_uses_with(output_loss)
         token_losses.update_arg(0, loss_node)
 

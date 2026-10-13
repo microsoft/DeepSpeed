@@ -535,6 +535,12 @@ def initialize(
     if not isinstance(config, dict):
         config = load_ds_config(config)
 
+    zero_stage = config.get("zero_optimization", {}).get("stage", 0)
+    if _autosp_sequence_parallel_size(config) > 1 and zero_stage >= 2:
+        # The engine would fall back to the plain torch compiler, which does not shard the sequence, while
+        # still summing gradients over the sequence parallel ranks.
+        raise ValueError(f"AutoSP does not support ZeRO stage {zero_stage}; use ZeRO stage 0 or 1")
+
     mesh_device = None
     if mesh_param:
         logger.info(f"mesh_param to Initialize mesh device: {mesh_param}")
