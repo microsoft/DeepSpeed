@@ -24,6 +24,7 @@
 - Write beginner-friendly code: avoid deeply nested expressions or chained logic. Break complex expressions into clear, named intermediate steps.
 - Comments should explain **why**, not **what**. Describe the purpose and reasoning, not the mechanics that the code already shows.
 - New features must include corresponding tests and documentation updates.
+- All changes must not cause `import deepspeed` to initialize CUDA; Keep heavy imports (> 0.1s) out of `import deepspeed`; Avoid changing `deepspeed/__init__.py` unless necessary.
 
 ### Test discipline
 
