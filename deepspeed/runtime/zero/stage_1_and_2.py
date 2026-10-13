@@ -1333,13 +1333,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param = self.bit16_groups[group_idx][param_idx_in_group]
             if self._use_compact_grad_partition_buffer(group_idx):
                 partition_id = dist.get_rank(group=self.real_dp_process_group[group_idx])
-                source_offset = int(self.grad_start_offset[group_idx][partition_id][param_id])
-                dest_offset = int(self.grad_partition_insertion_offset[group_idx][partition_id][param_id])
-                num_elements = int(min(param.numel() - source_offset, self.partition_size[group_idx] - dest_offset))
-                if num_elements > 0:
-                    source = reduced_tensor.narrow(0, bucket_offset + source_offset, num_elements)
-                    output = self._get_compact_grad_partition_slice(group_idx, partition_id, param_id, num_elements)
-                    self._add_to_grad_partition_buffer(output, source)
+                if param_id in self.grad_start_offset[group_idx][partition_id]:
+                    source_offset = int(self.grad_start_offset[group_idx][partition_id][param_id])
+                    dest_offset = int(self.grad_partition_insertion_offset[group_idx][partition_id][param_id])
+                    num_elements = int(min(param.numel() - source_offset,
+                                           self.partition_size[group_idx] - dest_offset))
+                    if num_elements > 0:
+                        source = reduced_tensor.narrow(0, bucket_offset + source_offset, num_elements)
+                        output = self._get_compact_grad_partition_slice(group_idx, partition_id, param_id,
+                                                                        num_elements)
+                        self._add_to_grad_partition_buffer(output, source)
             bucket_offset += param.numel()
 
     # Clear the tensor the reduction gradient attribute is pointing to
