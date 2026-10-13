@@ -225,11 +225,13 @@ def validate_autoep_config(
             raise ValueError("overlap_weight_grad defers the experts' torch._grouped_mm weight gradients, but "
                              "use_grouped_mm=false selects the sequential expert loop. Set use_grouped_mm=true, or "
                              "leave overlap_weight_grad unset.")
-        if zero_stage == 3:
+        if zero_stage not in (1, 2):
             raise ValueError("overlap_weight_grad returns expert weight gradients from the DeepEP dispatch, which "
-                             "has not been validated with ZeRO stage 3 partitioned expert parameters. Use ZeRO "
-                             "stage 1 or 2, or leave overlap_weight_grad unset.")
-        if not hasattr(torch._C, "_set_sm_carveout_experimental"):
+                             f"has not been validated with ZeRO stage {zero_stage}. Use ZeRO stage 1 or 2, or "
+                             "leave overlap_weight_grad unset.")
+        if not all(
+                hasattr(torch._C, name)
+                for name in ("_get_sm_carveout_experimental", "_set_sm_carveout_experimental")):
             raise ValueError("overlap_weight_grad withholds DeepEP's SMs from the weight-gradient GEMMs through "
                              "torch._C._set_sm_carveout_experimental, which this PyTorch build lacks. Upgrade "
                              "PyTorch, or leave overlap_weight_grad unset.")

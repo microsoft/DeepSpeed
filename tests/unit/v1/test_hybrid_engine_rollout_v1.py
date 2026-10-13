@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from transformers import PretrainedConfig
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.rollout.base import RolloutRequest, SamplingConfig
@@ -17,23 +18,13 @@ def test_continuous_generation_profile_on_accelerator():
     if not accelerator.is_available():
         pytest.skip("An accelerator is required for asynchronous profiling coverage")
 
-    class CacheConfig(SimpleNamespace):
-
-        def get_text_config(self, **_kwargs):
-            return self
-
-        @property
-        def per_layer_config(self):
-            # StaticCache on current Transformers main reads this before choosing layer types.
-            return [self]
-
     class CacheClassModel(torch.nn.Module):
         _supports_cache_class = True
 
         def __init__(self):
             super().__init__()
             self.weight = torch.nn.Parameter(torch.zeros(1))
-            self.config = CacheConfig(
+            self.config = PretrainedConfig(
                 max_position_embeddings=32,
                 num_hidden_layers=1,
                 num_attention_heads=1,
@@ -44,6 +35,8 @@ def test_continuous_generation_profile_on_accelerator():
 
         def forward(self, input_ids, attention_mask, past_key_values=None, use_cache=True, **kwargs):
             states = input_ids[:, None, :, None].to(dtype=torch.float32)
+            kwargs.pop("cache_position", None)
+            kwargs.pop("position_ids", None)
             _, values = past_key_values.update(states, states, layer_idx=0, **kwargs)
             logits = torch.zeros((input_ids.shape[0], input_ids.shape[1], 16), device=input_ids.device)
             logits[..., 7] = 1

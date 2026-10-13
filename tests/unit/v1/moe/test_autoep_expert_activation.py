@@ -8,6 +8,7 @@ Everything here runs on CPU in one process, like test_autoep_unit.py.
 """
 
 import copy
+import io
 import math
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.auto_ep import AutoEP
@@ -69,6 +71,12 @@ def _written_out(gate, up, activation, alpha, limit):
     if activation == "swiglu_oai":
         return (up + 1.0) * gate * torch.sigmoid(alpha * gate)
     raise AssertionError(f"{activation}: add it here when adding a built-in form")
+
+
+def _assert_bf16_gemm_close(actual, expected):
+    # Rounding error through several GEMMs/activation operations scales with the tensor magnitude,
+    # not each near-zero element. Reuse the grouped-GEMM suite's existing 2% magnitude-scaled bound.
+    torch.testing.assert_close(actual.double(), expected.double(), rtol=2e-2, atol=2e-2 * expected.abs().max().item())
 
 
 class TestApplyExpertActivation:
@@ -244,16 +252,10 @@ class TestGroupedExpertsActivation:
         out_loop.backward(grad_out)
         out_grouped.backward(grad_out)
 
-        # The paths differ only in bf16 rounding: the fused kernel rounds once after fp32 math, the
-        # eager ops once per op. A matmul then sums the rounded values, so the absolute error of an
-        # output or gradient scales with the largest magnitude in that tensor, not with each element.
-        def assert_same(got, want):
-            torch.testing.assert_close(got, want, rtol=2e-2, atol=2e-2 * want.abs().max().item())
-
-        assert_same(out_grouped, out_loop)
-        assert_same(x_grouped.grad, x_loop.grad)
+        _assert_bf16_gemm_close(out_grouped, out_loop)
+        _assert_bf16_gemm_close(x_grouped.grad, x_loop.grad)
         for name in ("w1", "w2", "w3"):
-            assert_same(getattr(grouped, name).grad, getattr(loop, name).grad)
+            _assert_bf16_gemm_close(getattr(grouped, name).grad, getattr(loop, name).grad)
 
     def test_for_loop_path_does_not_need_the_triton_kernel(self, monkeypatch):
         # The for-loop path is the reference path and runs on CPU tensors. It must not reach the
@@ -272,6 +274,16 @@ class TestGroupedExpertsActivation:
 
 class TestFusedGateUp:
     """gate_up_impl="fused": one grouped GEMM over the concatenated gate and up weights."""
+
+    def test_gemm_error_bound_accepts_rounding_but_rejects_incorrect_values(self):
+        expected = torch.tensor([1.0, -0.25, 0.0, 2.0], dtype=torch.float64)
+        rounded = expected.to(torch.bfloat16)
+        rounded[0] = torch.nextafter(rounded[0], torch.full_like(rounded[0], float("inf")))
+        _assert_bf16_gemm_close(rounded, expected)
+        incorrect = rounded.clone()
+        incorrect[0] += 0.25
+        with pytest.raises(AssertionError):
+            _assert_bf16_gemm_close(incorrect, expected)
 
     @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
     def test_packed_activation_matches_the_separate_halves(self, activation):
@@ -327,24 +339,29 @@ class TestFusedGateUp:
 
     def test_overlap_weight_grad_settings_are_validated(self, monkeypatch):
 
-        def validate(zero_stage=0, **settings):
+        def validate(zero_stage=1, **settings):
             base = {"enabled": True, "autoep_size": 2, "comm_backend": "deepep", "comm_max_tokens_per_rank": 64}
             config = parse_autoep_config({**base, **settings})
             validate_autoep_config(config, 2, 1, 1, 1, zero_stage=zero_stage)
 
         assert parse_autoep_config({"enabled": True}).overlap_weight_grad is False
-        validate(overlap_weight_grad=True)
+        validate(overlap_weight_grad=True, zero_stage=1)
+        validate(overlap_weight_grad=True, zero_stage=2)
+        validate(overlap_weight_grad=False, zero_stage=0)
         with pytest.raises(ValueError, match="must be true or false"):
             validate(overlap_weight_grad="yes")
         with pytest.raises(ValueError, match='Set comm_backend="deepep"'):
             validate(overlap_weight_grad=True, comm_backend="comm")
         with pytest.raises(ValueError, match="sequential expert loop"):
             validate(overlap_weight_grad=True, use_grouped_mm=False)
-        with pytest.raises(ValueError, match="ZeRO stage 3"):
-            validate(overlap_weight_grad=True, zero_stage=3)
-        monkeypatch.delattr(torch._C, "_set_sm_carveout_experimental")
-        with pytest.raises(ValueError, match="lacks"):
-            validate(overlap_weight_grad=True)
+        for stage in (0, 3):
+            with pytest.raises(ValueError, match=f"ZeRO stage {stage}"):
+                validate(overlap_weight_grad=True, zero_stage=stage)
+        for name in ("_get_sm_carveout_experimental", "_set_sm_carveout_experimental"):
+            with monkeypatch.context() as missing_api:
+                missing_api.delattr(torch._C, name, raising=False)
+                with pytest.raises(ValueError, match="lacks"):
+                    validate(overlap_weight_grad=True)
 
     def test_overlap_weight_grad_rejects_the_triton_grouped_gemm(self, monkeypatch):
         monkeypatch.setattr(type(get_accelerator()), "prefer_triton_grouped_mm", lambda self: True)
@@ -354,6 +371,43 @@ class TestFusedGateUp:
         [spec] = auto_ep.ep_parser()
         with pytest.raises(ValueError, match="disable_triton_grouped_mm=true"):
             auto_ep.replace_moe_layer(spec, ep_size=1, ep_rank=0)
+
+    @pytest.mark.parametrize("zero_stage", [0, 1, 2, 3])
+    def test_engine_passes_the_actual_zero_stage_to_overlap_validation(self, monkeypatch, zero_stage):
+        from deepspeed.runtime import engine as engine_module
+        from deepspeed.module_inject import auto_ep_config
+
+        class ValidationReached(Exception):
+            pass
+
+        config = parse_autoep_config({
+            "enabled": True,
+            "autoep_size": 2,
+            "comm_backend": "deepep",
+            "comm_max_tokens_per_rank": 64,
+            "overlap_weight_grad": True
+        })
+        shell = SimpleNamespace(_config=SimpleNamespace(expert_parallel_config=config),
+                                mpu=None,
+                                autotp_size=lambda: 1,
+                                _autoep_sequence_parallel_world_size=lambda: 1,
+                                zero_optimization_stage=lambda: zero_stage)
+        validate = auto_ep_config.validate_autoep_config
+
+        def validate_then_stop(*args, **kwargs):
+            validate(*args, **kwargs)
+            raise ValidationReached
+
+        # Exercise the engine wiring before building collectives: its previous omitted keyword treated every
+        # actual optimizer stage as stage 0, even when the direct configuration validation was correct.
+        monkeypatch.setattr(auto_ep_config, "validate_autoep_config", validate_then_stop)
+        monkeypatch.setattr(engine_module.dist, "get_world_size", lambda: 2)
+        if zero_stage in (1, 2):
+            with pytest.raises(ValidationReached):
+                engine_module.DeepSpeedEngine._configure_expert_parallel(shell, nn.Identity())
+        else:
+            with pytest.raises(ValueError, match=f"ZeRO stage {zero_stage}"):
+                engine_module.DeepSpeedEngine._configure_expert_parallel(shell, nn.Identity())
 
     def test_config_reaches_the_replaced_experts(self):
         if not hasattr(torch, "_grouped_mm"):
@@ -373,8 +427,8 @@ class TestFusedGateUp:
 
     @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
     def test_matches_separate_with_skewed_and_empty_experts(self, activation):
-        # Forward values and weight gradients are the separate path's; the input gradient sums both projections
-        # inside one FP32 GEMM accumulation, so it is held to FP64 instead and must be no less accurate.
+        # Different valid GEMM algorithms need not round identically. Check both paths against FP64 with
+        # the same represented weights, retaining the existing magnitude-scaled and input-gradient L2 bounds.
         if get_accelerator().device_name() != "cuda" or not hasattr(torch, "_grouped_mm"):
             pytest.skip("needs CUDA with torch._grouped_mm and FP64")
         device = get_accelerator().current_device_name()
@@ -390,10 +444,10 @@ class TestFusedGateUp:
                                **shape,
                                **act)
         fused.load_state_dict(separate.state_dict())
-        reference = copy.deepcopy(separate).to(device=device, dtype=torch.float64)
-        reference.use_grouped_mm = False
         separate.to(device=device, dtype=torch.bfloat16)
         fused.to(device=device, dtype=torch.bfloat16)
+        reference = copy.deepcopy(separate).to(dtype=torch.float64)
+        reference.use_grouped_mm = False
 
         counts = torch.tensor([37, 0, 291, 72], device=device)
         x = torch.randn(int(counts.sum()), 256, device=device, dtype=torch.bfloat16)
@@ -404,16 +458,96 @@ class TestFusedGateUp:
         out_separate.backward(grad_out)
         out_fused.backward(grad_out)
         x_reference = x.double().requires_grad_(True)
-        reference(x_reference, counts).backward(grad_out.double())
+        out_reference = reference(x_reference, counts)
+        out_reference.backward(grad_out.double())
 
-        torch.testing.assert_close(out_fused, out_separate, rtol=0, atol=0)
-        for name in ("w1", "w2", "w3"):
-            torch.testing.assert_close(getattr(fused, name).grad, getattr(separate, name).grad, rtol=0, atol=0)
+        for output in (out_fused, out_separate):
+            _assert_bf16_gemm_close(output, out_reference)
+        weight_reference = reference
+        if EXPERT_ACTIVATIONS[activation].uses_limit:
+            # BF16 projection rounding can cross a clamp's derivative discontinuity. Use independent
+            # dense BF16 matmuls for the parameter-gradient reference instead of changing the bound.
+            weight_reference = copy.deepcopy(separate)
+            weight_reference.use_grouped_mm = False
+            weight_reference.zero_grad()
+            weight_reference(x.clone().requires_grad_(True), counts).backward(grad_out)
+        for experts in (fused, separate):
+            for name in ("w1", "w2", "w3"):
+                _assert_bf16_gemm_close(getattr(experts, name).grad, getattr(weight_reference, name).grad)
+                assert not getattr(experts, name).grad[1].any()
 
         def relative_error(got):
             return ((got.double() - x_reference.grad).norm() / x_reference.grad.norm()).item()
 
         assert relative_error(inputs["fused"].grad) <= relative_error(inputs["separate"].grad) * 1.05
+
+    @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
+    @pytest.mark.parametrize("recompute", [False, True])
+    def test_accumulated_updates_and_checkpoint_keep_the_separate_parameters(self, activation, recompute):
+        if get_accelerator().device_name() != "cuda" or not hasattr(torch, "_grouped_mm"):
+            pytest.skip("needs CUDA with torch._grouped_mm")
+        device = get_accelerator().current_device_name()
+        generator = torch.Generator(device=device).manual_seed(8733)
+        shape = dict(dim=256, hidden_dim=384, num_experts=4)
+        settings = dict(use_grouped_mm=True,
+                        disable_triton_grouped_mm=True,
+                        activation=activation,
+                        activation_alpha=1.5,
+                        activation_limit=1.0)
+        separate = GroupedExperts(**shape, **settings).to(device=device, dtype=torch.bfloat16)
+        for weight in separate.parameters():
+            nn.init.normal_(weight, std=0.06, generator=generator)
+        fused = GroupedExperts(**shape, **settings, gate_up_impl="fused").to(device=device, dtype=torch.bfloat16)
+        fused.load_state_dict(separate.state_dict())
+        separate_optimizer = torch.optim.SGD(separate.parameters(), lr=0.01, momentum=0.9)
+        fused_optimizer = torch.optim.SGD(fused.parameters(), lr=0.01, momentum=0.9)
+        counts = torch.tensor([16, 0, 32, 16], device=device)
+
+        for step in range(2):
+            for _ in range(2):
+                hidden = torch.randn((64, 256), device=device, dtype=torch.bfloat16, generator=generator)
+                upstream = torch.randn(hidden.shape, device=device, dtype=hidden.dtype, generator=generator)
+                expected = separate(hidden.clone().requires_grad_(True), counts)
+                fused_hidden = hidden.clone().requires_grad_(True)
+                actual = checkpoint(fused, fused_hidden, counts, use_reentrant=True) if recompute else fused(
+                    fused_hidden, counts)
+                _assert_bf16_gemm_close(actual, expected)
+                actual.backward(upstream)
+                expected.backward(upstream)
+                for name in ("w1", "w2", "w3"):
+                    _assert_bf16_gemm_close(getattr(fused, name).grad, getattr(separate, name).grad)
+                    assert not getattr(fused, name).grad[1].any()
+            separate_optimizer.step()
+            fused_optimizer.step()
+            for name in ("w1", "w2", "w3"):
+                fused_weight, reference_weight = getattr(fused, name), getattr(separate, name)
+                _assert_bf16_gemm_close(fused_weight, reference_weight)
+                _assert_bf16_gemm_close(fused_optimizer.state[fused_weight]["momentum_buffer"],
+                                        separate_optimizer.state[reference_weight]["momentum_buffer"])
+            assert tuple(fused.state_dict()) == ("w1", "w2", "w3")
+            separate_optimizer.zero_grad()
+            fused_optimizer.zero_grad()
+
+            if step == 0:
+                # The next update must use reloaded separate parameters, not a cached concatenation or optimizer layout.
+                serialized = io.BytesIO()
+                torch.save({"experts": fused.state_dict(), "optimizer": fused_optimizer.state_dict()}, serialized)
+                serialized.seek(0)
+                state = torch.load(serialized, weights_only=True)
+                fused = GroupedExperts(**shape, **settings, gate_up_impl="fused").to(device=device,
+                                                                                     dtype=torch.bfloat16)
+                fused.load_state_dict(state["experts"])
+                for name in ("w1", "w2", "w3"):
+                    torch.testing.assert_close(getattr(fused, name), state["experts"][name], rtol=0, atol=0)
+                fused_optimizer = torch.optim.SGD(fused.parameters(), lr=0.01, momentum=0.9)
+                fused_optimizer.load_state_dict(state["optimizer"])
+                assert fused_optimizer.state_dict()["param_groups"] == state["optimizer"]["param_groups"]
+                saved_parameter_ids = state["optimizer"]["param_groups"][0]["params"]
+                for parameter, saved_id in zip(fused.parameters(), saved_parameter_ids):
+                    torch.testing.assert_close(fused_optimizer.state[parameter]["momentum_buffer"],
+                                               state["optimizer"]["state"][saved_id]["momentum_buffer"],
+                                               rtol=0,
+                                               atol=0)
 
 
 def _grouped_mm_runs_on(device):
@@ -427,7 +561,7 @@ def _grouped_mm_runs_on(device):
 
 
 class TestDeferredExpertWeightGrad:
-    """Weight gradients left in a slot are the plain path's, bitwise; only when they are computed changes."""
+    """Deferred gradients obey the plain path's contract; only their computation schedule changes."""
 
     def _compare(self, device, dtype, activation, gate_up_impl, deferred):
         torch.manual_seed(0)
@@ -469,22 +603,37 @@ class TestDeferredExpertWeightGrad:
     @pytest.mark.parametrize("deferred", [False, True])
     @pytest.mark.parametrize("gate_up_impl", ["separate", "fused"])
     @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
-    def test_matches_the_plain_path_bitwise_on_cpu(self, activation, gate_up_impl, deferred):
+    def test_matches_the_plain_path_exactly_on_cpu(self, activation, gate_up_impl, deferred):
         if not _grouped_mm_runs_on("cpu"):
             pytest.skip("this PyTorch build has no CPU torch._grouped_mm")
         if EXPERT_ACTIVATIONS[activation].fused_fn is not None and is_triton_available():
-            # The grouped path's fused kernel is Triton, which reads CUDA tensors only; the CUDA test covers it.
             pytest.skip("with Triton installed, this form's grouped path needs CUDA tensors")
         for dtype in (torch.float32, torch.bfloat16):
             self._compare("cpu", dtype, activation, gate_up_impl, deferred)
 
     @pytest.mark.parametrize("gate_up_impl", ["separate", "fused"])
     @pytest.mark.parametrize("activation", tuple(EXPERT_ACTIVATIONS))
-    def test_matches_the_plain_path_bitwise_with_the_fused_kernels(self, activation, gate_up_impl):
-        # On CUDA the swiglu forms run the Triton kernels, whose backward the deferred path calls directly.
+    def test_matches_the_plain_path_exactly_with_the_fused_kernels(self, activation, gate_up_impl):
         if get_accelerator().device_name() != "cuda" or not hasattr(torch, "_grouped_mm"):
             pytest.skip("needs CUDA with torch._grouped_mm")
         self._compare(get_accelerator().current_device_name(), torch.bfloat16, activation, gate_up_impl, True)
+
+    @pytest.mark.parametrize("gate_up_impl", ["separate", "fused"])
+    def test_create_graph_is_rejected(self, gate_up_impl):
+        if not _grouped_mm_runs_on("cpu"):
+            pytest.skip("this PyTorch build has no CPU torch._grouped_mm")
+        experts = GroupedExperts(dim=16,
+                                 hidden_dim=8,
+                                 num_experts=1,
+                                 disable_triton_grouped_mm=True,
+                                 activation="geglu_tanh",
+                                 gate_up_impl=gate_up_impl)
+        for weight in experts.parameters():
+            nn.init.normal_(weight, std=0.1)
+        hidden = torch.ones((4, 16), requires_grad=True)
+        output = experts(hidden, torch.tensor([4]), weight_grad_slot=ExpertWeightGradSlot())
+        with pytest.raises(RuntimeError, match="second derivative"):
+            torch.autograd.grad(output.sum(), hidden, create_graph=True)
 
     def test_slot_runs_once_after_the_expert_backward(self):
         slot = ExpertWeightGradSlot()

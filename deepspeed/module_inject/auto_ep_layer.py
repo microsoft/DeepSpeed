@@ -29,8 +29,9 @@ from deepspeed.module_inject.auto_ep_config import AutoEPConfig, MoELayerSpec, r
 from deepspeed.module_inject.auto_ep_folding import mark_autoep_folding_router_parameter
 from deepspeed.ops.triton_ops import autoep_fused_token_ops as fused_token_ops
 from deepspeed.utils import logger
-from deepspeed.module_inject.auto_ep_comm import (COMM_BACKEND, DEEPEP_BACKEND, assert_dtype_supported, deepep_combine,
-                                                  deepep_dispatch, new_exchange_scope, shared_exchange)
+from deepspeed.module_inject.auto_ep_comm import (COMM_BACKEND, DEEPEP_BACKEND, DeepEPCheckpointReplay,
+                                                  assert_dtype_supported, deepep_combine, deepep_dispatch,
+                                                  new_exchange_scope, shared_exchange)
 from deepspeed.moe.ep_router import TokenChoiceTopKRouter
 from deepspeed.moe.ep_count import count_tokens_per_expert
 from deepspeed.moe.ep_experts import ExpertWeightGradSlot, GroupedExperts
@@ -715,6 +716,8 @@ class AutoEPMoELayer(nn.Module):
         self.comm_num_sm = config.comm_num_sm
         self.comm_qp_margin = config.comm_qp_margin
         self._deepep_exchange = None
+        # Per layer, unlike the shared exchange: a checkpoint recompute must find this layer's forward handle.
+        self._deepep_replay = DeepEPCheckpointReplay()
         self.comm_max_tokens_per_rank = config.comm_max_tokens_per_rank
         self.overlap_weight_grad = config.overlap_weight_grad
         if self.overlap_weight_grad and (self.experts.use_triton_grouped_mm or not self.experts.use_grouped_mm):
@@ -846,21 +849,33 @@ class AutoEPMoELayer(nn.Module):
         # computes them while it sends the experts' input gradient back.
         weight_grad_slot = ExpertWeightGradSlot() if self.overlap_weight_grad else None
         expert_weights = (self.experts.w1, self.experts.w2, self.experts.w3) if self.overlap_weight_grad else ()
-        received, recv_weights, exchange = deepep_dispatch(self._deepep_exchange, tokens, ro.selected_experts,
-                                                           ro.top_scores, weight_grad_slot, expert_weights)
+        received, recv_weights, exchange = deepep_dispatch(self._deepep_exchange,
+                                                           tokens,
+                                                           ro.selected_experts,
+                                                           ro.top_scores,
+                                                           replay=self._deepep_replay,
+                                                           weight_grad_slot=weight_grad_slot,
+                                                           expert_weights=expert_weights)
         handle = exchange.last_handle
 
         # combine reads exactly the rows the handle says arrived, taken from
         # the handle as a Python int rather than off the device prefix sum to
         # avoid a device-to-host sync in front of every layer's expert GEMM.
         arrived = handle.num_expanded_tokens
-        received = received[:arrived]
+        # A fresh dispatch syncs for exact counts, so its buffers usually hold
+        # exactly the rows that arrived. Slicing them anyway changes nothing
+        # forward, but its backward zero-fills a gradient the size of the whole
+        # buffer and copies the real one into it, in every layer.
+        if received.shape[0] != arrived:
+            received = received[:arrived]
+        if recv_weights is not None and recv_weights.shape[0] != arrived:
+            recv_weights = recv_weights[:arrived]
 
         # Applied here, not handed to combine: DeepEP's combine transports and
         # reduces topk_weights but doesn't multiply rows by them. Which side of
         # the experts it lands on must match the collective path, since SwiGLU
         # doesn't commute with the weight.
-        weights = None if recv_weights is None else recv_weights[:arrived].reshape(-1, 1)
+        weights = None if recv_weights is None else recv_weights.reshape(-1, 1)
         if weights is not None and self.score_apply == "pre":
             received = apply_deepep_row_weights(received, weights, self.row_weighting_impl)
             weights = None
@@ -874,7 +889,10 @@ class AutoEPMoELayer(nn.Module):
             raise RuntimeError(f"DeepEP returned {counts.numel()} expert counts, but this rank owns "
                                f"{self.num_local_experts} experts")
 
-        expert_output = self.experts(received, counts, weight_grad_slot)
+        if weight_grad_slot is None:
+            expert_output = self.experts(received, counts)
+        else:
+            expert_output = self.experts(received, counts, weight_grad_slot=weight_grad_slot)
 
         if weights is not None:
             expert_output = apply_deepep_row_weights(expert_output, weights, self.row_weighting_impl)
@@ -946,6 +964,13 @@ class AutoEPMoELayer(nn.Module):
 
     def _forward(self, hidden_states: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         bsz, seqlen, hdim = hidden_states.shape
+        folded_tp = self.folding_group_handles is not None and self.folding_group_handles.spec.tp_size > 1
+        if folded_tp:
+            # Tensor-parallel layers before this one need the same input gradient on every TP peer;
+            # see average_gradient_over_tp.
+            from deepspeed.moe.ep_tp_dispatch import average_gradient_over_tp
+            hidden_states = average_gradient_over_tp(hidden_states, self.tp_group,
+                                                     self.folding_group_handles.spec.tp_size)
         x = hidden_states.reshape(-1, hdim)  # [T, H]
 
         # Fail all ranks before any collective can stall.
@@ -960,7 +985,6 @@ class AutoEPMoELayer(nn.Module):
         # Router
         ro: RouterOutput = RouterOutput(*self.router(x, self.expert_bias))
 
-        folded_tp = self.folding_group_handles is not None and self.folding_group_handles.spec.tp_size > 1
         pending_plan = None
         if self.async_split_plan and self.ep_size > 1 and self.comm_backend == COMM_BACKEND:
             if folded_tp:
