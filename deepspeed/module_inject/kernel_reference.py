@@ -57,30 +57,33 @@ def triple_gemv(hidden, q_w, k_w, v_w):
 
 
 def decode_attn(q, K, V, pos):
-    """Single-query attention over valid KV positions.
+    """Single-query attention over valid KV positions, batched.
 
-    q: [num_heads, head_dim]
-    K, V: [num_kv_heads, max_len, head_dim]
-    pos: int (number of valid positions, 0-indexed inclusive)
+    q: [b, num_heads, head_dim]
+    K, V: [b, num_kv_heads, max_len, head_dim]
+    pos: int or LongTensor [b] (valid positions, 0-indexed inclusive;
+         an int applies to every row)
 
-    Returns [num_heads, head_dim] with GQA (K/V heads shared across query heads).
+    Returns [b, num_heads, head_dim] with GQA (K/V heads shared across query
+    heads).
     """
-    num_q_heads = q.shape[0]
-    num_kv_heads = K.shape[0]
-    head_dim = q.shape[1]
+    num_q_heads = q.shape[-2]
+    num_kv_heads = K.shape[-3]
+    head_dim = q.shape[-1]
     n_rep = num_q_heads // num_kv_heads
-
-    K_valid = K[:, :pos + 1, :]  # [nkv, pos+1, hd]
-    V_valid = V[:, :pos + 1, :]
-
-    if n_rep > 1:
-        K_valid = K_valid.repeat_interleave(n_rep, dim=0)
-        V_valid = V_valid.repeat_interleave(n_rep, dim=0)
-
     scale = 1.0 / math.sqrt(head_dim)
-    scores = torch.einsum('hd,hld->hl', q.float(), K_valid.float()) * scale
-    weights = torch.softmax(scores, dim=-1)
-    out = torch.einsum('hl,hld->hd', weights, V_valid.float())
+
+    lens = (pos + 1).tolist() if torch.is_tensor(pos) else [pos + 1] * q.shape[0]
+    out = torch.empty(q.shape, dtype=torch.float32, device=q.device)
+    for r in range(q.shape[0]):
+        K_valid = K[r, :, :lens[r], :]  # [nkv, len, hd]
+        V_valid = V[r, :, :lens[r], :]
+        if n_rep > 1:
+            K_valid = K_valid.repeat_interleave(n_rep, dim=0)
+            V_valid = V_valid.repeat_interleave(n_rep, dim=0)
+        scores = torch.einsum('hd,hld->hl', q[r].float(), K_valid.float()) * scale
+        weights = torch.softmax(scores, dim=-1)
+        out[r] = torch.einsum('hl,hld->hd', weights, V_valid.float())
     return out.to(q.dtype)
 
 

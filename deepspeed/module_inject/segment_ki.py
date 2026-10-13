@@ -468,11 +468,11 @@ def _decode_attn_forward(self,
     The kernel reads the valid KV length from the same GPU-resident
     write_pos tensor the cache update writes through, keeping the whole
     step CUDA-graph replayable."""
-    if (hidden_states.shape[0] != 1 or hidden_states.shape[1] > 1 or hidden_states.dtype is not torch.bfloat16
-            or not hidden_states.is_contiguous() or past_key_values is None
-            or getattr(self, "_ki_attn_op", None) is None or getattr(self, "_ki_prompt_padded", False)
+    if (hidden_states.shape[1] > 1 or hidden_states.dtype is not torch.bfloat16 or not hidden_states.is_contiguous()
+            or past_key_values is None or getattr(self, "_ki_attn_op", None) is None
+            or getattr(self, "_ki_prompt_padded", False)
             or getattr(past_key_values, "_write_position", None) is not self._ki_write_pos):
-        # Prefill, batched decode, a non-graph cache (e.g. DynamicCache
+        # Prefill, a non-graph cache (e.g. DynamicCache
         # inside module.generate), or a padded prompt: the original forward
         # is the correct path. The kernel attends every cached slot up to
         # write_pos unconditionally, so padded prompt positions would leak
@@ -483,7 +483,8 @@ def _decode_attn_forward(self,
     input_shape = hidden_states.shape[:-1]
     hidden_shape = (*input_shape, -1, self.head_dim)
 
-    qkv_op = getattr(self, "_ki_qkv_op", None)
+    # triple_gemv is a single-vector kernel; batched rows use the projections
+    qkv_op = getattr(self, "_ki_qkv_op", None) if hidden_states.shape[0] == 1 else None
     if qkv_op is not None:
         # One GEMV launch over q/k/v weights directly — replaces the
         # three separate F.linear launches. q_proj keeps its 2x-wide
@@ -511,8 +512,9 @@ def _decode_attn_forward(self,
     key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx)
 
     num_q_heads, num_kv_heads, head_dim = self._ki_num_q_heads, self._ki_num_kv_heads, self.head_dim
-    out = torch.empty(num_q_heads, head_dim, dtype=hidden_states.dtype, device=hidden_states.device)
-    self._ki_attn_op.decode_attn(query_states.reshape(num_q_heads, head_dim), key_states[0], value_states[0],
+    batch = hidden_states.shape[0]
+    out = torch.empty(batch, num_q_heads, head_dim, dtype=hidden_states.dtype, device=hidden_states.device)
+    self._ki_attn_op.decode_attn(query_states.reshape(batch, num_q_heads, head_dim), key_states, value_states,
                                  self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
 
     attn_output = out.view(*input_shape, -1) * torch.sigmoid(gate)

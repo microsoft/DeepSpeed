@@ -378,10 +378,11 @@ void quad_gemv(at::Tensor hidden,
         in_f);
 }
 
-// ─── Custom b=1 decode attention (graph-compatible, no mask) ───
-// Streams softmax(q @ K[0:pos]^T / sqrt(d)) @ V[0:pos] with GQA. The valid
-// KV length comes from a GPU-resident write_pos tensor, so the kernel is
-// CUDA-graph replayable (address fixed, only the value changes per step).
+// ─── Custom decode attention (batched, graph-compatible, no mask) ───
+// Streams softmax(q @ K[0:pos]^T / sqrt(d)) @ V[0:pos] with GQA, for any
+// batch size. The valid KV length comes from a GPU-resident write_pos
+// tensor (shared scalar or per-row), so the kernel is CUDA-graph
+// replayable (addresses fixed, only the values change per step).
 // One block per KV head; its 8 warps split as (query head, KV chunk):
 // warp w handles query head w % q_per_kv over KV positions strided by
 // split = 8 / q_per_kv, then per-head partial online-softmax states are
@@ -397,30 +398,35 @@ __global__ void __launch_bounds__(512) decode_attn_kernel(const __nv_bfloat16* _
                                                           int num_q_heads,
                                                           int num_kv_heads,
                                                           int max_len,
-                                                          float scale)
+                                                          float scale,
+                                                          int pos_stride)
 {
     constexpr int EPL = HEAD_DIM / 32;  // head-dim elements owned per lane
     const int q_per_kv = num_q_heads / num_kv_heads;
     const int warps_per_block = blockDim.x >> 5;
     const int split = warps_per_block;  // KV chunks per query head
 
-    // One block per query head: all the block's warps split its KV range,
-    // giving enough independent streams to cover HBM latency at b=1.
-    const int q_head = blockIdx.x;
+    // One block per (row, query head): all the block's warps split that
+    // head's KV range, giving enough independent streams to cover HBM latency.
+    const int row = blockIdx.x / num_q_heads;
+    const int q_head = blockIdx.x % num_q_heads;
     const int kv_head = q_head / q_per_kv;
     const int warp_id = threadIdx.x >> 5;
     const int lane = threadIdx.x & 31;
     const int s = warp_id;
 
-    const int pos = (int)(*write_pos);  // valid KV positions: 0..pos inclusive
+    // valid KV positions: 0..pos inclusive; a shared scalar when pos_stride
+    // is 0, one per row otherwise
+    const int pos = (int)write_pos[row * pos_stride];
 
-    const __nv_bfloat16* Kg = K + (long)kv_head * max_len * HEAD_DIM;
-    const __nv_bfloat16* Vg = V + (long)kv_head * max_len * HEAD_DIM;
+    const __nv_bfloat16* Kg = K + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
+    const __nv_bfloat16* Vg = V + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
+    const __nv_bfloat16* q_row = q + ((long)(row * num_q_heads + q_head)) * HEAD_DIM;
 
     float q_reg[EPL];
 #pragma unroll
     for (int e = 0; e < EPL; e++)
-        q_reg[e] = __bfloat162float(q[(long)q_head * HEAD_DIM + lane * EPL + e]);
+        q_reg[e] = __bfloat162float(q_row[lane * EPL + e]);
 
     float max_score = -INFINITY;
     float sum_exp = 0.0f;
@@ -494,7 +500,8 @@ __global__ void __launch_bounds__(512) decode_attn_kernel(const __nv_bfloat16* _
         float inv = 1.0f / S;
 #pragma unroll
         for (int e = 0; e < EPL; e++)
-            out[(long)q_head * HEAD_DIM + lane * EPL + e] = __float2bfloat16_rn(acc[e] * inv);
+            out[((long)(row * num_q_heads + q_head)) * HEAD_DIM + lane * EPL + e] = __float2bfloat16_rn(
+                acc[e] * inv);
     }
 }
 
@@ -526,6 +533,16 @@ void decode_attn(at::Tensor q,
                 ") must divide ",
                 warps_per_block);
 
+    // Any leading batch dims flatten to rows: q [b, hq, d], K/V [b, hkv, L, d].
+    const int64_t batch = q.numel() / (num_q_heads * head_dim);
+    TORCH_CHECK(batch >= 1 && q.numel() == batch * num_q_heads * head_dim, "q shape mismatch");
+    TORCH_CHECK(K.numel() == batch * num_kv_heads * max_len * head_dim, "K shape mismatch");
+    TORCH_CHECK(V.numel() == batch * num_kv_heads * max_len * head_dim, "V shape mismatch");
+    TORCH_CHECK(out.numel() == q.numel(), "out shape mismatch");
+    TORCH_CHECK(write_pos.numel() == 1 || write_pos.numel() == batch,
+                "write_pos must be a scalar or one entry per row");
+    const int pos_stride = write_pos.numel() == 1 ? 0 : 1;
+
     float scale = 1.0f / sqrtf((float)head_dim);
     auto stream = at::cuda::getCurrentCUDAStream();
     auto q_ptr = reinterpret_cast<const __nv_bfloat16*>(q.data_ptr<at::BFloat16>());
@@ -536,39 +553,42 @@ void decode_attn(at::Tensor q,
     switch (head_dim) {
         case 64:
             decode_attn_kernel<64>
-                <<<num_q_heads, warps_per_block * 32, 0, stream>>>(q_ptr,
-                                                                   k_ptr,
-                                                                   v_ptr,
-                                                                   write_pos.data_ptr<int64_t>(),
-                                                                   o_ptr,
-                                                                   (int)num_q_heads,
-                                                                   (int)num_kv_heads,
-                                                                   (int)max_len,
-                                                                   scale);
+                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(q_ptr,
+                                                                             k_ptr,
+                                                                             v_ptr,
+                                                                             write_pos.data_ptr<int64_t>(),
+                                                                             o_ptr,
+                                                                             (int)num_q_heads,
+                                                                             (int)num_kv_heads,
+                                                                             (int)max_len,
+                                                                             scale,
+                                                                             pos_stride);
             break;
         case 128:
             decode_attn_kernel<128>
-                <<<num_q_heads, warps_per_block * 32, 0, stream>>>(q_ptr,
-                                                                   k_ptr,
-                                                                   v_ptr,
-                                                                   write_pos.data_ptr<int64_t>(),
-                                                                   o_ptr,
-                                                                   (int)num_q_heads,
-                                                                   (int)num_kv_heads,
-                                                                   (int)max_len,
-                                                                   scale);
+                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(q_ptr,
+                                                                             k_ptr,
+                                                                             v_ptr,
+                                                                             write_pos.data_ptr<int64_t>(),
+                                                                             o_ptr,
+                                                                             (int)num_q_heads,
+                                                                             (int)num_kv_heads,
+                                                                             (int)max_len,
+                                                                             scale,
+                                                                             pos_stride);
             break;
         case 256:
             decode_attn_kernel<256>
-                <<<num_q_heads, warps_per_block * 32, 0, stream>>>(q_ptr,
-                                                                   k_ptr,
-                                                                   v_ptr,
-                                                                   write_pos.data_ptr<int64_t>(),
-                                                                   o_ptr,
-                                                                   (int)num_q_heads,
-                                                                   (int)num_kv_heads,
-                                                                   (int)max_len,
-                                                                   scale);
+                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(q_ptr,
+                                                                             k_ptr,
+                                                                             v_ptr,
+                                                                             write_pos.data_ptr<int64_t>(),
+                                                                             o_ptr,
+                                                                             (int)num_q_heads,
+                                                                             (int)num_kv_heads,
+                                                                             (int)max_len,
+                                                                             scale,
+                                                                             pos_stride);
             break;
         default: TORCH_CHECK(false, "Unsupported head_dim: ", head_dim);
     }

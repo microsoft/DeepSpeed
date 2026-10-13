@@ -147,16 +147,23 @@ class TestKernelReferenceConsistency:
         torch.testing.assert_close(h_kernel.float(), (h.float() + r.float()), atol=5e-2, rtol=5e-2)
 
     def test_decode_attn(self):
+        """Batched decode attention vs reference: uniform b=1, b=4 with a
+        shared position, and b=4 with per-row positions."""
         torch.manual_seed(0)
-        nq, nkv, hd, maxlen, pos = 8, 2, 64, 33, 17
-        q = torch.randn(nq, hd, dtype=torch.float32, device=DEV).bfloat16()
-        K = torch.randn(nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
-        V = torch.randn(nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
-        write_pos = torch.tensor([pos], dtype=torch.long, device=DEV)
-        out = torch.empty(nq, hd, dtype=torch.bfloat16, device=DEV)
-        _op().decode_attn(q, K, V, write_pos, out, nq, nkv, hd, maxlen)
-        expected = ref_decode_attn(q.float(), K.float(), V.float(), pos)
-        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
+        nq, nkv, hd, maxlen = 8, 2, 64, 33
+        for b, per_row in [(1, False), (4, False), (4, True)]:
+            q = torch.randn(b, nq, hd, dtype=torch.float32, device=DEV).bfloat16()
+            K = torch.randn(b, nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+            V = torch.randn(b, nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+            if per_row:
+                pos = torch.randint(0, maxlen - 1, (b, ), dtype=torch.long, device=DEV)
+            else:
+                pos = torch.tensor([17], dtype=torch.long, device=DEV)
+            out = torch.empty(b, nq, hd, dtype=torch.bfloat16, device=DEV)
+            _op().decode_attn(q, K, V, pos, out, nq, nkv, hd, maxlen)
+            ref_pos = pos if per_row else int(pos[0])
+            expected = ref_decode_attn(q.float(), K.float(), V.float(), ref_pos)
+            torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
 
 
 # ---------------------------------------------------------------------------
