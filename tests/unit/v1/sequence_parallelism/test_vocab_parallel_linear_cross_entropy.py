@@ -244,3 +244,24 @@ class TestVocabParallelLinearCrossEntropyTP(DistributedTest):
         torch.testing.assert_close(args[0].grad, ref_args[0].grad, **tolerance)
         torch.testing.assert_close(args[1].grad, ref_args[1].grad[start:end], **tolerance)
         torch.testing.assert_close(args[2].grad, ref_args[2].grad[start:end], **tolerance)
+
+    def test_fp16_hidden_gradient_partials_that_cancel_across_ranks_stay_finite(self):
+        # With a 65536 loss scale each rank's hidden-gradient partial is +-65536, which overflows
+        # fp16, but the two classes live on different ranks and their partials cancel to zero.
+        device = torch.device(get_accelerator().current_device_name())
+        rank = dist.get_rank()
+        hidden = _leaf(torch.zeros(4, 1, dtype=torch.float16, device=device))
+        weight = torch.full((2, 1), 8.0, dtype=torch.float16, device=device)
+        target = torch.zeros(4, dtype=torch.long, device=device)
+        reference = _leaf(hidden)
+
+        loss = vocab_parallel_linear_cross_entropy(hidden,
+                                                   weight[rank:rank + 1],
+                                                   target,
+                                                   tp_group=dist.get_world_group(),
+                                                   vocab_start_index=rank,
+                                                   vocab_end_index=rank + 1)
+        (loss * 65536).backward()
+        (F.cross_entropy(F.linear(reference, weight).float(), target) * 65536).backward()
+
+        torch.testing.assert_close(hidden.grad, reference.grad)

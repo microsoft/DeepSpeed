@@ -190,11 +190,12 @@ class _VocabParallelLinearCrossEntropy(torch.autograd.Function):
                 _accumulate_matmul(grad_hidden, grad_logits, weight_block)
 
         if grad_hidden is not None:
-            grad_hidden = grad_hidden.to(hidden.dtype)
             # Each rank only saw its vocabulary shard, so the input gradient is a partial sum, the
-            # same reduction the column-parallel LM head performs in its own backward.
+            # same reduction the column-parallel LM head performs in its own backward. The partials
+            # are summed in fp32 because they can overflow fp16 even when their sum does not.
             if _tp_active(ctx.tp_group):
                 dist.all_reduce(grad_hidden, op=dist.ReduceOp.SUM, group=ctx.tp_group)
+            grad_hidden = grad_hidden.to(hidden.dtype)
         return grad_hidden, grad_weight, grad_bias, None, None, None, None, None, None, None
 
 
