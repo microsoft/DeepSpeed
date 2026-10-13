@@ -1258,7 +1258,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return param.grad_accum if self.use_grad_accum_attribute else param.grad
 
     def _use_compact_grad_partition_buffer(self, group_idx):
-        if self.gradient_accumulation_dtype != torch.float32 or self.gradient_accumulation_dtype == self.dtype:
+        gradient_accumulation_dtype = getattr(self, "gradient_accumulation_dtype", None)
+        if gradient_accumulation_dtype != torch.float32 or gradient_accumulation_dtype == self.dtype:
             return False
         params_in_partition = self.params_in_partition[group_idx]
         if len(params_in_partition) > 0 and self._is_muon_group(params_in_partition):
