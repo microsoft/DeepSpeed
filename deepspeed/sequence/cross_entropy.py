@@ -67,21 +67,18 @@ class _VocabParallelCrossEntropy(torch.autograd.Function):
 
         local_max = logits.amax(dim=-1)
         global_max = local_max.clone()
-        if tp_group is not None and dist.get_world_size(tp_group) > 1:
-            dist.all_reduce(global_max, op=dist.ReduceOp.MAX, group=tp_group)
+        dist.all_reduce_if_parallel(global_max, op=dist.ReduceOp.MAX, group=tp_group)
 
         exp_logits = torch.exp(logits - global_max.unsqueeze(-1))
         global_sum_exp = exp_logits.sum(dim=-1)
-        if tp_group is not None and dist.get_world_size(tp_group) > 1:
-            dist.all_reduce(global_sum_exp, op=dist.ReduceOp.SUM, group=tp_group)
+        dist.all_reduce_if_parallel(global_sum_exp, op=dist.ReduceOp.SUM, group=tp_group)
 
         valid_target = target != ignore_index
         target_in_partition = valid_target & (target >= vocab_start_index) & (target < vocab_end_index)
         local_target = (target - vocab_start_index).clamp(min=0, max=local_vocab_size - 1)
         target_logits = logits.gather(-1, local_target.unsqueeze(-1)).squeeze(-1)
         target_logits = torch.where(target_in_partition, target_logits, torch.zeros_like(target_logits))
-        if tp_group is not None and dist.get_world_size(tp_group) > 1:
-            dist.all_reduce(target_logits, op=dist.ReduceOp.SUM, group=tp_group)
+        dist.all_reduce_if_parallel(target_logits, op=dist.ReduceOp.SUM, group=tp_group)
 
         loss = torch.log(global_sum_exp) + global_max - target_logits
         loss = torch.where(valid_target, loss, torch.zeros_like(loss))
@@ -267,8 +264,7 @@ def vocab_parallel_cross_entropy(vocab_parallel_logits,
         return loss_sum
 
     valid_tokens = (target != ignore_index).sum().to(dtype=loss.dtype)
-    if sp_group is not None and dist.get_world_size(sp_group) > 1:
-        dist.all_reduce(valid_tokens, op=dist.ReduceOp.SUM, group=sp_group)
+    dist.all_reduce_if_parallel(valid_tokens, op=dist.ReduceOp.SUM, group=sp_group)
     return loss_sum / valid_tokens.clamp_min(1)
 
 

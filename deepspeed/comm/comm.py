@@ -702,6 +702,23 @@ def all_reduce(tensor,
     return cdb.all_reduce(tensor, op, group, async_op)
 
 
+def all_reduce_if_parallel(tensor, op=ReduceOp.SUM, group=None):
+    """
+    All-reduce ``tensor`` in place over ``group`` and return it, skipping the collective when there is
+    nothing to reduce.
+
+    Unlike :func:`all_reduce`, ``group=None`` means that the parallel dimension is absent, not the world
+    group, so code written for an optional tensor or sequence parallel group can run without it, even
+    without an initialized process group. A single-rank group is skipped too, as reducing over it leaves
+    ``tensor`` unchanged. Only synchronous reductions are supported, since a skipped call has no work
+    handle to return.
+    """
+    if group is None or get_world_size(group) == 1:
+        return tensor
+    all_reduce(tensor, op=op, group=group)
+    return tensor
+
+
 @timed_op
 def inference_all_reduce(tensor,
                          op=ReduceOp.SUM,

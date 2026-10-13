@@ -131,6 +131,41 @@ class TestDistAllReduce(DistributedTest):
         assert torch.all(x == result)
 
 
+class TestDistAllReduceIfParallel(DistributedTest):
+    world_size = 4
+
+    def test(self):
+        rank = dist.get_rank()
+        device = get_accelerator().device_name()
+        pairs = [dist.new_group([0, 1]), dist.new_group([2, 3])]
+        singles = [dist.new_group([r]) for r in range(self.world_size)]
+
+        x = torch.full((3, ), float(rank + 1), device=device)
+        out = dist.all_reduce_if_parallel(x, group=pairs[rank // 2])
+        # Ranks {0, 1} hold 1 + 2 and ranks {2, 3} hold 3 + 4.
+        expected = 3.0 if rank < 2 else 7.0
+        assert out is x
+        assert torch.all(x == expected)
+
+        x = torch.full((3, ), float(rank + 1), device=device)
+        dist.all_reduce_if_parallel(x, op=dist.ReduceOp.MAX, group=pairs[rank // 2])
+        assert torch.all(x == (2.0 if rank < 2 else 4.0))
+
+        # None marks an absent parallel dimension, so it must not reduce over the world group.
+        for group in (None, singles[rank]):
+            x = torch.full((3, ), float(rank + 1), device=device)
+            out = dist.all_reduce_if_parallel(x, group=group)
+            assert out is x
+            assert torch.all(x == rank + 1)
+
+
+def test_all_reduce_if_parallel_without_process_group():
+    # Single-device code paths pass group=None before any process group exists.
+    x = torch.arange(3.0)
+    assert dist.all_reduce_if_parallel(x) is x
+    assert torch.equal(x, torch.arange(3.0))
+
+
 class FakeP2PWork:
     """Stands in for a torch.distributed Work so the staging wrapper can be tested single-process."""
 
