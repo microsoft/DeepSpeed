@@ -588,10 +588,10 @@ def _fused_norm_layer_forward(self,
     state there, with no add to fuse — and the final post-MLP add stays a
     plain add for the same reason. Attention and MLP are called unchanged,
     so attention-level patches (decode_attn / triple_gemv) still apply."""
-    if (hidden_states.shape[0] != 1 or hidden_states.shape[1] > 1 or hidden_states.dtype is not torch.bfloat16
+    if (hidden_states.shape[1] > 1 or hidden_states.dtype is not torch.bfloat16
             or not hidden_states.is_contiguous() or getattr(self, "_ki_norm_op", None) is None
             or torch.is_grad_enabled()):
-        # Prefill, batched decode, a non-graph path, or any grad-enabled
+        # Prefill, a non-graph path, or any grad-enabled
         # forward: the original forward is the correct path. fused_add_norm
         # has no autograd registration and mutates the residual stream
         # in-place, so a training step through it would silently lose the
