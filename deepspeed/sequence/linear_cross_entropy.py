@@ -9,6 +9,7 @@ keeps only per-token softmax statistics. Backward recomputes the logits one voca
 at a time, so each weight-gradient block comes from a single GEMM over all tokens.
 """
 
+import functools
 import math
 
 import torch
@@ -32,9 +33,24 @@ def _default_chunk_rows(num_tokens, global_vocab_size, tp_world_size, hidden_siz
     return max(1, math.ceil(num_tokens / num_chunks))
 
 
-# Devices without GEMMs that take low-precision inputs and produce fp32 outputs (e.g. CPU).
-_MIXED_GEMM_UNSUPPORTED = set()
-_MIXED_GEMM_ERRORS = (RuntimeError, TypeError, NotImplementedError)
+_MIXED_GEMM_INPUT_DTYPES = (torch.float16, torch.bfloat16)
+_MIXED_GEMM_OPS = ("aten::mm.dtype", "aten::addmm.dtype", "aten::addmm.dtype_out")
+
+
+@functools.lru_cache(maxsize=None)
+def _has_mixed_gemm(device_type):
+    """Whether ``device_type`` has GEMMs that take fp16/bf16 inputs and produce fp32 outputs.
+
+    The dispatcher is asked whether the device registers these kernels, instead of trying a GEMM
+    and treating any failure as "unsupported": a GEMM can also fail for unrelated reasons such as
+    running out of memory. PyTorch < 2.8 has no such ops, and some devices (e.g. CPU) do not
+    implement them.
+    """
+    try:
+        dispatch_key = torch._C._dispatch_key_for_device(device_type)
+        return all(torch._C._dispatch_has_kernel_for_dispatch_key(op, dispatch_key) for op in _MIXED_GEMM_OPS)
+    except (AttributeError, RuntimeError):
+        return False
 
 
 def _accumulate_matmul(accumulator, mat1, mat2):
@@ -46,13 +62,11 @@ def _accumulate_matmul(accumulator, mat1, mat2):
     if mat1.dtype == accumulator.dtype:
         accumulator.addmm_(mat1, mat2)
         return
-    device_type = accumulator.device.type
-    if device_type not in _MIXED_GEMM_UNSUPPORTED:
-        try:
-            torch.addmm(accumulator, mat1, mat2, out_dtype=accumulator.dtype, out=accumulator)
-            return
-        except _MIXED_GEMM_ERRORS:
-            _MIXED_GEMM_UNSUPPORTED.add(device_type)
+    use_mixed_gemm = (accumulator.dtype == torch.float32 and mat1.dtype in _MIXED_GEMM_INPUT_DTYPES
+                      and _has_mixed_gemm(accumulator.device.type))
+    if use_mixed_gemm:
+        torch.addmm(accumulator, mat1, mat2, out_dtype=accumulator.dtype, out=accumulator)
+        return
     # A low-precision block product can overflow even when the sum over all blocks is finite.
     accumulator.addmm_(mat1.to(accumulator.dtype), mat2.to(accumulator.dtype))
 
@@ -63,18 +77,14 @@ def _fp32_logits(hidden, weight, bias=None, row_offset=None):
     Producing fp32 straight from the GEMM, with the offset applied in its epilogue, saves
     separate upcast and add passes over the ``[tokens, vocab]`` block.
     """
-    device_type = hidden.device.type
-    if hidden.dtype != torch.float32 and device_type not in _MIXED_GEMM_UNSUPPORTED:
-        try:
-            if bias is not None:
-                logits = torch.addmm(bias.float(), hidden, weight.t(), out_dtype=torch.float32)
-            elif row_offset is not None:
-                return torch.addmm(row_offset, hidden, weight.t(), out_dtype=torch.float32)
-            else:
-                return torch.mm(hidden, weight.t(), out_dtype=torch.float32)
-            return logits if row_offset is None else logits.add_(row_offset)
-        except _MIXED_GEMM_ERRORS:
-            _MIXED_GEMM_UNSUPPORTED.add(device_type)
+    if hidden.dtype in _MIXED_GEMM_INPUT_DTYPES and _has_mixed_gemm(hidden.device.type):
+        if bias is not None:
+            logits = torch.addmm(bias.float(), hidden, weight.t(), out_dtype=torch.float32)
+        elif row_offset is not None:
+            return torch.addmm(row_offset, hidden, weight.t(), out_dtype=torch.float32)
+        else:
+            return torch.mm(hidden, weight.t(), out_dtype=torch.float32)
+        return logits if row_offset is None else logits.add_(row_offset)
     # Add the bias inside the GEMM as F.linear does, so a large product that the bias cancels
     # does not overflow a low-precision output first.
     logits = torch.nn.functional.linear(hidden, weight, bias).float()
