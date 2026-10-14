@@ -300,13 +300,53 @@ def _bounded_report_text(value: str, limit: int) -> str:
     return f"<truncated to last {limit} bytes>\n{tail}"
 
 
+def _bounded_stack_text(value: str, limit: int) -> str:
+    current_thread = value.rfind("Current thread ")
+    if current_thread >= 0:
+        value = value[current_thread:]
+    encoded = value.encode()
+    if len(encoded) <= limit:
+        return value
+    head = encoded[:limit].decode(errors="replace")
+    return f"<truncated to first {limit} bytes>\n{head}"
+
+
+def _report_stack_paths(root: Path, snapshot: dict[str, Any]) -> list[Path]:
+    eligible = {}
+    for marker in snapshot.get("eligible", []):
+        pid = marker.get("pid")
+        if not isinstance(pid, int) or pid <= 0:
+            continue
+        path = root / "stacks" / f"stack-{pid}.log"
+        try:
+            if path.stat().st_size:
+                eligible[pid] = (path, marker)
+        except OSError:
+            pass
+
+    compute_pids = set()
+    for line in snapshot.get("nvidia_compute_processes", {}).get("output", "").splitlines():
+        try:
+            compute_pids.add(int(line.split(",", 1)[0].strip()))
+        except ValueError:
+            pass
+
+    gpu_candidates = [item for pid, item in eligible.items() if pid in compute_pids]
+    worker_gpu_candidates = [item for item in gpu_candidates if item[1].get("worker") != "controller"]
+    candidates = worker_gpu_candidates or gpu_candidates
+    selected = sorted(candidates, key=lambda item: item[1]["pid"], reverse=True)
+    selected_pids = {marker["pid"] for _, marker in selected}
+    selected.extend(item for _, item in sorted(eligible.items(), reverse=True) if item[1]["pid"] not in selected_pids)
+    return [path for path, _ in selected[:_MAX_REPORT_FILES]]
+
+
 def format_stall_report(summary: dict[str, Any]) -> str:
     """Return a bounded JSON report that survives backend cleanup in controller output."""
     snapshot_path = Path(summary["snapshot"])
     root = snapshot_path.parent
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     events = sorted((root / "events").glob("*.jsonl"))[-_MAX_REPORT_FILES:]
-    stacks = sorted((root / "stacks").glob("stack-*.log"))[-_MAX_REPORT_FILES:]
+    stacks = _report_stack_paths(root, snapshot)
     report = {
         "capture_utc":
         snapshot.get("capture_utc"),
@@ -333,8 +373,7 @@ def format_stall_report(summary: dict[str, Any]) -> str:
         "signals":
         snapshot.get("signals", [])[-2 * _MAX_REPORT_FILES:],
         "stacks": {
-            path.name: _bounded_report_text(path.read_text(encoding="utf-8", errors="replace"),
-                                            _MAX_REPORT_STACK_BYTES)
+            path.name: _bounded_stack_text(path.read_text(encoding="utf-8", errors="replace"), _MAX_REPORT_STACK_BYTES)
             for path in stacks
         },
     }

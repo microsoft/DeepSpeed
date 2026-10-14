@@ -1310,6 +1310,56 @@ def test_diagnostic_forkserver_child_registers_handler_before_signal():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_stall_report_selects_live_gpu_stacks_and_current_thread_frames():
+    root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-report-"))
+    try:
+        stack_dir = root / "stacks"
+        stack_dir.mkdir()
+        eligible = []
+        compute_processes = []
+        for pid in range(1, 11):
+            eligible.append({"pid": pid, "worker": f"gw{pid % 4}"})
+            compute_processes.append(f"{pid}, python, 100, GPU-{pid}")
+            prefix = "stale earlier thread\n" * 80 if pid == 10 else ""
+            stack = prefix + f"Current thread (most recent call first):\ngpu-block-{pid}\n" + "older frame\n" * 80
+            (stack_dir / f"stack-{pid}.log").write_text(stack, encoding="utf-8")
+        (stack_dir / "stack-999.log").write_text("stale unregistered stack\n", encoding="utf-8")
+        snapshot = {
+            "capture_utc": "2026-10-14T00:00:00+00:00",
+            "eligible": eligible,
+            "kernel": {
+                "output": ""
+            },
+            "nvidia_compute_processes": {
+                "output": "\n".join(compute_processes)
+            },
+            "nvidia_gpus": {
+                "output": "0, test GPU, 1, 100, 10, 20\n"
+            },
+            "process_group_id": 1,
+            "processes": {
+                "output": ""
+            },
+            "rejected": [],
+            "signals": [],
+        }
+        snapshot_path = root / "stall-snapshot.json"
+        snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+        report = json.loads(diagnostic_sitecustomize.format_stall_report({"snapshot": str(snapshot_path)}))
+
+        assert set(report["stacks"]) == {f"stack-{pid}.log" for pid in range(3, 11)}
+        assert "stack-999.log" not in report["stacks"]
+        newest_stack = report["stacks"]["stack-10.log"]
+        assert "Current thread" in newest_stack
+        assert "gpu-block-10" in newest_stack
+        assert "stale earlier thread" not in newest_stack
+        assert len(json.dumps(report, ensure_ascii=True,
+                              sort_keys=True).encode()) <= diagnostic_sitecustomize._MAX_REPORT_BYTES
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_diagnostic_watchdog_captures_registered_child_before_termination():
     root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-watchdog-"))
     original = torch_latest.NO_PROGRESS_TIMEOUT_SECONDS
