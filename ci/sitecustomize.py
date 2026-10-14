@@ -21,6 +21,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 _MAX_CAPTURE_BYTES = 256 * 1024
+_MAX_REPORT_BYTES = 24 * 1024
+_MAX_REPORT_FILES = 8
+_MAX_REPORT_SECTION_BYTES = 1536
+_MAX_REPORT_STACK_BYTES = 768
 _MAX_TRACEBACK_BYTES = 64 * 1024
 _PROCESS_MARKERS = {}
 _RECORDED_EXITS = set()
@@ -286,6 +290,66 @@ def capture_stall(process_group_id: int) -> dict[str, Any]:
     temporary.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(output)
     return {"eligible": len(eligible), "rejected": len(rejected), "snapshot": str(output)}
+
+
+def _bounded_report_text(value: str, limit: int) -> str:
+    encoded = value.encode()
+    if len(encoded) <= limit:
+        return value
+    tail = encoded[-limit:].decode(errors="replace")
+    return f"<truncated to last {limit} bytes>\n{tail}"
+
+
+def format_stall_report(summary: dict[str, Any]) -> str:
+    """Return a bounded JSON report that survives backend cleanup in controller output."""
+    snapshot_path = Path(summary["snapshot"])
+    root = snapshot_path.parent
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    events = sorted((root / "events").glob("*.jsonl"))[-_MAX_REPORT_FILES:]
+    stacks = sorted((root / "stacks").glob("stack-*.log"))[-_MAX_REPORT_FILES:]
+    report = {
+        "capture_utc":
+        snapshot.get("capture_utc"),
+        "eligible_count":
+        len(snapshot.get("eligible", [])),
+        "event_tails": {
+            path.name: _bounded_report_text(path.read_text(encoding="utf-8", errors="replace"),
+                                            _MAX_REPORT_SECTION_BYTES)
+            for path in events
+        },
+        "kernel":
+        _bounded_report_text(snapshot.get("kernel", {}).get("output", ""), _MAX_REPORT_SECTION_BYTES),
+        "nvidia_compute_processes":
+        _bounded_report_text(
+            snapshot.get("nvidia_compute_processes", {}).get("output", ""), _MAX_REPORT_SECTION_BYTES),
+        "nvidia_gpus":
+        _bounded_report_text(snapshot.get("nvidia_gpus", {}).get("output", ""), _MAX_REPORT_SECTION_BYTES),
+        "process_group_id":
+        snapshot.get("process_group_id"),
+        "processes":
+        _bounded_report_text(snapshot.get("processes", {}).get("output", ""), _MAX_REPORT_SECTION_BYTES),
+        "rejected_count":
+        len(snapshot.get("rejected", [])),
+        "signals":
+        snapshot.get("signals", [])[-2 * _MAX_REPORT_FILES:],
+        "stacks": {
+            path.name: _bounded_report_text(path.read_text(encoding="utf-8", errors="replace"),
+                                            _MAX_REPORT_STACK_BYTES)
+            for path in stacks
+        },
+    }
+    encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    while len(encoded.encode()) > _MAX_REPORT_BYTES and report["event_tails"]:
+        report["event_tails"].pop(next(iter(report["event_tails"])))
+        encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    if len(encoded.encode()) > _MAX_REPORT_BYTES:
+        report = {
+            "capture_utc": snapshot.get("capture_utc"),
+            "eligible_count": len(snapshot.get("eligible", [])),
+            "report_truncated": True,
+        }
+        encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    return encoded
 
 
 _register_stack_handler()

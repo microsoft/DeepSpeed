@@ -1327,6 +1327,14 @@ def test_diagnostic_watchdog_captures_registered_child_before_termination():
         assert result.returncode == torch_latest.EXIT_TIMEOUT
         assert "No test output" in result.stdout
         assert "Diagnostic snapshot saved" in result.stdout
+        lines = result.stdout.splitlines()
+        report_start = lines.index("DIAGNOSTIC_REPORT_BEGIN")
+        assert lines[report_start + 2] == "DIAGNOSTIC_REPORT_END"
+        report = json.loads(lines[report_start + 1])
+        assert len(lines[report_start + 1].encode()) <= diagnostic_sitecustomize._MAX_REPORT_BYTES
+        assert report["eligible_count"]
+        assert report["stacks"]
+        assert any("Current thread" in stack for stack in report["stacks"].values())
         snapshot = json.loads((root / "stall-snapshot.json").read_text(encoding="utf-8"))
         assert snapshot["eligible"]
         assert all(marker["pgid"] == snapshot["process_group_id"] for marker in snapshot["eligible"])
@@ -1336,6 +1344,8 @@ def test_diagnostic_watchdog_captures_registered_child_before_termination():
             stack = root / "stacks" / f"stack-{pid}.log"
             assert stack.exists()
             assert "Current thread" in stack.read_text(encoding="utf-8")
+        shutil.rmtree(root)
+        assert "Current thread" in result.stdout
     finally:
         torch_latest.NO_PROGRESS_TIMEOUT_SECONDS = original
         shutil.rmtree(root, ignore_errors=True)

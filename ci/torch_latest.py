@@ -177,6 +177,9 @@ def capture_diagnostics():
             f"eligible={summary['eligible']} rejected={summary['rejected']}",
             flush=True,
         )
+        print("DIAGNOSTIC_REPORT_BEGIN", flush=True)
+        print(sitecustomize.format_stall_report(summary), flush=True)
+        print("DIAGNOSTIC_REPORT_END", flush=True)
     except BaseException as exc:
         print(f"Diagnostic snapshot failed: {type(exc).__name__}: {exc}", flush=True)
 
