@@ -69,6 +69,92 @@ def _rand_bf16(*shape, device=DEV):
 @pytest.mark.skipif(not GPU_AVAILABLE, reason="non-CPU device required")
 class TestKernelReferenceConsistency:
 
+    def test_decode_attn_fused_q(self):
+        """Fused q-side path: the kernel applies per-head RMSNorm (1+w),
+        rotate-half RoPE at the row position, and the sigmoid output gate
+        in-register; against the same math in torch plus the plain
+        reference attention."""
+        torch.manual_seed(0)
+        nq, nkv, hd, maxlen, b = 8, 2, 128, 40, 4
+        q_raw = torch.randn(b, nq, hd, dtype=torch.float32, device=DEV).bfloat16()
+        K = torch.randn(b, nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+        V = torch.randn(b, nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+        gate = torch.randn(b, nq * hd, dtype=torch.float32, device=DEV).bfloat16()
+        nw = torch.randn(hd, dtype=torch.float32, device=DEV)
+        pos = torch.tensor([5, 11, 0, 39], dtype=torch.long, device=DEV)
+        cos_t = torch.randn(maxlen, hd, dtype=torch.float32, device=DEV)
+        sin_t = torch.randn(maxlen, hd, dtype=torch.float32, device=DEV)
+
+        out = torch.empty(b, nq, hd, dtype=torch.bfloat16, device=DEV)
+        _op().decode_attn(q_raw,
+                          K,
+                          V,
+                          pos,
+                          out,
+                          nq,
+                          nkv,
+                          hd,
+                          maxlen,
+                          q_norm_w=1.0 + nw,
+                          cos_t=cos_t,
+                          sin_t=sin_t,
+                          gate=gate,
+                          eps=1e-6,
+                          rope_dim=hd)
+
+        # reference: norm -> rope -> attention -> gate
+        qf = q_raw.float()
+        qf = qf * torch.rsqrt(qf.pow(2).mean(-1, keepdim=True) + 1e-6) * (1.0 + nw)
+        half = hd // 2
+        rot = torch.cat((-qf[..., half:], qf[..., :half]), dim=-1)
+        cs = cos_t[pos].unsqueeze(1)  # [b, 1, hd]
+        sn = sin_t[pos].unsqueeze(1)
+        qf = qf * cs + rot * sn
+        attn = ref_decode_attn(qf.bfloat16().float(), K.float(), V.float(), pos)
+        expected = attn * torch.sigmoid(gate.float()).view(b, nq, hd)
+        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
+
+    def test_decode_attn_fused_q_partial_rope(self):
+        """Partial RoPE (Qwen3.5 convention): rotation over [0, rope_dim)
+        only, remaining head dims pass through."""
+        torch.manual_seed(1)
+        nq, nkv, hd, rope_dim, maxlen, b = 16, 4, 256, 64, 40, 2
+        q_raw = torch.randn(b, nq, hd, dtype=torch.float32, device=DEV).bfloat16()
+        K = torch.randn(b, nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+        V = torch.randn(b, nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+        gate = torch.randn(b, nq * hd, dtype=torch.float32, device=DEV).bfloat16()
+        nw = torch.randn(hd, dtype=torch.float32, device=DEV)
+        pos = torch.tensor([7, 21], dtype=torch.long, device=DEV)
+        cos_t = torch.randn(maxlen, rope_dim, dtype=torch.float32, device=DEV)
+        sin_t = torch.randn(maxlen, rope_dim, dtype=torch.float32, device=DEV)
+        out = torch.empty(b, nq, hd, dtype=torch.bfloat16, device=DEV)
+        _op().decode_attn(q_raw,
+                          K,
+                          V,
+                          pos,
+                          out,
+                          nq,
+                          nkv,
+                          hd,
+                          maxlen,
+                          q_norm_w=1.0 + nw,
+                          cos_t=cos_t,
+                          sin_t=sin_t,
+                          gate=gate,
+                          eps=1e-6,
+                          rope_dim=rope_dim)
+        qf = q_raw.float()
+        qf = qf * torch.rsqrt(qf.pow(2).mean(-1, keepdim=True) + 1e-6) * (1.0 + nw)
+        q_rot, q_pass = qf[..., :rope_dim], qf[..., rope_dim:]
+        half = rope_dim // 2
+        rot = torch.cat((-q_rot[..., half:], q_rot[..., :half]), dim=-1)
+        cs = cos_t[pos].unsqueeze(1)
+        sn = sin_t[pos].unsqueeze(1)
+        qf = torch.cat((q_rot * cs + rot * sn, q_pass), dim=-1)
+        attn = ref_decode_attn(qf.bfloat16().float(), K.float(), V.float(), pos)
+        expected = attn * torch.sigmoid(gate.float()).view(b, nq, hd)
+        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
+
     def test_decode_step_graph_contract(self):
         """The full-step graph kernel must reproduce torch.argmax (first
         index on ties), advance write_pos, reveal exactly the next slot,

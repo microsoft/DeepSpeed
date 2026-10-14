@@ -1125,8 +1125,19 @@ class HybridEngineRollout(RolloutEngine):
                 from deepspeed.module_inject.segment_ki import install_decode_attention, install_fused_norm
                 from deepspeed.ops.module_inject import get_fused_glu_op
                 attn_op = get_fused_glu_op()
-                attn_patched = install_decode_attention(module, write_pos, attn_op) if hasattr(attn_op,
-                                                                                               "decode_attn") else 0
+                # Full-length RoPE tables for the fused q-side path; positions
+                # are indexed on-device at replay time, so the addresses stay
+                # fixed for the captured graph.
+                cos_t = sin_t = None
+                rotary = getattr(getattr(module, "model", module), "rotary_emb", None)
+                if rotary is not None:
+                    with torch.no_grad():
+                        positions = torch.arange(max_len, device=device)[None, :]
+                        cos_t, sin_t = rotary(torch.zeros(1, max_len, dtype=model_dtype, device=device), positions)
+                        cos_t = cos_t[0].float().contiguous()
+                        sin_t = sin_t[0].float().contiguous()
+                attn_patched = install_decode_attention(module, write_pos, attn_op, cos_table=cos_t,
+                                                        sin_table=sin_t) if hasattr(attn_op, "decode_attn") else 0
                 module._ki_fused_norm_patched = install_fused_norm(module, attn_op)
             except Exception:
                 attn_patched = 0

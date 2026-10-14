@@ -492,36 +492,60 @@ def _decode_attn_forward(self,
         q_out, k_out, v_out = qkv_op.triple_gemv(hidden_states.view(-1), self.q_proj.weight, self.k_proj.weight,
                                                  self.v_proj.weight)
         query_states, gate = torch.chunk(q_out.view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
-        gate = gate.reshape(*input_shape, -1)
-        query_states = self.q_norm(query_states.view(hidden_shape)).transpose(1, 2)
         key_states = self.k_norm(k_out.view(hidden_shape)).transpose(1, 2)
         value_states = v_out.view(hidden_shape).transpose(1, 2)
     else:
         query_states, gate = torch.chunk(self.q_proj(hidden_states).view(*input_shape, -1, self.head_dim * 2),
                                          2,
                                          dim=-1)
-        gate = gate.reshape(*input_shape, -1)
-
-        query_states = self.q_norm(query_states.view(hidden_shape)).transpose(1, 2)
         key_states = self.k_norm(self.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
+    # K keeps the eager norm + RoPE (the cache stores post-rope keys from
+    # prefill, so the kernel cannot re-derive them); the q side's norm,
+    # partial RoPE, and output gate are fused into the decode_attn kernel.
+    # The model uses partial RoPE (rotary_dim < head_dim), so K rides the
+    # upstream helper verbatim — only its output is kept.
     cos, sin = position_embeddings
-    query_states, key_states = self._ki_rope(query_states, key_states, cos, sin)
+    _, key_states = self._ki_rope(query_states, key_states, cos, sin)
 
     key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx)
 
     num_q_heads, num_kv_heads, head_dim = self._ki_num_q_heads, self._ki_num_kv_heads, self.head_dim
     batch = hidden_states.shape[0]
     out = torch.empty(batch, num_q_heads, head_dim, dtype=hidden_states.dtype, device=hidden_states.device)
-    self._ki_attn_op.decode_attn(query_states.reshape(batch, num_q_heads, head_dim), key_states, value_states,
-                                 self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
+    fuse_q = getattr(self, "_ki_q_norm_w", None) is not None
+    if fuse_q:
+        query_states = query_states.reshape(batch, num_q_heads, head_dim)
+        gate = gate.reshape(batch, num_q_heads * head_dim).contiguous()
+        self._ki_attn_op.decode_attn(query_states,
+                                     key_states,
+                                     value_states,
+                                     self._ki_write_pos,
+                                     out,
+                                     num_q_heads,
+                                     num_kv_heads,
+                                     head_dim,
+                                     key_states.shape[2],
+                                     q_norm_w=self._ki_q_norm_w,
+                                     cos_t=self._ki_cos_t,
+                                     sin_t=self._ki_sin_t,
+                                     gate=gate,
+                                     eps=self.q_norm.eps,
+                                     rope_dim=self._ki_cos_t.shape[-1])
+    else:
+        self._ki_attn_op.decode_attn(query_states.reshape(batch, num_q_heads, head_dim), key_states, value_states,
+                                     self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
 
-    attn_output = out.view(*input_shape, -1) * torch.sigmoid(gate)
+    attn_output = out.view(*input_shape, -1)
     return self.o_proj(attn_output), None
 
 
-def install_decode_attention(model: torch.nn.Module, write_pos: torch.Tensor, kernel_op) -> int:
+def install_decode_attention(model: torch.nn.Module,
+                             write_pos: torch.Tensor,
+                             kernel_op,
+                             cos_table: torch.Tensor = None,
+                             sin_table: torch.Tensor = None) -> int:
     """Patch full-attention layers to use the custom decode_attn kernel.
 
     Detection mirrors find_glu_segments: structural (q/k/v/o projections
@@ -557,6 +581,13 @@ def install_decode_attention(model: torch.nn.Module, write_pos: torch.Tensor, ke
             continue
         if getattr(module, "_ki_orig_attn_forward", None) is None:
             module._ki_orig_attn_forward = module.forward
+        # Fused q-side preprocessing inputs: the (1+w) norm scale and the
+        # full-length RoPE tables (indexable by the GPU-resident position,
+        # so replays stay graph-safe). Missing tables disable the fusion.
+        module._ki_q_norm_w = (1.0 +
+                               module.q_norm.weight.detach().float()).contiguous() if cos_table is not None else None
+        module._ki_cos_t = cos_table
+        module._ki_sin_t = sin_table
         module._ki_attn_op = kernel_op
         # The fused QKV kernel consumes weights only; biased projections would lose their bias.
         unbiased_qkv = all(p.bias is None for p in projections[:3])
@@ -588,9 +619,8 @@ def _fused_norm_layer_forward(self,
     state there, with no add to fuse — and the final post-MLP add stays a
     plain add for the same reason. Attention and MLP are called unchanged,
     so attention-level patches (decode_attn / triple_gemv) still apply."""
-    if (hidden_states.shape[1] > 1 or hidden_states.dtype is not torch.bfloat16
-            or not hidden_states.is_contiguous() or getattr(self, "_ki_norm_op", None) is None
-            or torch.is_grad_enabled()):
+    if (hidden_states.shape[1] > 1 or hidden_states.dtype is not torch.bfloat16 or not hidden_states.is_contiguous()
+            or getattr(self, "_ki_norm_op", None) is None or torch.is_grad_enabled()):
         # Prefill, a non-graph path, or any grad-enabled
         # forward: the original forward is the correct path. fused_add_norm
         # has no autograd registration and mutates the residual stream
