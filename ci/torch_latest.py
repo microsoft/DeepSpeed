@@ -106,6 +106,8 @@ SSM_OUTPUT_TAIL_BYTES = 32 * 1024
 REMOTE_ROOT = "/workspace"
 REMOTE_REPOSITORY = f"{REMOTE_ROOT}/deepspeed"
 REMOTE_TRANSFORMERS = f"{REMOTE_ROOT}/transformers"
+REMOTE_DIAGNOSTICS = f"{REMOTE_ROOT}/diagnostics"
+REMOTE_DIAGNOSTIC_HELPER = f"{REMOTE_ROOT}/diagnostic-pythonpath"
 AWS_PYTHON_VERSION = "3.10.13"
 AWS_UV_VERSION = "0.12.7"
 AWS_PYTHON_ROOT = f"{REMOTE_ROOT}/python310"
@@ -164,6 +166,21 @@ def terminate_process_group():
         process.wait()
 
 
+def capture_diagnostics():
+    if not os.environ.get("DS_DIAGNOSTICS_DIR"):
+        return
+    try:
+        import sitecustomize
+        summary = sitecustomize.capture_stall(process.pid)
+        print(
+            "Diagnostic snapshot saved "
+            f"eligible={summary['eligible']} rejected={summary['rejected']}",
+            flush=True,
+        )
+    except BaseException as exc:
+        print(f"Diagnostic snapshot failed: {type(exc).__name__}: {exc}", flush=True)
+
+
 while True:
     # Sub-second values are used only by the watchdog tests. Give the child a
     # separate startup bound so host scheduling delay is not mistaken for a
@@ -173,6 +190,7 @@ while True:
     remaining = current_timeout - (time.monotonic() - last_progress)
     if remaining <= 0:
         print(f"No test output for {timeout_seconds:g}s; terminating pytest", flush=True)
+        capture_diagnostics()
         terminate_process_group()
         raise SystemExit(124)
     events = selector.select(timeout=min(1.0, remaining))
@@ -610,8 +628,23 @@ def _remote_git(*args: str) -> tuple[str, ...]:
     return tuple(_git_command(*args))
 
 
-def _with_no_progress_watchdog(argv: Sequence[str]) -> tuple[str, ...]:
-    return ("python", "-u", "-c", NO_PROGRESS_WATCHDOG, str(NO_PROGRESS_TIMEOUT_SECONDS), *argv)
+def _with_no_progress_watchdog(
+    argv: Sequence[str],
+    *,
+    diagnostics_dir: str | None = None,
+    helper_dir: str | None = None,
+) -> tuple[str, ...]:
+    command = ("python", "-u", "-c", NO_PROGRESS_WATCHDOG, str(NO_PROGRESS_TIMEOUT_SECONDS), *argv)
+    if diagnostics_dir is None and helper_dir is None:
+        return command
+    if diagnostics_dir is None or helper_dir is None:
+        raise ValueError("diagnostics_dir and helper_dir must be provided together")
+    return (
+        "env",
+        f"DS_DIAGNOSTICS_DIR={diagnostics_dir}",
+        f"PYTHONPATH={helper_dir}",
+        *command,
+    )
 
 
 def build_remote_commands(inputs: ControllerInputs) -> tuple[RemoteCommand, ...]:
@@ -643,6 +676,11 @@ def build_remote_commands(inputs: ControllerInputs) -> tuple[RemoteCommand, ...]
             "verify candidate SHA",
             _remote_git("-C", REMOTE_REPOSITORY, "rev-parse", "--verify", "HEAD^{commit}"),
             expected_line=inputs.sha,
+        ),
+        RemoteCommand(
+            "stage diagnostic helper",
+            ("install", "-D", "ci/sitecustomize.py", f"{REMOTE_DIAGNOSTIC_HELPER}/sitecustomize.py"),
+            REMOTE_REPOSITORY,
         ),
         RemoteCommand(
             "install runtime requirements",
@@ -735,18 +773,23 @@ def build_remote_commands(inputs: ControllerInputs) -> tuple[RemoteCommand, ...]
         ),
         RemoteCommand(
             "run pytest",
-            _with_no_progress_watchdog((
-                "pytest",
-                "-n",
-                "4",
-                "--verbose",
-                # GDS tests require GPUDirect Storage support unavailable on these runners.
-                "--ignore=tests/unit/v1/nvme/test_gds.py",
-                f"--torch_ver={preset['torch_test_version']}",
-                f"--cuda_ver={preset['cuda_test_version']}",
-                "--",
-                *inputs.targets,
-            )),
+            _with_no_progress_watchdog(
+                (
+                    "pytest",
+                    "-n",
+                    "4",
+                    "--verbose",
+                    "-p",
+                    "sitecustomize",
+                    # GDS tests require GPUDirect Storage support unavailable on these runners.
+                    "--ignore=tests/unit/v1/nvme/test_gds.py",
+                    f"--torch_ver={preset['torch_test_version']}",
+                    f"--cuda_ver={preset['cuda_test_version']}",
+                    "--",
+                    *inputs.targets,
+                ),
+                diagnostics_dir=REMOTE_DIAGNOSTICS,
+                helper_dir=REMOTE_DIAGNOSTIC_HELPER),
             REMOTE_REPOSITORY,
         ),
     ])

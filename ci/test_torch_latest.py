@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -26,6 +27,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import torch_latest  # noqa: E402
 import test_tests_fetcher  # noqa: E402
+
+_SITE_CUSTOMIZE_PATH = Path(__file__).resolve().parent / "sitecustomize.py"
+_SITE_CUSTOMIZE_SPEC = importlib.util.spec_from_file_location("diagnostic_sitecustomize", _SITE_CUSTOMIZE_PATH)
+diagnostic_sitecustomize = importlib.util.module_from_spec(_SITE_CUSTOMIZE_SPEC)
+_SITE_CUSTOMIZE_SPEC.loader.exec_module(diagnostic_sitecustomize)
 
 
 def _expect_error(function, *args, exception=ValueError, **kwargs):
@@ -870,6 +876,11 @@ def test_aws_scripts_reuse_full_selection_manifest_and_two_gpu_contract():
         assert "ci/modal_diagnostics/pr8654_71_nodes.txt" not in prepare + test
         assert "tests/unit/v1" in test
         assert "pytest -n 4 --verbose" in test
+        assert "install -D ci/sitecustomize.py /workspace/diagnostic-pythonpath/sitecustomize.py" in prepare
+        assert "DS_DIAGNOSTICS_DIR=/workspace/diagnostics" in test
+        assert "PYTHONPATH=/workspace/diagnostic-pythonpath" in test
+        assert "-p sitecustomize" in test
+        assert "heartbeat" not in test
         assert str(torch_latest.NO_PROGRESS_TIMEOUT_SECONDS) in test
         assert torch_latest.AWS_PREPARE_TIMEOUT_SECONDS + torch_latest.AWS_TEST_TIMEOUT_SECONDS == 3600
     finally:
@@ -1153,6 +1164,181 @@ def test_no_progress_watchdog_kills_sigterm_resistant_descendant():
         _assert_pid_gone(int(result.stdout.split("descendant=", 1)[1].splitlines()[0]))
     finally:
         torch_latest.NO_PROGRESS_TIMEOUT_SECONDS = original
+
+
+def test_diagnostic_markers_reject_stale_identity_and_wrong_process_group():
+    root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-markers-"))
+    try:
+        stack_dir = root / "stacks"
+        stack_dir.mkdir()
+        pid = os.getpid()
+        pgid = os.getpgid(pid)
+        identity = diagnostic_sitecustomize._process_identity(pid)
+        assert identity is not None
+        (stack_dir / "registered-valid.json").write_text(
+            json.dumps({
+                "identity": identity,
+                "pgid": pgid,
+                "pid": pid,
+            }),
+            encoding="utf-8",
+        )
+        (stack_dir / "registered-stale.json").write_text(
+            json.dumps({
+                "identity": "stale",
+                "pgid": pgid,
+                "pid": pid,
+            }),
+            encoding="utf-8",
+        )
+        eligible, rejected = diagnostic_sitecustomize._registered_processes(root, pgid)
+        assert [marker["pid"] for marker in eligible] == [pid]
+        assert len(rejected) == 1
+        assert "stale process identity" in rejected[0]["reason"]
+
+        eligible, rejected = diagnostic_sitecustomize._registered_processes(root, pgid + 1)
+        assert not eligible
+        assert len(rejected) == 2
+        assert all("process group mismatch" in item["reason"] or "stale process identity" in item["reason"]
+                   for item in rejected)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_diagnostic_pytest_events_include_worker_pid_and_phase():
+    root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-events-"))
+    old_root = os.environ.get("DS_DIAGNOSTICS_DIR")
+    old_worker = os.environ.get("PYTEST_XDIST_WORKER")
+    try:
+        os.environ["DS_DIAGNOSTICS_DIR"] = str(root)
+        os.environ["PYTEST_XDIST_WORKER"] = "gw2"
+        nodeid = "tests/unit/v1/example.py::test_value"
+        diagnostic_sitecustomize.pytest_runtest_logstart(nodeid, ("example.py", 1, "test_value"))
+        report = SimpleNamespace(
+            duration=1.25,
+            failed=False,
+            nodeid=nodeid,
+            outcome="passed",
+            when="call",
+        )
+        diagnostic_sitecustomize.pytest_runtest_logreport(report)
+        diagnostic_sitecustomize.pytest_runtest_logfinish(nodeid, ("example.py", 1, "test_value"))
+        events_path = next((root / "events").glob("events-gw2-*.jsonl"))
+        events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+        assert [event["event"] for event in events] == ["node_start", "phase_outcome", "node_finish"]
+        assert all(event["nodeid"] == nodeid for event in events)
+        assert all(event["pid"] == os.getpid() and event["worker"] == "gw2" for event in events)
+        assert events[1]["phase"] == "call"
+        assert events[1]["outcome"] == "passed"
+    finally:
+        if old_root is None:
+            os.environ.pop("DS_DIAGNOSTICS_DIR", None)
+        else:
+            os.environ["DS_DIAGNOSTICS_DIR"] = old_root
+        if old_worker is None:
+            os.environ.pop("PYTEST_XDIST_WORKER", None)
+        else:
+            os.environ["PYTEST_XDIST_WORKER"] = old_worker
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_diagnostic_process_lifecycle_records_start_and_end():
+    root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-lifecycle-"))
+    try:
+        env = os.environ.copy()
+        env["DS_DIAGNOSTICS_DIR"] = str(root)
+        env["PYTHONPATH"] = str(Path(torch_latest.__file__).resolve().parent)
+        result = subprocess.run([sys.executable, "-c", "pass"], env=env, check=False, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        events = [
+            json.loads(line) for line in (root / "process-events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        assert [event["event"] for event in events] == ["process_start", "process_end"]
+        assert events[0]["pid"] == events[1]["pid"]
+        assert events[0]["identity"] == events[1]["identity"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_diagnostic_forkserver_child_registers_handler_before_signal():
+    root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-forkserver-"))
+    try:
+        probe = root / "forkserver_probe.py"
+        probe.write_text(
+            textwrap.dedent("""
+                import json
+                import multiprocessing
+                import os
+                from pathlib import Path
+                import signal
+                import time
+
+                def child():
+                    time.sleep(1)
+
+                if __name__ == "__main__":
+                    root = Path(os.environ["DS_DIAGNOSTICS_DIR"])
+                    process = multiprocessing.get_context("forkserver").Process(target=child)
+                    process.start()
+                    marker = root / "stacks" / f"registered-{process.pid}.json"
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline and not marker.exists():
+                        time.sleep(0.05)
+                    assert marker.exists(), f"missing handler marker for {process.pid}"
+                    assert json.loads(marker.read_text(encoding="utf-8"))["pid"] == process.pid
+                    os.kill(process.pid, signal.SIGUSR1)
+                    process.join(timeout=5)
+                    assert process.exitcode == 0, process.exitcode
+                    print(process.pid)
+            """),
+            encoding="utf-8",
+        )
+        env = os.environ.copy()
+        env["DS_DIAGNOSTICS_DIR"] = str(root)
+        env["PYTHONPATH"] = str(Path(torch_latest.__file__).resolve().parent)
+        result = subprocess.run([sys.executable, str(probe)], env=env, check=False, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        child_pid = int(result.stdout.strip())
+        stack = (root / "stacks" / f"stack-{child_pid}.log").read_text(encoding="utf-8")
+        assert "Current thread" in stack
+        events = [
+            json.loads(line) for line in (root / "process-events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        child_events = [event for event in events if event["pid"] == child_pid]
+        assert [event["event"] for event in child_events] == ["process_start", "process_end"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_diagnostic_watchdog_captures_registered_child_before_termination():
+    root = Path(tempfile.mkdtemp(prefix="ds-diagnostic-watchdog-"))
+    original = torch_latest.NO_PROGRESS_TIMEOUT_SECONDS
+    torch_latest.NO_PROGRESS_TIMEOUT_SECONDS = 0.1
+    try:
+        argv = list(
+            torch_latest._with_no_progress_watchdog(
+                (sys.executable, "-c", "import time; time.sleep(5)"),
+                diagnostics_dir=str(root),
+                helper_dir=str(Path(torch_latest.__file__).resolve().parent),
+            ))
+        assert argv[0] == "env" and argv[3] == "python"
+        argv[3] = sys.executable
+        result = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=5)
+        assert result.returncode == torch_latest.EXIT_TIMEOUT
+        assert "No test output" in result.stdout
+        assert "Diagnostic snapshot saved" in result.stdout
+        snapshot = json.loads((root / "stall-snapshot.json").read_text(encoding="utf-8"))
+        assert snapshot["eligible"]
+        assert all(marker["pgid"] == snapshot["process_group_id"] for marker in snapshot["eligible"])
+        signalled = [item["pid"] for item in snapshot["signals"] if item["status"] == "sent"]
+        assert signalled
+        for pid in signalled:
+            stack = root / "stacks" / f"stack-{pid}.log"
+            assert stack.exists()
+            assert "Current thread" in stack.read_text(encoding="utf-8")
+    finally:
+        torch_latest.NO_PROGRESS_TIMEOUT_SECONDS = original
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_ssm_diagnostic_paths_redact_known_instance_and_command_ids():
