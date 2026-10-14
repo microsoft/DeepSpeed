@@ -1707,7 +1707,12 @@ def test_workflow_keeps_github_execution_trusted_and_preserves_modes():
     assert "pull_request.head.repo.full_name || github.repository" in deploy
     assert "MODAL_TOKEN_ID" not in deploy
     assert "MODAL_TOKEN_SECRET" not in deploy
-    assert "if: ${{ always() }}" in deploy
+    deploy_auth = deploy.split("- name: Configure AWS credentials for test backend",
+                               1)[1].split("- name: Run tests on AWS backend", 1)[0]
+    deploy_cleanup = deploy.split("- name: Reconcile AWS test cleanup", 1)[1]
+    assert "id: aws-auth" in deploy_auth
+    assert "if: ${{ always() && steps.aws-auth.outcome == 'success' }}" in deploy_cleanup
+    assert "if: ${{ always() }}" not in deploy_cleanup
 
 
 def test_launcher_source_has_no_local_packaging_or_shell_execution():

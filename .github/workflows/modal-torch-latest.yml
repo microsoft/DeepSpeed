@@ -266,6 +266,7 @@ jobs:
           path: ci/.test_selection
 
       - name: Configure AWS credentials for test backend
+        id: aws-auth
         env:
           AWS_ROLE_ARN: ${{ secrets.AWS_MODAL_FALLBACK_ROLE_ARN }}
         run: |
@@ -314,7 +315,7 @@ jobs:
         run: python3 ci/torch_latest.py aws-controller
 
       - name: Reconcile AWS test cleanup
-        if: ${{ always() }}
+        if: ${{ always() && steps.aws-auth.outcome == 'success' }}
         env:
           AWS_MODAL_FALLBACK_CONFIG: ${{ secrets.AWS_MODAL_FALLBACK_CONFIG }}
           GITHUB_RUN_ID: ${{ github.run_id }}
