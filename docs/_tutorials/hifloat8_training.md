@@ -77,7 +77,8 @@ Reconstruct the same policy for resume. The opt-in DP2/GAS2 lifecycle entry poin
 is `tests/unit/runtime/hifloat8_resume_validation.py`, whose experts are replicated.
 It does not establish AutoEP checkpoint recovery.
 
-Model-specific Qwen3.5 wrapper compatibility and NPU permutation optimization
-are separate changes. Qwen wrapper model evidence requires that compatibility
-change in the tested stack. Full-parameter convergence, LoRA, offload, compile,
-EP8, multi-node and CUDA low-precision hardware validation remain separate gates.
+The integration includes Qwen3.5 text-wrapper routing compatibility and NPU
+permutation index generation. These reuse AutoEP's existing preset and kernel
+extension points without adding HiFloat8 configuration. Full-parameter convergence,
+LoRA, offload, compile, EP8, multi-node and CUDA low-precision hardware validation
+remain separate gates.

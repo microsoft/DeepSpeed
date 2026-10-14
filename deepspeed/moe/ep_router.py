@@ -60,6 +60,8 @@ class TokenChoiceTopKRouter(nn.Module):
         route_scale: float,
         gate_bias: bool,
         group_score_func: str = "top2_sum",
+        topk_sorted: bool = False,
+        scores_in_gate_dtype: bool = False,
     ):
         super().__init__()
         self.gate = nn.Linear(dim, num_experts, bias=gate_bias)
@@ -71,6 +73,8 @@ class TokenChoiceTopKRouter(nn.Module):
         self.route_norm = route_norm
         self.route_scale = route_scale
         self.group_score_func = group_score_func
+        self.topk_sorted = topk_sorted
+        self.scores_in_gate_dtype = scores_in_gate_dtype
         # Trainable expert score correction bias (e.g. DeepSeek-V3/Moonlight noaux_tc).
         # Separate from the dynamic load-balancing expert_bias passed in forward().
         self.e_score_correction_bias = None
@@ -152,6 +156,7 @@ class TokenChoiceTopKRouter(nn.Module):
         """
         # Gate projection -> (T, num_experts)
         scores = self.gate(x)
+        gate_dtype = scores.dtype
 
         # Scoring in float32 to avoid loss explosion
         if self.score_func == "sigmoid":
@@ -172,7 +177,7 @@ class TokenChoiceTopKRouter(nn.Module):
             scores_for_choice = self._get_node_limited_routing_scores(scores_for_choice)
 
         # Select top-k experts per token
-        _, selected_experts_indices = torch.topk(scores_for_choice, k=self.top_k, dim=-1, sorted=False)
+        _, selected_experts_indices = torch.topk(scores_for_choice, k=self.top_k, dim=-1, sorted=self.topk_sorted)
 
         # Gather original (unbiased) scores for selected experts
         top_scores = scores.gather(dim=1, index=selected_experts_indices)
@@ -183,6 +188,8 @@ class TokenChoiceTopKRouter(nn.Module):
             top_scores = top_scores / denominator
 
         top_scores = top_scores * self.route_scale
+        if self.scores_in_gate_dtype:
+            top_scores = top_scores.to(gate_dtype)
 
         num_tokens_per_expert = count_tokens_per_expert(selected_experts_indices, self.num_experts)
 

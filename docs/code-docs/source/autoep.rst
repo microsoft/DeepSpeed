@@ -37,7 +37,7 @@ Transformers build that exposes the matching config/model classes,
        but the tested ``4.x`` builds do not match the validated AutoEP layout.
    * - ``qwen3_5_moe``
      - ``5.2.0``
-     - Requires the Qwen3.5 text-backbone ``qwen3_5_moe_text`` model type;
+     - Supports text input through the text backbone or the MoE wrapper; vision input is untested;
        for performance on Qwen3.5's Gated DeltaNet layers, install optimized
        kernels. See the `Hugging Face Transformers kernel loading docs
        <https://huggingface.co/docs/transformers/kernel_doc/loading_kernels>`__
@@ -167,6 +167,12 @@ The separate ``get_grouped_mm()`` hook supplies high-precision grouped GEMM.
 On NPU it uses TorchNPU autograd without a TorchAO dependency. HiFloat8 requires
 BF16 parameters and currently supports ZeRO stages 0–2; quantized checkpoint
 ingestion into ZeRO-3 remains unsupported.
+
+On Ascend NPU, AutoEP generates permutation indices on device when there are
+at least 64 source/expert groups. Smaller groups use the CPU reference path
+because device launch overhead can dominate. The ordering and padding contract
+is identical; this internal choice does not change the AutoEP configuration.
+Other dispatch steps may still synchronize with the host.
 
 **Router outputs and activation checkpointing:**
 
