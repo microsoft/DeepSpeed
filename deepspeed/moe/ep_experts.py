@@ -324,6 +324,8 @@ def _run_experts_with_grouped_mm(w1,
     up = mm(inputs, w3)
     hidden = apply_expert_activation(gate, up, activation, alpha, limit, fused=False)
     output = mm(hidden, w2)
+    if rows == x.shape[0]:
+        return output
     return torch.cat((output, output.new_zeros((x.shape[0] - rows, output.shape[-1]))))
 
 
