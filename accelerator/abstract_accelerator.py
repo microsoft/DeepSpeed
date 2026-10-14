@@ -215,8 +215,8 @@ class DeepSpeedAccelerator(ABC):
     def prefer_triton_grouped_mm(self):
         return False
 
-    def get_low_precision_provider(self, backend, format):
-        """Return an optional training provider, or None for an unsupported pair."""
+    def get_hifloat8_provider(self):
+        """Return optional public HiFloat8 APIs for this accelerator."""
         return None
 
     def get_grouped_mm(self):

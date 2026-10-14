@@ -318,7 +318,7 @@ def _run_experts_with_grouped_mm(w1,
     inputs = x[:rows]
 
     def mm(lhs, weight):
-        return grouped_mm(lhs, weight.to(x.dtype), offsets, trans_b=True)
+        return grouped_mm(lhs, weight.to(x.dtype), offsets, trans_b=True).to(lhs.dtype)
 
     gate = mm(inputs, w1)
     up = mm(inputs, w3)
@@ -383,8 +383,7 @@ class GroupedExperts(nn.Module):
         self.w3.is_expert_group = True
         self.use_triton_grouped_mm = False
         self.use_grouped_mm = use_grouped_mm
-        self.low_precision_provider = None
-        self.low_precision_config = None
+        self.grouped_mm = None
 
         # Resolve the Triton path. The device-specific decision is delegated to
         # the accelerator backend (e.g. the CUDA backend prefers Triton on
@@ -422,33 +421,20 @@ class GroupedExperts(nn.Module):
         """
 
         act = (self.activation, self.activation_alpha, self.activation_limit)
-        if self.low_precision_provider is not None:
-
-            def provider_mm(lhs, weight, offsets, *, trans_b):
-                return self.low_precision_provider.grouped_mm(lhs,
-                                                              weight,
-                                                              offsets,
-                                                              config=self.low_precision_config,
-                                                              trans_b=trans_b)
-
+        grouped_mm = self.grouped_mm
+        accelerator = get_accelerator()
+        if grouped_mm is None and self.use_grouped_mm and accelerator.on_accelerator(x):
+            grouped_mm = accelerator.get_grouped_mm()
+        if grouped_mm is not None:
+            if getattr(self, "gate_up_impl", "auto") == "fused":
+                raise RuntimeError("The accelerator grouped GEMM override requires separate gate/up projections")
             return _run_experts_with_grouped_mm(self.w1,
                                                 self.w2,
                                                 self.w3,
                                                 x,
                                                 num_tokens_per_expert,
                                                 *act,
-                                                grouped_mm=provider_mm)
-        accelerator = get_accelerator()
-        if self.use_grouped_mm and accelerator.on_accelerator(x):
-            native_mm = accelerator.get_grouped_mm()
-            if native_mm is not None:
-                return _run_experts_with_grouped_mm(self.w1,
-                                                    self.w2,
-                                                    self.w3,
-                                                    x,
-                                                    num_tokens_per_expert,
-                                                    *act,
-                                                    grouped_mm=native_mm)
+                                                grouped_mm=grouped_mm)
         if self.use_triton_grouped_mm:
             return _run_experts_triton_grouped_mm(self.w1, self.w2, self.w3, x, num_tokens_per_expert, *act)
         elif self.use_grouped_mm:

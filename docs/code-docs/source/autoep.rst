@@ -154,33 +154,19 @@ value other than ``False`` instead of silently changing the requested behavior.
 4. Expert parameters are marked for expert-data-parallel gradient reduction;
    router and shared-expert parameters use standard data-parallel reduction.
 
-On Ascend NPU, AutoEP generates permutation indices on device when there are
-at least 64 source/expert groups. Smaller groups use the CPU reference path
-because device launch overhead can dominate. The ordering and padding contract
-is identical; this internal choice does not change the AutoEP configuration.
-Other dispatch steps may still synchronize with the host.
+**Optional HiFloat8 training:**
 
-**Optional low-precision provider:**
+The accelerator's ``get_hifloat8_provider()`` hook supplies public TorchAO
+policy, capability-probe and grouped-GEMM APIs, or ``None`` when unavailable.
+With the existing ``hifloat8`` configuration, selected Linear and GroupedExperts
+modules are converted together by ``torchao.quantization.quantize_`` using
+``ModuleFqnToConfig`` and registered module handlers. Policy parsing belongs to
+TorchAO; selection and training lifecycle checks belong to DeepSpeed.
 
-The accelerator's ``get_low_precision_provider(backend, format)`` hook returns
-a ``LowPrecisionProvider`` or ``None`` for an unsupported pair. The provider
-interprets its configuration, probes training support before model conversion,
-converts selected Linear modules, and supplies grouped matrix multiplication.
-Conversion preserves parameter identity and state-dict keys. Grouped operations
-preserve the caller's high-precision output dtype.
-
-The DeepSpeed ``low_precision`` configuration selects the provider using
-``backend`` and ``format``. Its ``config`` object is passed to the provider;
-DeepSpeed owns module selection and training lifecycle checks. The legacy
-``hifloat8`` section remains an input adapter, and specifying both sections is
-an error. The NPU implementation uses ``backend="torchao"`` and
-``format="hifloat8"`` through the public ``torchao.hifloat8`` APIs. Other
-accelerators can opt in without changing Engine or AutoEP device dispatch.
-
-The separate ``get_grouped_mm()`` accelerator hook supplies ordinary
-high-precision grouped GEMM. On NPU this calls TorchNPU with explicit autograd
-and does not require TorchAO. Enabling HiFloat8 currently supports ZeRO stages
-0--2; quantized checkpoint ingestion and ZeRO stage 3 remain unsupported.
+The separate ``get_grouped_mm()`` hook supplies high-precision grouped GEMM.
+On NPU it uses TorchNPU autograd without a TorchAO dependency. HiFloat8 requires
+BF16 parameters and currently supports ZeRO stages 0–2; quantized checkpoint
+ingestion into ZeRO-3 remains unsupported.
 
 **Router outputs and activation checkpointing:**
 

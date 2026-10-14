@@ -60,12 +60,10 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def use_host_timers(self):
         return self.is_synchronized_device()
 
-    def get_low_precision_provider(self, backend, format):
-        if backend != "torchao" or format != "hifloat8":
-            return None
-        from .npu.low_precision import TorchAOHiFloat8Provider
+    def get_hifloat8_provider(self):
+        from .npu.low_precision import get_hifloat8_provider
 
-        return TorchAOHiFloat8Provider()
+        return get_hifloat8_provider()
 
     def get_grouped_mm(self):
         from .npu.grouped_mm import grouped_mm

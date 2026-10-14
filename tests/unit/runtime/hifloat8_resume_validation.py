@@ -24,6 +24,7 @@ import deepspeed.comm as dist
 from deepspeed.moe.ep_experts import GroupedExperts
 from deepspeed.runtime.fp16.loss_scaler import LossScaler
 from torchao.hifloat8 import HiFloat8Config
+import torchao.hifloat8 as hifloat8_api
 
 
 class Model(torch.nn.Module):
@@ -90,10 +91,9 @@ def main():
             'stage': 2,
             'overlap_comm': False
         },
-        'low_precision': {
+        'hifloat8': {
             'enabled': True,
             'backend': 'torchao',
-            'format': 'hifloat8',
             'module_name_patterns': ['dense', 'experts'],
             'expected_module_count': 2
         },
@@ -103,17 +103,27 @@ def main():
     batches = [torch.randn(32, 128, generator=generator).bfloat16().to('npu') for _ in range(8)]
     targets = [torch.randn(32, 128, generator=generator).bfloat16().to('npu') * 0.01 for _ in range(8)]
 
+    observed_policies = []
+    original_grouped_mm = hifloat8_api.hifloat8_grouped_mm
+
+    def recorded_grouped_mm(*args, **kwargs):
+        observed_policies.append(kwargs["config"])
+        return original_grouped_mm(*args, **kwargs)
+
+    hifloat8_api.hifloat8_grouped_mm = recorded_grouped_mm
+
     def create():
         model = Model().bfloat16()
         model.load_state_dict(initial)
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
         engine, _, _, _ = deepspeed.initialize(model=model, optimizer=optimizer, config=config)
-        assert engine.module.dense.config is engine.module.experts.low_precision_config
         assert isinstance(engine.module.dense.config, HiFloat8Config)
         return engine
 
     def step(engine, i):
+        observed_policies.clear()
         loss = (engine(batches[i]).float() - targets[i].float()).square().mean()
+        assert observed_policies and all(policy is engine.module.dense.config for policy in observed_policies)
         engine.backward(loss)
         engine.step()
         return float(loss.detach())

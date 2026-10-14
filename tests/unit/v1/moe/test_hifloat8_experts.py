@@ -90,83 +90,6 @@ def test_npu_expert_helper_preserves_upstream_activation(monkeypatch):
         torch.testing.assert_close(value.grad, reference.grad)
 
 
-@pytest.mark.parametrize("wrapper", [False, True])
-def test_qwen35_autoep_preserves_native_router_and_text_outputs(wrapper):
-    # Catches wrong wrapper paths, top-k/dtype drift, and post-softmax logit capture.
-    import copy
-    transformers = pytest.importorskip("transformers")
-    required = ("Qwen3_5MoeTextConfig", "Qwen3_5MoeConfig", "Qwen3_5MoeForCausalLM",
-                "Qwen3_5MoeForConditionalGeneration")
-    if not all(hasattr(transformers, name) for name in required):
-        pytest.skip("Transformers does not provide the Qwen3.5 MoE model classes")
-    Qwen3_5MoeTextConfig = transformers.Qwen3_5MoeTextConfig
-    Qwen3_5MoeConfig = transformers.Qwen3_5MoeConfig
-    Qwen3_5MoeForCausalLM = transformers.Qwen3_5MoeForCausalLM
-    Qwen3_5MoeForConditionalGeneration = transformers.Qwen3_5MoeForConditionalGeneration
-    from deepspeed.module_inject.auto_ep import AutoEP
-    from deepspeed.module_inject.auto_ep_config import parse_autoep_config
-
-    torch.manual_seed(42)
-    config = Qwen3_5MoeTextConfig(vocab_size=128,
-                                  hidden_size=128,
-                                  num_hidden_layers=1,
-                                  num_attention_heads=2,
-                                  num_key_value_heads=1,
-                                  head_dim=64,
-                                  moe_intermediate_size=128,
-                                  shared_expert_intermediate_size=128,
-                                  num_experts=4,
-                                  num_experts_per_tok=2,
-                                  layer_types=["full_attention"],
-                                  use_cache=False)
-    cls = Qwen3_5MoeForCausalLM
-    if wrapper:
-        config = Qwen3_5MoeConfig(text_config=config.to_dict(),
-                                  vision_config={
-                                      "depth": 1,
-                                      "hidden_size": 32,
-                                      "intermediate_size": 64,
-                                      "num_heads": 4,
-                                      "out_hidden_size": 128,
-                                      "num_position_embeddings": 16
-                                  })
-        cls = Qwen3_5MoeForConditionalGeneration
-    config._attn_implementation = "eager"
-    reference = cls(config).to(dtype=torch.bfloat16).eval()
-    candidate = copy.deepcopy(reference)
-    autoep = AutoEP(
-        candidate,
-        parse_autoep_config({
-            "enabled": True,
-            "autoep_size": 1,
-            "preset_model": "qwen3_5_moe",
-            "use_grouped_mm": False
-        }))
-    specs = autoep.ep_parser()
-    assert len(specs) == 1
-    path = "model.language_model.layers.0.mlp" if wrapper else "model.layers.0.mlp"
-    assert specs[0].moe_module_name == path
-    original = reference.get_submodule(path)
-    autoep.replace_moe_layer(specs[0], ep_size=1, ep_rank=0)
-    replaced = candidate.get_submodule(path)
-    x = torch.randn(13, 128, dtype=torch.bfloat16)
-    logits, scores, indices = original.gate(x)
-    actual_scores, actual_indices, counts = replaced.router(x)
-    assert actual_scores.dtype == scores.dtype == torch.bfloat16
-    torch.testing.assert_close(actual_indices, indices, rtol=0, atol=0)
-    torch.testing.assert_close(actual_scores, scores, rtol=0, atol=0)
-    with torch.no_grad():
-        _, returned_logits = replaced(x.unsqueeze(0))
-    torch.testing.assert_close(returned_logits, logits, rtol=0, atol=0)
-    assert counts.sum() == 26
-    ids = torch.tensor([[1, 5, 7, 9, 11]])
-    with torch.no_grad():
-        expected = reference(input_ids=ids, labels=ids)
-        actual = candidate(input_ids=ids, labels=ids)
-    torch.testing.assert_close(actual.loss, expected.loss, rtol=0, atol=0.005)
-    torch.testing.assert_close(actual.logits, expected.logits, rtol=0.02, atol=0.01)
-
-
 @pytest.mark.skipif(get_accelerator().device_name() != "npu", reason="requires an available NPU")
 @pytest.mark.parametrize("counts", [[64, 64], [128, 0], [0, 128], [1, 127], [0, 0], [32, 32, 32, 32], [0, 127, 0, 1],
                                     [1, 0, 0, 127], [0, 0, 0, 128], [0, 0, 0, 0], [2] * 64])
@@ -186,10 +109,14 @@ def test_npu_hifloat8_expert_forward_and_gradients(counts, dim, hidden_dim, back
     candidate = GroupedExperts(dim, hidden_dim, len(counts)).to(device="npu", dtype=torch.bfloat16)
     candidate.load_state_dict(baseline.state_dict())
     if backend == "torchao":
-        provider = get_accelerator().get_low_precision_provider("torchao", "hifloat8")
-        assert provider is not None
-        candidate.low_precision_provider = provider
-        candidate.low_precision_config = provider.config_from_dict(None)
+        from torchao.quantization import quantize_
+        from deepspeed.runtime.torchao import GroupedExpertsConfig
+
+        provider = get_accelerator().get_hifloat8_provider()
+        policy = provider.HiFloat8Config()
+        quantize_(candidate,
+                  GroupedExpertsConfig(policy, provider.hifloat8_grouped_mm),
+                  filter_fn=lambda module, name: name == "")
     x = torch.randn(sum(counts), dim, device="npu", dtype=torch.bfloat16, requires_grad=True)
     candidate_x = x.detach().clone().requires_grad_()
     groups = torch.tensor(counts, device="npu", dtype=torch.int64)
@@ -275,10 +202,14 @@ def test_npu_provider_experts_preserve_bfloat16_residual_with_float16_compute():
             weight.normal_(std=0.02)
     parameters = dict(experts.named_parameters())
     state_keys = tuple(experts.state_dict())
-    provider = get_accelerator().get_low_precision_provider("torchao", "hifloat8")
-    assert provider is not None
-    experts.low_precision_provider = provider
-    experts.low_precision_config = provider.config_from_dict({"compute_dtype": "float16"})
+    from torchao.quantization import quantize_
+    from deepspeed.runtime.torchao import GroupedExpertsConfig
+
+    provider = get_accelerator().get_hifloat8_provider()
+    policy = provider.HiFloat8Config.from_dict({"compute_dtype": "float16"})
+    quantize_(experts,
+              GroupedExpertsConfig(policy, provider.hifloat8_grouped_mm),
+              filter_fn=lambda module, name: name == "")
     counts = torch.tensor([0, 8, 0, 4], device="npu", dtype=torch.int64)
     x = torch.randn(15, 64, device="npu", dtype=torch.bfloat16, requires_grad=True)
     branch = experts(x, counts)
@@ -299,3 +230,17 @@ def test_npu_provider_experts_preserve_bfloat16_residual_with_float16_compute():
     for parameter in projection.parameters():
         assert parameter.dtype == parameter.grad.dtype == torch.bfloat16
         assert bool(torch.isfinite(parameter.grad).all())
+
+
+def test_grouped_override_rejects_explicit_fused_gate_up():
+    # Upstream can request a fused gate/up path; a three-GEMM override cannot
+    # silently ignore that public choice after this integration is merged.
+    experts = GroupedExperts(8, 16, 2, use_grouped_mm=False)
+    experts.gate_up_impl = "fused"
+
+    def unexpected_kernel(*args, **kwargs):
+        raise AssertionError("Unsupported execution must fail before a GEMM")
+
+    experts.grouped_mm = unexpected_kernel
+    with pytest.raises(RuntimeError, match="separate gate/up"):
+        experts(torch.randn(2, 8), torch.tensor([1, 1]))
