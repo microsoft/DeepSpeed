@@ -1,88 +1,107 @@
 ---
-title: "HiFloat8 training on Ascend NPU"
+# Copyright (c) DeepSpeed Team.
+# SPDX-License-Identifier: Apache-2.0
+# DeepSpeed Team
+title: "Accelerator-owned low-precision training"
 ---
 
-DeepSpeed selects ordinary Linear and AutoEP GroupedExperts modules through
-`hifloat8.module_name_patterns`. The `torchao_npu` backend is the sole HiFloat8 implementation and owns quantization,
-training GEMMs, ordinary module conversion, and parameter compatibility checks.
-DeepSpeed retains initialization, module selection, routing/padding, EP
-communication, and distributed lifecycle checks.
+DeepSpeed selects ordinary Linear and AutoEP GroupedExperts modules, then asks the
+active accelerator for an optional low-precision provider. The provider owns policy
+parsing, capability probing, selected Linear conversion and grouped GEMM. DeepSpeed
+retains model initialization, module selection, expert activation, token routing and
+padding, communication, optimizer and checkpoint lifecycle.
 
 ```json
 {
   "bf16": {"enabled": true},
   "zero_optimization": {"stage": 2},
-  "hifloat8": {
+  "low_precision": {
     "enabled": true,
-    "backend": "torchao_npu",
+    "backend": "torchao",
+    "format": "hifloat8",
     "module_name_patterns": ["*.experts", "*.shared_experts.*_proj"],
     "min_numel": 65536
   }
 }
 ```
 
-No numerical fields are required in this recommended JSON. AO supplies the
-existing per-tensor input/weight/gradient recipe `15/15/224`. Omitting `config`,
-setting it to `null`, or using `{}` selects that same policy for both converted
-Linear modules and grouped experts. DeepSpeed does not supply separate defaults.
+AutoEP topology is configured separately. The patterns select computation, not
+trainable parameters. Every pattern must match an eligible module; optional
+`expected_module_count` checks the complete selection before backend loading.
 
-Optional overrides remain supported, for example:
+The legacy `hifloat8` section remains accepted and selects `format="hifloat8"`.
+Its old `backend="torchao_npu"` value is normalized to `"torchao"`. Supply only
+one section. The former `backend="torch_npu"` training helper is unsupported.
 
-```json
-"config": {"grad_dst_type_max": 224.0}
-```
+## Provider contract
 
-The original full object also remains valid. These ranges came from the
-established training helper; they influence scale and quantized payloads and
-are distinct from the native operator's `dst_type_max=0.0` default. Omitting
-the JSON fields does not omit the effective ranges at the native call.
+`DeepSpeedAccelerator.get_low_precision_provider(backend, format)` returns a
+`LowPrecisionProvider` or `None`. The default is `None`, so existing accelerator
+implementations remain compatible. Providers implement:
 
-`compute_dtype` is optional (`null`, `"bfloat16"`, `"float16"`). It is retained
-because it controls both the high-precision staging tensors before quantization
-and quantized GEMM output in FWD/dX/dW. Renaming it to `output_dtype` would omit
-the input-cast behavior. BF16 training normally needs no explicit value.
+- `config_from_dict(values)`: deserialize an opaque backend policy.
+- `assert_training_available(device, config, model_dtype, linear, grouped)`:
+  check model precision and the requested native forward/backward kernels.
+- `convert_to_training(model, config, filter_fn)`: convert selected Linear modules
+  while preserving Parameter identity, names, metadata, `requires_grad`, mode and
+  state-dict keys.
+- `grouped_mm(x, weight, offsets, config, trans_b)`: differentiable expert GEMM
+  with cumulative offsets and the caller's high-precision output dtype.
 
-| Stage | Precision |
-| --- | --- |
-| Staging input/weight/output-gradient | Original supported high precision when null, or selected BF16/FP16 |
-| Actual Dense/grouped GEMM operands | HiFloat8-tagged uint8 payloads and FP32 dequantization scales |
-| Native accumulation | Kernel-owned; not selected by this field |
-| FWD/dX/dW GEMM result | Selected working dtype; input/parameter gradients then retain original tensor dtypes |
+The current provider is TorchAO HiFloat8 on Ascend NPU. An unsupported
+accelerator/backend/format combination fails before conversion. Adding another
+format or device requires its own provider and validation; this change does not
+claim CUDA low-precision support. Disabled CPU/CUDA dispatch retains its existing
+implementation and does not request a low-precision provider.
 
-Parameter objects and optimizer states remain unchanged. Existing BF16 grouped
-and CUDA paths are separate from this quantized GEMM dispatch.
-Only `"pertensor"` scaling is currently supported. `torchao_npu` is now the
-default backend. The former `backend="torch_npu"` helper is removed; migrate old
-JSON configurations to `backend="torchao_npu"` and install the current AO source.
-No custom torch_npu training-helper patch is needed.
+## TorchAO HiFloat8 policy
 
-Install torchao_npu with PyTorch/torch_npu 2.11 and torchao 0.18.x. Native
-capability probes run before model conversion. Unmatched selection patterns,
-wrong expected module counts, unsupported policies or unavailable native kernels
-fail before conversion. Existing restrictions remain: BF16 NPU inputs,
-ZeRO stages 0–2, AutoEP expert containers; ZeRO-3, AutoTP, Pipeline parallelism
-and custom model-parallel units are rejected. Single-node validation does not
-establish multi-node compatibility.
+The NPU accelerator lazily imports the public `torchao.hifloat8` API. TorchAO is an
+optional dependency: install `torchao>=0.18,<0.19` and a compatible Ascend extension
+providing the shared policy, conversion/probe and grouped-training APIs. The
+paired `torchao_npu:deepspeed_ao` implementation supplies these APIs; the presence
+of an upstream Linear-only HiFloat8 package is insufficient. No backend package
+import or preloading step is required in the user training entry point.
 
-The checkpoint stores the original high-precision parameters with unchanged
-names. Configure the same HiFloat8 policy when reconstructing the engine to
-resume; the policy is not a quantized weight checkpoint format.
+Missing APIs, unsupported versions, invalid policies and unavailable native kernels
+produce an installation/capability error before quantized module conversion.
+Policy parsing is delegated to `HiFloat8Config.from_dict`; DeepSpeed does not
+reimplement numerical defaults or validation.
 
+Missing, null or empty `config` selects the established input/weight/gradient scale
+denominators `15/15/224`. These values influence quantized payloads and are distinct
+from the format limit and the native quantizer's default range. Optional overrides
+remain supported, for example `"config": {"grad_dst_type_max": 224.0}`.
 
-## NPU grouped GEMM ownership
+`compute_dtype` may be null, `"bfloat16"` or `"float16"`; it controls high-precision
+staging and GEMM result precision while actual operands remain HiFloat8-tagged
+payloads. Native accumulation is kernel-owned. Converted Linear modules and
+provider-backed experts return the input/model dtype, allowing FP16 working GEMMs
+to compose with BF16 residuals. Raw AO tensor helpers retain their configured
+working/output dtype contract. One immutable policy is shared by converted Linear
+modules and selected experts. Scaling currently supports per-tensor only.
 
-AutoEP's NPU expert path calls `torchao_npu.ops.npu.grouped_mm` for BF16/FP16
-and `torchao_npu.hifloat8.hifloat8_grouped_mm` for HiFloat8. Native kernel calls,
-GEMM autograd, empty-group gradients and operand-layout handling belong to AO.
-DeepSpeed retains token packing/padding, activation semantics and EP communication.
-There is no `_NPUGroupedMatmul` implementation in DeepSpeed.
+## Native high-precision grouped GEMM
 
-Both APIs accept `trans_b=True` for packed `[E,N,K]` parameter storage. Their
-backward computes dW as `grad.T @ input` in that same layout, avoiding an external
-transposed-gradient copy. Ordinary `[E,K,N]` callers retain the default
-`trans_b=False`. Empty ranks now use AO's zero-gradient path without reducing
-all expert parameters on the host-framework path.
+`DeepSpeedAccelerator.get_grouped_mm()` supplies an optional native differentiable
+GEMM override. The NPU adapter uses `torch_npu.npu_grouped_matmul` and explicit
+list-input autograd, including empty-rank zero gradients. Its BF16/FP16 path does
+not depend on TorchAO. Providers and native overrides both accept `trans_b=True`
+for `[E,N,K]` parameter storage and produce dW in that layout.
 
-The NPU grouped BF16 path also requires this AO API. With `use_grouped_mm=False`,
-the existing sequential expert path remains available. CUDA/Triton and CPU
-paths keep their existing implementation and do not eagerly import AO.
+DeepSpeed supplies activation and routing/padding behavior around these operators.
+CUDA/Triton and CPU expert paths retain their existing implementation.
+
+## Training and checkpoint boundary
+
+The current HiFloat8 provider requires BF16 model parameters. The integration
+accepts ZeRO stages 0–2 and AutoEP experts; it rejects ZeRO-3, AutoTP, PipelineModule,
+custom model-parallel units and explicit DeepSpeed MoE layers. Offload, compilation,
+LoRA, multi-node and full-parameter convergence require separate validation.
+
+Checkpoints retain high-precision parameters and unchanged state-dict names.
+Reconstruct the engine with the same provider policy to resume. This is not a
+quantized-weight checkpoint format and does not implement TorchAO quantized
+checkpoint ingestion into ZeRO-3. The DP2/ZeRO-2 lifecycle validation entry point
+is `tests/unit/runtime/hifloat8_resume_validation.py`; its experts are replicated,
+so it does not establish AutoEP checkpoint recovery.

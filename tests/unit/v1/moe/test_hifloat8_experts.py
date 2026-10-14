@@ -46,39 +46,30 @@ def test_reference_experts_match_independent_linear_modules(counts):
                 assert torch.count_nonzero(weight.grad[i]) == 0
 
 
-def test_hifloat8_experts_fail_closed_on_cpu_without_changing_state():
-    # Catches a silent BF16 fallback when the user explicitly requested HIF8.
-    experts = GroupedExperts(8, 16, 2, use_grouped_mm=False)
-    parameters = dict(experts.named_parameters())
-    keys = tuple(experts.state_dict())
-    experts.hifloat8_enabled = True
-    with pytest.raises(RuntimeError, match="BF16 NPU inputs"):
-        experts(torch.zeros(2, 8), torch.tensor([1, 1]))
-    assert tuple(experts.state_dict()) == keys
-    assert all(dict(experts.named_parameters())[name] is parameter for name, parameter in parameters.items())
-
-
 def test_npu_expert_helper_preserves_upstream_activation(monkeypatch):
     """The NPU GEMM dispatch must use AutoEP's resolved expert activation."""
     # Pin the merge regression without NPU hardware: the stub implements the
     # native grouped GEMM contract while the helper supplies activation policy.
     import deepspeed.moe.ep_experts as ep_experts
-    import sys
-    from types import SimpleNamespace
 
     def fake_grouped_mm(lhs, weight, offsets, *, trans_b=False):
         weight = weight.transpose(-1, -2) if trans_b else weight
         starts = [0] + offsets.tolist()[:-1]
         return torch.cat([lhs[start:end] @ weight[i] for i, (start, end) in enumerate(zip(starts, offsets.tolist()))])
 
-    # The collaborator is AO's documented packed-weight grouped_mm API.
-    monkeypatch.setitem(sys.modules, "torchao_npu.ops.npu", SimpleNamespace(grouped_mm=fake_grouped_mm))
     torch.manual_seed(7)
     counts = torch.tensor([2, 1])
     x = torch.randn(4, 8, requires_grad=True)
     weights = [torch.randn(shape, requires_grad=True) for shape in ((2, 16, 8), (2, 8, 16), (2, 16, 8))]
     w1, w2, w3 = weights
-    actual = ep_experts._run_experts_npu(w1, w2, w3, x, counts, "swiglu_clamped", limit=0.5, hifloat8=False)
+    actual = ep_experts._run_experts_with_grouped_mm(w1,
+                                                     w2,
+                                                     w3,
+                                                     x,
+                                                     counts,
+                                                     "swiglu_clamped",
+                                                     limit=0.5,
+                                                     grouped_mm=fake_grouped_mm)
 
     x_ref = x.detach().clone().requires_grad_()
     w1_ref, w2_ref, w3_ref = [w.detach().clone().requires_grad_() for w in weights]
@@ -103,8 +94,15 @@ def test_npu_expert_helper_preserves_upstream_activation(monkeypatch):
 def test_qwen35_autoep_preserves_native_router_and_text_outputs(wrapper):
     # Catches wrong wrapper paths, top-k/dtype drift, and post-softmax logit capture.
     import copy
-    from transformers import (Qwen3_5MoeTextConfig, Qwen3_5MoeConfig, Qwen3_5MoeForCausalLM,
-                              Qwen3_5MoeForConditionalGeneration)
+    transformers = pytest.importorskip("transformers")
+    required = ("Qwen3_5MoeTextConfig", "Qwen3_5MoeConfig", "Qwen3_5MoeForCausalLM",
+                "Qwen3_5MoeForConditionalGeneration")
+    if not all(hasattr(transformers, name) for name in required):
+        pytest.skip("Transformers does not provide the Qwen3.5 MoE model classes")
+    Qwen3_5MoeTextConfig = transformers.Qwen3_5MoeTextConfig
+    Qwen3_5MoeConfig = transformers.Qwen3_5MoeConfig
+    Qwen3_5MoeForCausalLM = transformers.Qwen3_5MoeForCausalLM
+    Qwen3_5MoeForConditionalGeneration = transformers.Qwen3_5MoeForConditionalGeneration
     from deepspeed.module_inject.auto_ep import AutoEP
     from deepspeed.module_inject.auto_ep_config import parse_autoep_config
 
@@ -173,13 +171,10 @@ def test_qwen35_autoep_preserves_native_router_and_text_outputs(wrapper):
 @pytest.mark.parametrize("counts", [[64, 64], [128, 0], [0, 128], [1, 127], [0, 0], [32, 32, 32, 32], [0, 127, 0, 1],
                                     [1, 0, 0, 127], [0, 0, 0, 128], [0, 0, 0, 0], [2] * 64])
 @pytest.mark.parametrize("dim,hidden_dim", [(128, 128), (2048, 512)])
-@pytest.mark.parametrize("backend", ["bf16", "torchao_npu"])
+@pytest.mark.parametrize("backend", ["bf16", "torchao"])
 def test_npu_hifloat8_expert_forward_and_gradients(counts, dim, hidden_dim, backend):
     # Catches unsupported native dispatch, inaccurate dX/dW, and empty-expert leakage.
     import torch_npu
-    pytest.importorskip("torchao_npu.ops.npu")
-    if backend == "torchao_npu":
-        implementation = pytest.importorskip("torchao_npu.hifloat8")
 
     torch_npu.npu.set_device(0)
     torch.manual_seed(42)
@@ -190,9 +185,11 @@ def test_npu_hifloat8_expert_forward_and_gradients(counts, dim, hidden_dim, back
             weight.normal_(std=0.02)
     candidate = GroupedExperts(dim, hidden_dim, len(counts)).to(device="npu", dtype=torch.bfloat16)
     candidate.load_state_dict(baseline.state_dict())
-    candidate.hifloat8_enabled = backend != "bf16"
-    if backend == "torchao_npu":
-        candidate.hifloat8_config = implementation.HiFloat8Config()
+    if backend == "torchao":
+        provider = get_accelerator().get_low_precision_provider("torchao", "hifloat8")
+        assert provider is not None
+        candidate.low_precision_provider = provider
+        candidate.low_precision_config = provider.config_from_dict(None)
     x = torch.randn(sum(counts), dim, device="npu", dtype=torch.bfloat16, requires_grad=True)
     candidate_x = x.detach().clone().requires_grad_()
     groups = torch.tensor(counts, device="npu", dtype=torch.int64)
@@ -216,3 +213,89 @@ def test_npu_hifloat8_expert_forward_and_gradients(counts, dim, hidden_dim, back
     for index, count in enumerate(counts):
         if count == 0:
             assert all(torch.count_nonzero(weight.grad[index]) == 0 for weight in candidate.parameters())
+
+
+@pytest.mark.skipif(get_accelerator().device_name() != "npu", reason="requires an available NPU")
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("trans_b", [False, True])
+@pytest.mark.parametrize("input_grad,weight_grad", [(True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("counts", [[0, 8, 0, 4], [0, 0, 0, 0]])
+def test_npu_native_grouped_mm_matches_matmul_with_partial_gradients(dtype, trans_b, input_grad, weight_grad, counts):
+    # Catches saved-tensor ordering errors, packed dW orientation and empty-group leakage.
+    from deepspeed.accelerator.npu.grouped_mm import grouped_mm
+
+    torch.npu.set_device(0)
+    torch.manual_seed(71)
+    inner, columns = 64, 32
+    shape = (len(counts), columns, inner) if trans_b else (len(counts), inner, columns)
+    x = (torch.randn(sum(counts), inner, device="npu", dtype=dtype) * 0.1).requires_grad_(input_grad)
+    weight = (torch.randn(shape, device="npu", dtype=dtype) * 0.1).requires_grad_(weight_grad)
+    ref_x = x.detach().clone().requires_grad_(input_grad)
+    ref_weight = weight.detach().clone().requires_grad_(weight_grad)
+    offsets = torch.tensor(counts, device="npu", dtype=torch.int64).cumsum(0)
+    actual = grouped_mm(x, weight, offsets, trans_b=trans_b)
+
+    pieces = []
+    for index, rows in enumerate(ref_x.split(counts)):
+        right = ref_weight[index].T if trans_b else ref_weight[index]
+        pieces.append(rows @ right)
+    expected = torch.cat(pieces)
+    grad = torch.randn_like(expected) * 0.1
+    actual.backward(grad)
+    expected.backward(grad)
+    torch.npu.synchronize()
+
+    pairs = [(actual, expected)]
+    for value, reference, needs_grad in ((x, ref_x, input_grad), (weight, ref_weight, weight_grad)):
+        if needs_grad:
+            assert value.grad is not None and reference.grad is not None
+            pairs.append((value.grad, reference.grad))
+        else:
+            assert value.grad is None and reference.grad is None
+    rtol, atol = (0.02, 0.0005) if dtype == torch.bfloat16 else (0.003, 0.00005)
+    for value, reference in pairs:
+        assert value.dtype == reference.dtype == dtype
+        assert bool(torch.isfinite(value).all())
+        torch.testing.assert_close(value, reference, rtol=rtol, atol=atol)
+    if weight_grad:
+        for index, count in enumerate(counts):
+            if count == 0:
+                assert torch.count_nonzero(weight.grad[index]) == 0
+
+
+@pytest.mark.skipif(get_accelerator().device_name() != "npu", reason="requires an available NPU")
+def test_npu_provider_experts_preserve_bfloat16_residual_with_float16_compute():
+    # A working-dtype leak promotes the residual and breaks the BF16-facing module contract.
+    torch.npu.set_device(0)
+    torch.manual_seed(73)
+    experts = GroupedExperts(64, 64, 4).to(device="npu", dtype=torch.bfloat16)
+    projection = torch.nn.Linear(64, 32).to(device="npu", dtype=torch.bfloat16)
+    with torch.no_grad():
+        for weight in experts.parameters():
+            weight.normal_(std=0.02)
+    parameters = dict(experts.named_parameters())
+    state_keys = tuple(experts.state_dict())
+    provider = get_accelerator().get_low_precision_provider("torchao", "hifloat8")
+    assert provider is not None
+    experts.low_precision_provider = provider
+    experts.low_precision_config = provider.config_from_dict({"compute_dtype": "float16"})
+    counts = torch.tensor([0, 8, 0, 4], device="npu", dtype=torch.int64)
+    x = torch.randn(15, 64, device="npu", dtype=torch.bfloat16, requires_grad=True)
+    branch = experts(x, counts)
+    residual = x + branch
+    output = projection(residual)
+    assert output.dtype == branch.dtype == residual.dtype == x.dtype
+    assert torch.count_nonzero(branch[12:]) == 0
+    output.float().square().mean().backward()
+    torch.npu.synchronize()
+
+    assert x.grad.dtype == torch.bfloat16 and bool(torch.isfinite(x.grad).all())
+    assert tuple(experts.state_dict()) == state_keys
+    for name, parameter in experts.named_parameters():
+        assert parameter is parameters[name]
+        assert parameter.dtype == parameter.grad.dtype == torch.bfloat16
+        assert bool(torch.isfinite(parameter.grad).all())
+        assert torch.count_nonzero(parameter.grad[0]) == torch.count_nonzero(parameter.grad[2]) == 0
+    for parameter in projection.parameters():
+        assert parameter.dtype == parameter.grad.dtype == torch.bfloat16
+        assert bool(torch.isfinite(parameter.grad).all())

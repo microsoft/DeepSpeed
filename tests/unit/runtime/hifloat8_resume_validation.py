@@ -3,7 +3,7 @@
 # DeepSpeed Team
 """Opt-in NPU DP2 ZeRO-2 save/load validation for Dense and grouped HiFloat8.
 
-Run with a valid two-device Ascend rank table and torchao_npu installed::
+Run with a valid two-device Ascend rank table and the optional TorchAO HiFloat8 extension installed::
 
     torchrun --nproc_per_node=2 tests/unit/runtime/hifloat8_resume_validation.py \
         --output /tmp/hifloat8-resume
@@ -23,7 +23,7 @@ import deepspeed
 import deepspeed.comm as dist
 from deepspeed.moe.ep_experts import GroupedExperts
 from deepspeed.runtime.fp16.loss_scaler import LossScaler
-from torchao_npu.hifloat8 import HiFloat8Config
+from torchao.hifloat8 import HiFloat8Config
 
 
 class Model(torch.nn.Module):
@@ -90,9 +90,10 @@ def main():
             'stage': 2,
             'overlap_comm': False
         },
-        'hifloat8': {
+        'low_precision': {
             'enabled': True,
-            'backend': 'torchao_npu',
+            'backend': 'torchao',
+            'format': 'hifloat8',
             'module_name_patterns': ['dense', 'experts'],
             'expected_module_count': 2
         },
@@ -107,7 +108,7 @@ def main():
         model.load_state_dict(initial)
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
         engine, _, _, _ = deepspeed.initialize(model=model, optimizer=optimizer, config=config)
-        assert engine.module.dense.config is engine.module.experts.hifloat8_config
+        assert engine.module.dense.config is engine.module.experts.low_precision_config
         assert isinstance(engine.module.dense.config, HiFloat8Config)
         return engine
 

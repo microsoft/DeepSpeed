@@ -1,3 +1,7 @@
+.. Copyright (c) DeepSpeed Team.
+.. SPDX-License-Identifier: Apache-2.0
+.. DeepSpeed Team
+
 AutoEP (Automatic Expert Parallelism)
 =====================================
 
@@ -144,7 +148,8 @@ value other than ``False`` instead of silently changing the requested behavior.
 1. During ``deepspeed.initialize()``, AutoEP scans the model for MoE layers
    using preset-defined patterns (router name, expert name, weight shapes).
 2. Detected MoE blocks are replaced with ``AutoEPMoELayer``, which uses
-   TorchTitan's grouped GEMM kernels and AllToAll token dispatch.
+   grouped GEMM and AllToAll token dispatch. The accelerator may supply a
+   native grouped operation; otherwise the existing PyTorch/Triton paths apply.
 3. EP/EDP process groups are created automatically based on ``autoep_size``.
 4. Expert parameters are marked for expert-data-parallel gradient reduction;
    router and shared-expert parameters use standard data-parallel reduction.
@@ -154,6 +159,28 @@ at least 64 source/expert groups. Smaller groups use the CPU reference path
 because device launch overhead can dominate. The ordering and padding contract
 is identical; this internal choice does not change the AutoEP configuration.
 Other dispatch steps may still synchronize with the host.
+
+**Optional low-precision provider:**
+
+The accelerator's ``get_low_precision_provider(backend, format)`` hook returns
+a ``LowPrecisionProvider`` or ``None`` for an unsupported pair. The provider
+interprets its configuration, probes training support before model conversion,
+converts selected Linear modules, and supplies grouped matrix multiplication.
+Conversion preserves parameter identity and state-dict keys. Grouped operations
+preserve the caller's high-precision output dtype.
+
+The DeepSpeed ``low_precision`` configuration selects the provider using
+``backend`` and ``format``. Its ``config`` object is passed to the provider;
+DeepSpeed owns module selection and training lifecycle checks. The legacy
+``hifloat8`` section remains an input adapter, and specifying both sections is
+an error. The NPU implementation uses ``backend="torchao"`` and
+``format="hifloat8"`` through the public ``torchao.hifloat8`` APIs. Other
+accelerators can opt in without changing Engine or AutoEP device dispatch.
+
+The separate ``get_grouped_mm()`` accelerator hook supplies ordinary
+high-precision grouped GEMM. On NPU this calls TorchNPU with explicit autograd
+and does not require TorchAO. Enabling HiFloat8 currently supports ZeRO stages
+0--2; quantized checkpoint ingestion and ZeRO stage 3 remain unsupported.
 
 **Router outputs and activation checkpointing:**
 

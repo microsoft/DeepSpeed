@@ -215,6 +215,14 @@ class DeepSpeedAccelerator(ABC):
     def prefer_triton_grouped_mm(self):
         return False
 
+    def get_low_precision_provider(self, backend, format):
+        """Return an optional training provider, or None for an unsupported pair."""
+        return None
+
+    def get_grouped_mm(self):
+        """Return a native differentiable grouped GEMM override, if available."""
+        return None
+
     # Graph operations
     @abc.abstractmethod
     def create_graph(self):

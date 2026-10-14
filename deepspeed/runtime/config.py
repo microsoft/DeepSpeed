@@ -372,10 +372,12 @@ def get_hybrid_engine_config(param_dict):
     return hybrid_engine_config
 
 
+LOW_PRECISION = "low_precision"
 HIFLOAT8 = "hifloat8"
-HIFLOAT8_DEFAULT = {
+LOW_PRECISION_DEFAULT = {
     "enabled": False,
-    "backend": "torchao_npu",
+    "backend": "torchao",
+    "format": "hifloat8",
     "module_name_patterns": (),
     "min_numel": 0,
     "expected_module_count": None,
@@ -383,40 +385,55 @@ HIFLOAT8_DEFAULT = {
 }
 
 
-def get_hifloat8_config(param_dict):
-    config = param_dict.get(HIFLOAT8, {})
+def get_low_precision_config(param_dict):
+    if LOW_PRECISION in param_dict and HIFLOAT8 in param_dict:
+        raise DeepSpeedConfigError("Specify either 'low_precision' or legacy 'hifloat8', not both")
+    legacy = HIFLOAT8 in param_dict
+    section = HIFLOAT8 if legacy else LOW_PRECISION
+    config = param_dict.get(section, {})
     if not isinstance(config, dict):
-        raise DeepSpeedConfigError(f"'{HIFLOAT8}' must be an object, got {type(config).__name__}")
-
-    unknown = sorted(set(config) - set(HIFLOAT8_DEFAULT))
+        raise DeepSpeedConfigError(f"'{section}' must be an object, got {type(config).__name__}")
+    allowed = set(LOW_PRECISION_DEFAULT)
+    if legacy:
+        allowed.remove("format")
+    unknown = sorted(set(config) - allowed)
     if unknown:
-        raise DeepSpeedConfigError(f"Unknown '{HIFLOAT8}' fields: {unknown}")
-
-    result = dict(HIFLOAT8_DEFAULT)
+        raise DeepSpeedConfigError(f"Unknown '{section}' fields: {unknown}")
+    result = dict(LOW_PRECISION_DEFAULT)
     result.update(config)
+    if legacy and result["backend"] == "torchao_npu":
+        result["backend"] = "torchao"
+    if legacy and result["backend"] != "torchao":
+        raise DeepSpeedConfigError("'hifloat8.backend' must be 'torchao'; the legacy torch_npu helper was removed")
+    for field in ("backend", "format"):
+        if not isinstance(result[field], str) or not result[field]:
+            raise DeepSpeedConfigError(f"'{section}.{field}' must be a non-empty string")
     if not isinstance(result["enabled"], bool):
-        raise DeepSpeedConfigError("'hifloat8.enabled' must be a boolean")
-    if result["backend"] != "torchao_npu":
-        raise DeepSpeedConfigError("'hifloat8.backend' must be 'torchao_npu'; the legacy torch_npu helper "
-                                   "was removed. Install torchao_npu and migrate the backend setting.")
-    policy = result["config"]
-    if policy is not None:
-        if not isinstance(policy, dict):
-            raise DeepSpeedConfigError("'hifloat8.config' must be an object or null")
+        raise DeepSpeedConfigError(f"'{section}.enabled' must be a boolean")
+    if result["config"] is not None and not isinstance(result["config"], dict):
+        raise DeepSpeedConfigError(f"'{section}.config' must be an object or null")
     patterns = result["module_name_patterns"]
     if not isinstance(patterns,
                       (list, tuple)) or not all(isinstance(pattern, str) and pattern for pattern in patterns):
-        raise DeepSpeedConfigError("'hifloat8.module_name_patterns' must be a list of non-empty strings")
+        raise DeepSpeedConfigError(f"'{section}.module_name_patterns' must be a list of non-empty strings")
     if result["enabled"] and not patterns:
-        raise DeepSpeedConfigError("'hifloat8.module_name_patterns' cannot be empty when HiFloat8 is enabled")
+        raise DeepSpeedConfigError(f"'{section}.module_name_patterns' cannot be empty when low precision is enabled")
     min_numel = result["min_numel"]
     if isinstance(min_numel, bool) or not isinstance(min_numel, int) or min_numel < 0:
-        raise DeepSpeedConfigError("'hifloat8.min_numel' must be a non-negative integer")
+        raise DeepSpeedConfigError(f"'{section}.min_numel' must be a non-negative integer")
     expected_count = result["expected_module_count"]
     if expected_count is not None and (isinstance(expected_count, bool) or not isinstance(expected_count, int)
                                        or expected_count <= 0):
-        raise DeepSpeedConfigError("'hifloat8.expected_module_count' must be a positive integer or null")
+        raise DeepSpeedConfigError(f"'{section}.expected_module_count' must be a positive integer or null")
     result["module_name_patterns"] = tuple(patterns)
+    return result
+
+
+def get_hifloat8_config(param_dict):
+    """Retain the legacy configuration reader while selecting the public backend."""
+    result = get_low_precision_config(param_dict)
+    format = result.pop("format")
+    result["enabled"] = result["enabled"] and format == "hifloat8"
     return result
 
 
@@ -584,7 +601,8 @@ class DeepSpeedConfig(object):
 
         self.use_data_before_expert_parallel_ = get_expert_data_topo_config(param_dict)
         self.hybrid_engine = get_hybrid_engine_config(param_dict)
-        self.hifloat8_config = get_hifloat8_config(param_dict)
+        self.low_precision_config = get_low_precision_config(param_dict)
+        self.hifloat8_config = self.low_precision_config
 
         self.pipeline = get_pipeline_config(param_dict)
 

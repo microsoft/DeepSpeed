@@ -586,7 +586,7 @@ class DeepSpeedEngine(Module):
         self._configure_with_arguments(args, mpu)
         self.pipeline_parallelism = isinstance(model, PipelineModule)
         self._do_sanity_check()
-        self._validate_hifloat8_configuration()
+        self._validate_low_precision_configuration()
         if self.log_level() is not None:
             set_log_level_from_string(self.log_level())
         eager_model_parameters = _model_parameters_need_remap(model_parameters)
@@ -620,7 +620,7 @@ class DeepSpeedEngine(Module):
 
         # Configure distributed model
         self._configure_distributed_model(model)
-        self._configure_hifloat8()
+        self._configure_low_precision()
 
         # These hooks should be disabled later if DeepCompile is not active.
         self.module_forward_pre_hook = self._create_module_forward_pre_hook()
@@ -1664,8 +1664,12 @@ class DeepSpeedEngine(Module):
     def bfloat16_enabled(self):
         return self._config.bfloat16_config.enabled
 
+    def low_precision_enabled(self):
+        return self._config.low_precision_config["enabled"]
+
     def hifloat8_enabled(self):
-        return self._config.hifloat8_config["enabled"]
+        config = self._config.low_precision_config
+        return config["enabled"] and config["format"] == "hifloat8"
 
     def fp16_master_weights_and_gradients(self):
         return self._config.float16_config.fp16_master_weights_and_grads
@@ -2052,31 +2056,29 @@ class DeepSpeedEngine(Module):
         # register module attribute in engine but avoid getattr
         self.__dict__['module'] = model
 
-    def _validate_hifloat8_configuration(self):
-        if not self.hifloat8_enabled():
+    def _validate_low_precision_configuration(self):
+        if not self.low_precision_enabled():
             return
-        if not self.bfloat16_enabled():
-            raise RuntimeError("HiFloat8 training requires DeepSpeed BF16 to be enabled")
         if self.pipeline_parallelism:
-            raise RuntimeError("HiFloat8 training has not been validated with DeepSpeed PipelineModule")
+            raise RuntimeError("Low-precision training has not been validated with DeepSpeed PipelineModule")
         if self.autotp_size() > 1:
-            raise RuntimeError("HiFloat8 training has not been validated with DeepSpeed AutoTP")
+            raise RuntimeError("Low-precision training has not been validated with DeepSpeed AutoTP")
         if self.mpu is not None:
-            raise RuntimeError("HiFloat8 training has not been validated with a custom model-parallel unit")
+            raise RuntimeError("Low-precision training has not been validated with a custom model-parallel unit")
         if self.has_moe_layers and any(isinstance(module, MoE) for module in self.module.modules()):
-            raise RuntimeError("HiFloat8 experts require AutoEP, not the explicit DeepSpeed MoE layer")
+            raise RuntimeError("Low-precision experts require AutoEP, not the explicit DeepSpeed MoE layer")
         if self.zero_optimization_stage() >= ZeroStageEnum.weights:
-            raise RuntimeError("HiFloat8 phase-1 supports DeepSpeed ZeRO stages 0, 1, and 2 only")
+            raise RuntimeError("Low-precision phase-1 supports DeepSpeed ZeRO stages 0, 1, and 2 only")
 
-    def _configure_hifloat8(self):
-        if not self.hifloat8_enabled():
+    def _configure_low_precision(self):
+        if not self.low_precision_enabled():
             return
-        self._validate_hifloat8_configuration()
+        self._validate_low_precision_configuration()
 
         from fnmatch import fnmatchcase
         from deepspeed.moe.ep_experts import GroupedExperts
 
-        config = self._config.hifloat8_config
+        config = self._config.low_precision_config
         patterns = config["module_name_patterns"]
         min_numel = config["min_numel"]
         selected_names = []
@@ -2093,55 +2095,58 @@ class DeepSpeedEngine(Module):
                     and any(fnmatchcase(name, pattern) for pattern in patterns)):
                 selected_experts.append((name, module))
         if not selected_names and not selected_experts:
-            raise RuntimeError("HiFloat8 module selection matched no nn.Linear or AutoEP GroupedExperts modules; "
+            raise RuntimeError("Low-precision module selection matched no nn.Linear or AutoEP GroupedExperts modules; "
                                f"patterns={list(patterns)}, min_numel={min_numel}")
 
         eligible_names = selected_names + [name for name, _ in selected_experts]
         expected_count = config.get("expected_module_count")
         if expected_count is not None and len(eligible_names) != expected_count:
             raise RuntimeError(
-                f"HiFloat8 expected_module_count={expected_count}, selected {len(eligible_names)} modules")
+                f"Low-precision expected_module_count={expected_count}, selected {len(eligible_names)} modules")
         unmatched = [pattern for pattern in patterns if not any(fnmatchcase(name, pattern) for name in eligible_names)]
         if unmatched:
-            raise RuntimeError(f"HiFloat8 patterns matched no eligible modules: {unmatched}")
+            raise RuntimeError(f"Low-precision patterns matched no eligible modules: {unmatched}")
 
         logger.info(
-            "HiFloat8 selected %d Linear modules (%d matrix elements); probing native kernels before conversion",
+            "Low-precision selected %d Linear modules (%d matrix elements); probing native kernels before conversion",
             len(selected_names),
             total_numel,
         )
         try:
-            from torchao_npu.hifloat8 import (
-                HiFloat8Config,
-                assert_hifloat8_training_available,
-                convert_to_hifloat8_training,
-            )
-            policy = HiFloat8Config.from_dict(config.get("config"))
-            assert_hifloat8_training_available(device=self.device,
+            provider = get_accelerator().get_low_precision_provider(config["backend"], config["format"])
+            if provider is None:
+                raise RuntimeError(f"No low-precision provider for backend={config['backend']!r}, "
+                                   f"format={config['format']!r} on {get_accelerator().device_name()}")
+            policy = provider.config_from_dict(config.get("config"))
+            model_dtype = torch.bfloat16 if self.bfloat16_enabled() else (
+                torch.float16 if self.fp16_enabled() else torch.float32)
+            provider.assert_training_available(device=self.device,
                                                config=policy,
+                                               model_dtype=model_dtype,
                                                linear=bool(selected_names),
                                                grouped=bool(selected_experts))
         except (ImportError, RuntimeError, ValueError, TypeError) as error:
             raise RuntimeError(
-                f"HiFloat8 selected {len(selected_names)} Linear modules ({total_numel} matrix elements), "
-                f"but native kernel validation failed before conversion: {error}") from error
+                f"Low-precision selected {len(selected_names)} Linear modules ({total_numel} matrix elements), "
+                f"but provider/native kernel validation failed before conversion: {error}") from error
         selected_set = set(selected_names)
-        converted = convert_to_hifloat8_training(
-            self.module,
-            policy,
-            filter_fn=lambda _module, name: name in selected_set,
-        )
+        converted = provider.convert_to_training(self.module,
+                                                 policy,
+                                                 filter_fn=lambda _module, name: name in selected_set)
         self._set_client_model(converted)
         for _, module in selected_experts:
-            module.hifloat8_enabled = True
-            module.hifloat8_config = policy
+            module.low_precision_provider = provider
+            module.low_precision_config = policy
 
-        self.hifloat8_converted_module_names = tuple(selected_names)
-        self.hifloat8_grouped_module_names = tuple(name for name, _ in selected_experts)
-        logger.info("HiFloat8 enabled %d AutoEP grouped expert modules: %s", len(selected_experts),
+        self.low_precision_converted_module_names = tuple(selected_names)
+        self.low_precision_grouped_module_names = tuple(name for name, _ in selected_experts)
+        # Existing audit clients use these names for the legacy HiFloat8 section.
+        self.hifloat8_converted_module_names = self.low_precision_converted_module_names
+        self.hifloat8_grouped_module_names = self.low_precision_grouped_module_names
+        logger.info("Low-precision enabled %d AutoEP grouped expert modules: %s", len(selected_experts),
                     self.hifloat8_grouped_module_names)
         logger.info(
-            "HiFloat8 training converted %d Linear modules (%d matrix elements): %s",
+            "Low-precision training converted %d Linear modules (%d matrix elements): %s",
             len(selected_names),
             total_numel,
             selected_names,
