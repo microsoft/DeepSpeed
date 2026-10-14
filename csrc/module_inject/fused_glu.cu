@@ -288,6 +288,38 @@ __global__ void dual_gemv_silu_mul_kernel(const __nv_bfloat16* __restrict__ hidd
     }
 }
 
+__global__ void dual_gemv_silu_mul_batched_kernel(const __nv_bfloat16* __restrict__ hidden,  // [b, in_f]
+                                                  const __nv_bfloat16* __restrict__ gate_w,
+                                                  const __nv_bfloat16* __restrict__ up_w,
+                                                  __nv_bfloat16* __restrict__ out,  // [b, out_f]
+                                                  int out_features,
+                                                  int in_features)
+{
+    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int lane = threadIdx.x & 31;
+    int b = blockIdx.y;
+    if (warp_id >= out_features) return;
+
+    const __nv_bfloat16* h = hidden + (long)b * in_features;
+    const __nv_bfloat16* gate_row = gate_w + (long)warp_id * in_features;
+    const __nv_bfloat16* up_row = up_w + (long)warp_id * in_features;
+
+    float gate_acc = 0.0f, up_acc = 0.0f;
+    for (int i = lane; i < in_features; i += 32) {
+        float hv = __bfloat162float(h[i]);
+        gate_acc += hv * __bfloat162float(gate_row[i]);
+        up_acc += hv * __bfloat162float(up_row[i]);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        gate_acc += __shfl_down_sync(0xffffffff, gate_acc, offset);
+        up_acc += __shfl_down_sync(0xffffffff, up_acc, offset);
+    }
+    if (lane == 0) {
+        float activated = SILU(gate_acc);
+        out[(long)b * out_features + warp_id] = __float2bfloat16_rn(activated * up_acc);
+    }
+}
+
 void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, at::Tensor out)
 {
     TORCH_CHECK(hidden.is_cuda() && hidden.scalar_type() == at::ScalarType::BFloat16,
@@ -297,9 +329,22 @@ void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, a
                 "gate|up weight shapes must match");
     int out_f = (int)gate_w.size(0);
     int in_f = (int)gate_w.size(1);
+    const int64_t batch = hidden.numel() / in_f;
+    TORCH_CHECK(hidden.numel() == batch * in_f && out.numel() == batch * out_f, "dual_gemv shape mismatch");
     int warps_per_block = 8;  // 256 threads
     int blocks = (out_f + warps_per_block - 1) / warps_per_block;
     auto stream = at::cuda::getCurrentCUDAStream();
+    if (batch > 1) {
+        dual_gemv_silu_mul_batched_kernel<<<dim3(blocks, (unsigned)batch), warps_per_block * 32, 0, stream>>>(
+            reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
+            reinterpret_cast<const __nv_bfloat16*>(gate_w.data_ptr<at::BFloat16>()),
+            reinterpret_cast<const __nv_bfloat16*>(up_w.data_ptr<at::BFloat16>()),
+            reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
+            out_f,
+            in_f);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return;
+    }
     dual_gemv_silu_mul_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
         reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
         reinterpret_cast<const __nv_bfloat16*>(gate_w.data_ptr<at::BFloat16>()),

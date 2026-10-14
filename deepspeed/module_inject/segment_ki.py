@@ -109,6 +109,9 @@ def _native_kernel_ready(kernel_op, hidden, *weights) -> bool:
         return False
     if not hidden.is_contiguous() or hidden.dtype is not torch.bfloat16:
         return False
+    from deepspeed.accelerator import get_accelerator
+    if not get_accelerator().on_accelerator(hidden):
+        return False
     return all(w.is_contiguous() and w.dtype is torch.bfloat16 for w in weights)
 
 
@@ -222,9 +225,18 @@ def _dual_weight_glu_forward(self, input):
     if input.numel() == input.shape[-1] and getattr(self, "_ki_dual_op", None) is not None:
         out = DualWeightGluGEMV.apply(input.reshape(-1), self.gate_proj.weight, self.up_proj.weight, self._ki_dual_op)
         return self.down_proj(out.reshape(*input.shape[:-1], -1))
-    # b>1 or no kernel: original forward (gradients also correct here)
+    # b>1 or no kernel: batched rows take the fused kernel when eligible,
+    # otherwise the composite reference (gradients also correct there)
     from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul
-    return self.down_proj(dual_gemv_silu_mul(input, self.gate_proj.weight, self.up_proj.weight))
+    flat = input.reshape(-1, input.shape[-1]).contiguous()
+    gw, uw = self.gate_proj.weight, self.up_proj.weight
+    op = getattr(self, "_ki_dual_op", None)
+    if (flat.shape[0] > 1 and op is not None and hasattr(op, "dual_gemv_silu_mul")
+            and _native_kernel_ready(op, flat, gw, uw)):
+        out = torch.empty(flat.shape[0], gw.shape[0], dtype=input.dtype, device=input.device)
+        op.dual_gemv_silu_mul(flat, gw, uw, out)
+        return self.down_proj(out.view(*input.shape[:-1], -1))
+    return self.down_proj(dual_gemv_silu_mul(input, gw, uw))
 
 
 @dataclass

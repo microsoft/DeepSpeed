@@ -69,6 +69,17 @@ def _rand_bf16(*shape, device=DEV):
 @pytest.mark.skipif(not GPU_AVAILABLE, reason="non-CPU device required")
 class TestKernelReferenceConsistency:
 
+    def test_dual_gemv_batched(self):
+        """Batched dual_gemv_silu_mul vs the reference (two GEMMs + silu*up)."""
+        torch.manual_seed(0)
+        b, h, inter = 4, 128, 96
+        hidden = _rand_bf16(b, h)
+        gw, uw = _rand_bf16(inter, h), _rand_bf16(inter, h)
+        out = torch.empty(b, inter, dtype=torch.bfloat16, device=DEV)
+        _op().dual_gemv_silu_mul(hidden, gw, uw, out)
+        expected = ref_dual_gemv(hidden.float(), gw.float(), uw.float())
+        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
+
     def test_quad_gemv_batched(self):
         """Batched quad_gemv writes the concatenated layout for b>1 rows
         against the reference (four GEMMs + cat)."""
