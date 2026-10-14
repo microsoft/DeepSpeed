@@ -175,6 +175,14 @@ class GDNInputProj(torch.autograd.Function):
             kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
             return out
         from deepspeed.module_inject.kernel_reference import gdn_input_proj
+        # batched rows take the batched kernel when eligible: it writes the
+        # concatenated layout directly, skipping the eager cat + repack
+        flat = hidden.reshape(-1, hidden.shape[-1]).contiguous()
+        if flat.shape[0] > 1 and _native_kernel_ready(kernel_op, flat, w_qkv, w_z, w_b, w_a):
+            total = w_qkv.shape[0] + w_z.shape[0] + w_b.shape[0] + w_a.shape[0]
+            out = torch.empty(flat.shape[0], total, dtype=hidden.dtype, device=hidden.device)
+            kernel_op.quad_gemv(flat, w_qkv, w_z, w_b, w_a, out)
+            return out.view(*hidden.shape[:-1], total)
         return gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a)
 
     @staticmethod

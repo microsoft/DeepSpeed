@@ -360,6 +360,51 @@ __global__ void quad_gemv_kernel(const __nv_bfloat16* __restrict__ hidden,
     if (lane == 0) { out[warp_id] = __float2bfloat16_rn(acc); }
 }
 
+__global__ void quad_gemv_batched_kernel(const __nv_bfloat16* __restrict__ hidden,  // [b, in_f]
+                                         const __nv_bfloat16* __restrict__ w0,
+                                         const __nv_bfloat16* __restrict__ w1,
+                                         const __nv_bfloat16* __restrict__ w2,
+                                         const __nv_bfloat16* __restrict__ w3,
+                                         __nv_bfloat16* __restrict__ out,  // [b, total]
+                                         int rows0,
+                                         int rows1,
+                                         int rows2,
+                                         int rows3,
+                                         int in_features)
+{
+    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int lane = threadIdx.x & 31;
+    int b = blockIdx.y;
+    int total = rows0 + rows1 + rows2 + rows3;
+    if (warp_id >= total) return;
+
+    const __nv_bfloat16* row;
+    int row_idx;
+    if (warp_id < rows0) {
+        row = w0 + (long)warp_id * in_features;
+        row_idx = warp_id;
+    } else if (warp_id < rows0 + rows1) {
+        row_idx = warp_id - rows0;
+        row = w1 + (long)row_idx * in_features;
+    } else if (warp_id < rows0 + rows1 + rows2) {
+        row_idx = warp_id - rows0 - rows1;
+        row = w2 + (long)row_idx * in_features;
+    } else {
+        row_idx = warp_id - rows0 - rows1 - rows2;
+        row = w3 + (long)row_idx * in_features;
+    }
+
+    const __nv_bfloat16* h = hidden + (long)b * in_features;
+    float acc = 0.0f;
+    for (int i = lane; i < in_features; i += 32) {
+        acc += __bfloat162float(h[i]) * __bfloat162float(row[i]);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        acc += __shfl_down_sync(0xffffffff, acc, offset);
+    }
+    if (lane == 0) { out[(long)b * total + warp_id] = __float2bfloat16_rn(acc); }
+}
+
 void quad_gemv(at::Tensor hidden,
                at::Tensor w0,
                at::Tensor w1,
@@ -376,9 +421,27 @@ void quad_gemv(at::Tensor hidden,
     int rows2 = (int)w2.size(0), rows3 = (int)w3.size(0);
     int in_f = (int)w0.size(1);
     int total = rows0 + rows1 + rows2 + rows3;
+    const int64_t batch = hidden.numel() / in_f;
+    TORCH_CHECK(hidden.numel() == batch * in_f && out.numel() == batch * total, "quad_gemv shape mismatch");
     int warps_per_block = 8;  // 256 threads
     int blocks = (total + warps_per_block - 1) / warps_per_block;
     auto stream = at::cuda::getCurrentCUDAStream();
+    if (batch > 1) {
+        quad_gemv_batched_kernel<<<dim3(blocks, (unsigned)batch), warps_per_block * 32, 0, stream>>>(
+            reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
+            reinterpret_cast<const __nv_bfloat16*>(w0.data_ptr<at::BFloat16>()),
+            reinterpret_cast<const __nv_bfloat16*>(w1.data_ptr<at::BFloat16>()),
+            reinterpret_cast<const __nv_bfloat16*>(w2.data_ptr<at::BFloat16>()),
+            reinterpret_cast<const __nv_bfloat16*>(w3.data_ptr<at::BFloat16>()),
+            reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
+            rows0,
+            rows1,
+            rows2,
+            rows3,
+            in_f);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return;
+    }
     quad_gemv_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
         reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
         reinterpret_cast<const __nv_bfloat16*>(w0.data_ptr<at::BFloat16>()),
