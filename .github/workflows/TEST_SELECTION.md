@@ -226,12 +226,11 @@ suite. Its outcome feeds `nightly-triage.yml`:
   is the good endpoint it would start from.
 
 The controller (`ci/torch_latest.py`) classifies its own failures for this
-routing. If every configured AWS location reports insufficient capacity, it
-returns 75 without a final sentinel. The selected backend prints exactly one
-final `DS_CI_FAILURE_CLASS=infra|timeout|test` sentinel on failure. If no backend runs
-the outcome is infra (75); 300 seconds without pytest output is a timeout
-(124); setup and test errors are test failures (1). A failed run with no
-sentinel routes to the unknown class instead of guessing.
+routing and prints exactly one `DS_CI_FAILURE_CLASS=infra|timeout|test` sentinel
+on failure. If every configured AWS location reports insufficient capacity, no
+backend runs and the outcome is infra (75); 300 seconds without pytest output is
+a timeout (124); setup and test errors are test failures (1). A failed run with
+no sentinel routes to the unknown class instead of guessing.
 
 Triage reports (timeout, unknown, test failures) go through `ci/nightly_report.sh`:
 every report carries the `nightly-triage` label, and a recurring outcome
