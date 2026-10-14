@@ -28,10 +28,13 @@ import deepspeed
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint import ds_to_universal
+from deepspeed.module_inject.auto_ep_folding import build_folding_spec
 from deepspeed.module_inject.auto_ep_layer import AutoEPMoELayer
 from deepspeed.module_inject.auto_tp import AutoTP
 from deepspeed.module_inject.layers import LinearAllreduce, LinearLayer, TensorParallel_Layer, VocabParallelLinear
+from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.utils import groups, safe_get_full_fp32_param, safe_get_full_grad
+from deepspeed.utils.timer import SynchronizedWallClockTimer
 from unit.common import DistributedTest
 
 transformers = pytest.importorskip("transformers")
@@ -305,6 +308,87 @@ class TestShardedAttentionFolding(DistributedTest):
             pytest.skip("AutoEP folding runs on an accelerator")
         assert dist.get_world_size() == world_size
         _check_folded_matches_reference(tp_size=tp_size, ep_size=ep_size, zero_stage=zero_stage, zero_init=zero_init)
+
+
+class TestMixedExpertClipping(DistributedTest):
+    world_size = 2
+
+    @pytest.mark.parametrize("zero_stage", [1, 2])
+    @pytest.mark.parametrize("folded", [False, True])
+    def test_native_etp_and_folded_experts_share_global_clipping(self, zero_stage, folded):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("ZeRO expert clipping runs on an accelerator")
+        groups._init_tp_mesh_device(tensor_model_parallel_size=2)
+        tp_group = groups.get_tensor_model_parallel_group()
+        dp_group = groups.get_data_parallel_group()
+        rank = dist.get_rank()
+        device = get_accelerator().current_device_name()
+        native = torch.nn.Parameter(torch.ones(2, device=device))
+        native.allreduce = False
+        native.group_name = "native_etp"
+        native.model_parallel = True
+        param_groups = [{"params": [native], "moe": True, "name": native.group_name}]
+        ep_groups = {native.group_name: dp_group}
+        edp_groups = {native.group_name: dp_group}
+        names = {native: "native"}
+        native_gradient = torch.tensor([3.0 if rank == 0 else 4.0, 0.0], device=device)
+        expected_gradients = [native_gradient]
+        if folded:
+            expert = torch.nn.Parameter(torch.ones(2, device=device))
+            expert.allreduce = False
+            expert.group_name = "folded_ep"
+            expert.ds_zero_placement_family = "autoep_expert"
+            param_groups.append({"params": [expert], "moe": True, "name": expert.group_name})
+            ep_groups[expert.group_name] = tp_group
+            edp_groups[expert.group_name] = dp_group
+            names[expert] = "folded"
+            expected_gradients.append(torch.tensor([0.0 if rank == 0 else 12.0, 0.0], device=device))
+        # Native ETP shards have norm 5; the folded expert on TP rank one contributes 12.
+        expected_norm = 13.0 if folded else 5.0
+        threshold = expected_norm / 2
+        parameters = list(names)
+        before = [param.detach().clone() for param in parameters]
+        optimizer = DeepSpeedZeroOptimizer(
+            torch.optim.SGD(param_groups, lr=0.1),
+            param_names=names,
+            timers=SynchronizedWallClockTimer(),
+            optimizer_params={},
+            dp_process_group=dp_group,
+            expert_parallel_group=ep_groups,
+            expert_data_parallel_group=edp_groups,
+            mpu=groups,
+            has_moe_layers=True,
+            partition_grads=zero_stage == 2,
+            overlap_comm=True,
+            reduce_bucket_size=32,
+            allgather_bucket_size=32,
+            communication_data_type=torch.float32,
+            clip_grad=threshold,
+        )
+        if folded:
+            spec = build_folding_spec(world_size=2, pp_size=1, tp_size=2, ep_size=2)
+            optimizer.configure_autoep_folding_tp_gradient_reduction(spec)
+        try:
+            loss = (native * native_gradient).sum()
+            if folded:
+                # Model the restore-combined backward's TP factor before ZeRO cancels it.
+                loss = loss + 2 * (expert * expected_gradients[1]).sum()
+            optimizer.enter_backward()
+            loss.backward()
+            optimizer.backward_epilogue()
+            optimizer.reduce_gradients()
+            optimizer.exit_backward()
+            norm = optimizer.scaled_global_norm().item()
+            optimizer.step()
+            coefficient = threshold / (expected_norm + 1e-6)
+            torch.testing.assert_close(norm, expected_norm)
+            for param, initial, gradient in zip(parameters, before, expected_gradients):
+                torch.testing.assert_close(param.detach() - initial,
+                                           -0.1 * coefficient * gradient,
+                                           rtol=1e-5,
+                                           atol=1e-7)
+        finally:
+            optimizer.destroy()
 
 
 def _clipped_step_against_reference(tp_size, ep_size, zero_stage, zero_init, clip_ratio, snapshot_callback=None):

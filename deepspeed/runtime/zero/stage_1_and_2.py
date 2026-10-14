@@ -2700,16 +2700,21 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
 
+    def _is_folded_expert_group(self, group_index):
+        return (self.autoep_folding_spec is not None and self.has_moe_layers and self.is_moe_param_group[group_index]
+                and all(
+                    getattr(param, "ds_zero_placement_family", None) == "autoep_expert"
+                    for param in self.bit16_groups[group_index]))
+
     def scaled_global_norm(self, norm_type=2):
         assert norm_type == 2, "only L2 norm supported"
-        folding = self.autoep_folding_spec is not None
         norm_groups = []
         for i, group in enumerate(self.bit16_groups):
             if self.cpu_offload:
                 norm = self.complete_grad_norm_calculation_for_cpu_offload(self.params_in_partition[i])
                 norm_groups.append(norm)
             else:
-                folded_experts = folding and self.has_moe_layers and self.is_moe_param_group[i]
+                folded_experts = self._is_folded_expert_group(i)
                 group_name = self.optimizer.param_groups[i]["name"] if folded_experts else None
                 expert_group = self.ep_process_group[group_name] if folded_experts else None
                 partition_group = self.real_dp_process_group[i] if folded_experts else None
@@ -2722,7 +2727,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     norm = torch.where(norm >= 0, norm * self.loss_scale, norm)
                 norm_groups.append(norm)
 
-        if self.has_moe_layers and not folding:
+        if self.has_moe_layers:
             self._average_expert_grad_norms(norm_groups)
 
         return combine_grad_norm_groups(norm_groups, norm_type=norm_type)
@@ -2948,7 +2953,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def _average_expert_grad_norms(self, norm_groups):
         for i, norm in enumerate(norm_groups):
-            if self.is_moe_param_group[i]:
+            if self.is_moe_param_group[i] and not self._is_folded_expert_group(i):
                 scaled_norm_tensor = norm * 1.0 / dist.get_world_size(group=self.real_dp_process_group[i])
                 if self.device == 'cpu':
                     scaled_norm_tensor = scaled_norm_tensor.to(get_accelerator().current_device_name())

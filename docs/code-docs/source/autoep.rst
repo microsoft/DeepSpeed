@@ -605,7 +605,8 @@ sums squared partition contributions over expert data parallelism and then
 expert parallelism. Every expert owner contributes, including owners whose
 tensor-parallel rank is nonzero. This expert total does not receive another
 tensor-parallel sum. Replicated and tensor-parallel dense parameters retain
-their existing norm reductions.
+their existing norm reductions. Native MoE groups in the same optimizer
+retain their model-parallel reduction and expert-norm averaging.
 
 The clipping coefficient in ``engine.step()`` therefore uses each logical
 expert once. The sharded-attention regression checks complete gradients,
