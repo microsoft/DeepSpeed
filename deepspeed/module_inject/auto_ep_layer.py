@@ -595,6 +595,8 @@ class AutoEPMoELayer(nn.Module):
                 route_scale=spec.route_scale,
                 gate_bias=spec.gate_bias,
                 group_score_func=spec.group_score_func,
+                topk_sorted=spec.router_topk_sorted,
+                scores_in_gate_dtype=spec.router_scores_in_gate_dtype,
             )
             # Copy gate weights
             _copy_parameter_data(self.router.gate.weight, source_gate.weight)
