@@ -87,6 +87,13 @@ def decode_attn(q, K, V, pos):
     return out.to(q.dtype)
 
 
+def gated_norm(x, z, weight, eps=1e-5):
+    """GDN z-gated output norm: (weight * rms(x)) * silu(z), weight direct."""
+    xf = x.float()
+    xf = xf * torch.rsqrt(xf.pow(2).mean(-1, keepdim=True) + eps)
+    return (xf * weight.float() * torch.nn.functional.silu(z.float())).to(x.dtype)
+
+
 def fused_add_norm(hidden, residual, weight, eps=1e-5):
     """Residual add + RMSNorm: rms_norm(hidden + residual) * weight."""
     combined = hidden.float() + residual.float()

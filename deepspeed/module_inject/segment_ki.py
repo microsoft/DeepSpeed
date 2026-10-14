@@ -366,7 +366,15 @@ def _fused_gdn_forward(self, hidden_states, *args, **kwargs):
 
     core_attn_out = core_attn_out.reshape(-1, self.head_v_dim)
     z = z.reshape(-1, self.head_v_dim)
-    core_attn_out = self.norm(core_attn_out, z)
+    gdn2_op = getattr(self, "_ki_gdn_op", None)
+    if (gdn2_op is not None and hasattr(gdn2_op, "gated_norm") and not torch.is_grad_enabled()
+            and core_attn_out.is_contiguous() and z.is_contiguous() and core_attn_out.dtype is torch.bfloat16):
+        normed = torch.empty_like(core_attn_out)
+        norm_eps = getattr(self.norm, "variance_epsilon", None) or self.norm.eps
+        gdn2_op.gated_norm(core_attn_out, z, self.norm.weight, normed, norm_eps)
+        core_attn_out = normed
+    else:
+        core_attn_out = self.norm(core_attn_out, z)
     core_attn_out = core_attn_out.reshape(batch_size, seq_len, -1)
     return self.out_proj(core_attn_out)
 

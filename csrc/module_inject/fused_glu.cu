@@ -293,30 +293,47 @@ __global__ void dual_gemv_silu_mul_batched_kernel(const __nv_bfloat16* __restric
                                                   const __nv_bfloat16* __restrict__ up_w,
                                                   __nv_bfloat16* __restrict__ out,  // [b, out_f]
                                                   int out_features,
-                                                  int in_features)
+                                                  int in_features,
+                                                  int batch)
 {
+    // Weight-stationary: each warp owns one output feature for ALL rows, so
+    // the weight rows stream once regardless of batch (a row-split grid
+    // would re-read the weights per row — 8x the memory traffic).
     int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     int lane = threadIdx.x & 31;
-    int b = blockIdx.y;
     if (warp_id >= out_features) return;
 
-    const __nv_bfloat16* h = hidden + (long)b * in_features;
     const __nv_bfloat16* gate_row = gate_w + (long)warp_id * in_features;
     const __nv_bfloat16* up_row = up_w + (long)warp_id * in_features;
 
-    float gate_acc = 0.0f, up_acc = 0.0f;
-    for (int i = lane; i < in_features; i += 32) {
-        float hv = __bfloat162float(h[i]);
-        gate_acc += hv * __bfloat162float(gate_row[i]);
-        up_acc += hv * __bfloat162float(up_row[i]);
+    // Cache this lane's slice of both weight rows; in_features/32 elements
+    // per lane (e.g. 80 for 2560-wide) fits registers comfortably.
+    constexpr int MAX_EPL = 128;
+    const int epl = in_features / 32;
+    if (epl > MAX_EPL) return;  // guarded by launcher
+    float gw[MAX_EPL], uw[MAX_EPL];
+#pragma unroll 4
+    for (int e = 0; e < epl; e++) {
+        gw[e] = __bfloat162float(gate_row[lane * epl + e]);
+        uw[e] = __bfloat162float(up_row[lane * epl + e]);
     }
-    for (int offset = 16; offset > 0; offset >>= 1) {
-        gate_acc += __shfl_down_sync(0xffffffff, gate_acc, offset);
-        up_acc += __shfl_down_sync(0xffffffff, up_acc, offset);
-    }
-    if (lane == 0) {
-        float activated = SILU(gate_acc);
-        out[(long)b * out_features + warp_id] = __float2bfloat16_rn(activated * up_acc);
+
+    for (int b = 0; b < batch; b++) {
+        const __nv_bfloat16* h = hidden + (long)b * in_features;
+        float gate_acc = 0.0f, up_acc = 0.0f;
+#pragma unroll 4
+        for (int e = 0; e < epl; e++) {
+            float hv = __bfloat162float(h[lane * epl + e]);
+            gate_acc += hv * gw[e];
+            up_acc += hv * uw[e];
+        }
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            gate_acc += __shfl_down_sync(0xffffffff, gate_acc, offset);
+            up_acc += __shfl_down_sync(0xffffffff, up_acc, offset);
+        }
+        if (lane == 0) {
+            out[(long)b * out_features + warp_id] = __float2bfloat16_rn(SILU(gate_acc) * up_acc);
+        }
     }
 }
 
@@ -335,13 +352,15 @@ void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, a
     int blocks = (out_f + warps_per_block - 1) / warps_per_block;
     auto stream = at::cuda::getCurrentCUDAStream();
     if (batch > 1) {
-        dual_gemv_silu_mul_batched_kernel<<<dim3(blocks, (unsigned)batch), warps_per_block * 32, 0, stream>>>(
+        TORCH_CHECK(in_f % 32 == 0 && in_f / 32 <= 128, "in_features out of the fused batched range");
+        dual_gemv_silu_mul_batched_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
             reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
             reinterpret_cast<const __nv_bfloat16*>(gate_w.data_ptr<at::BFloat16>()),
             reinterpret_cast<const __nv_bfloat16*>(up_w.data_ptr<at::BFloat16>()),
             reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
             out_f,
-            in_f);
+            in_f,
+            (int)batch);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         return;
     }
@@ -415,11 +434,12 @@ __global__ void quad_gemv_batched_kernel(const __nv_bfloat16* __restrict__ hidde
                                          int rows1,
                                          int rows2,
                                          int rows3,
-                                         int in_features)
+                                         int in_features,
+                                         int batch)
 {
+    // Weight-stationary across rows (see dual_gemv_silu_mul_batched_kernel).
     int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     int lane = threadIdx.x & 31;
-    int b = blockIdx.y;
     int total = rows0 + rows1 + rows2 + rows3;
     if (warp_id >= total) return;
 
@@ -439,15 +459,21 @@ __global__ void quad_gemv_batched_kernel(const __nv_bfloat16* __restrict__ hidde
         row = w3 + (long)row_idx * in_features;
     }
 
-    const __nv_bfloat16* h = hidden + (long)b * in_features;
-    float acc = 0.0f;
-    for (int i = lane; i < in_features; i += 32) {
-        acc += __bfloat162float(h[i]) * __bfloat162float(row[i]);
+    constexpr int MAX_EPL = 128;
+    const int epl = in_features / 32;
+    if (epl > MAX_EPL) return;
+    float wr[MAX_EPL];
+#pragma unroll 4
+    for (int e = 0; e < epl; e++) wr[e] = __bfloat162float(row[lane * epl + e]);
+
+    for (int b = 0; b < batch; b++) {
+        const __nv_bfloat16* h = hidden + (long)b * in_features;
+        float acc = 0.0f;
+#pragma unroll 4
+        for (int e = 0; e < epl; e++) acc += __bfloat162float(h[lane * epl + e]) * wr[e];
+        for (int offset = 16; offset > 0; offset >>= 1) acc += __shfl_down_sync(0xffffffff, acc, offset);
+        if (lane == 0) { out[(long)b * total + warp_id] = __float2bfloat16_rn(acc); }
     }
-    for (int offset = 16; offset > 0; offset >>= 1) {
-        acc += __shfl_down_sync(0xffffffff, acc, offset);
-    }
-    if (lane == 0) { out[(long)b * total + warp_id] = __float2bfloat16_rn(acc); }
 }
 
 void quad_gemv(at::Tensor hidden,
@@ -472,7 +498,8 @@ void quad_gemv(at::Tensor hidden,
     int blocks = (total + warps_per_block - 1) / warps_per_block;
     auto stream = at::cuda::getCurrentCUDAStream();
     if (batch > 1) {
-        quad_gemv_batched_kernel<<<dim3(blocks, (unsigned)batch), warps_per_block * 32, 0, stream>>>(
+        TORCH_CHECK(in_f % 32 == 0 && in_f / 32 <= 128, "in_features out of the fused batched range");
+        quad_gemv_batched_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
             reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
             reinterpret_cast<const __nv_bfloat16*>(w0.data_ptr<at::BFloat16>()),
             reinterpret_cast<const __nv_bfloat16*>(w1.data_ptr<at::BFloat16>()),
@@ -483,7 +510,8 @@ void quad_gemv(at::Tensor hidden,
             rows1,
             rows2,
             rows3,
-            in_f);
+            in_f,
+            (int)batch);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         return;
     }
@@ -850,6 +878,50 @@ __global__ void fused_add_norm_kernel(__nv_bfloat16* __restrict__ hidden,
         out[i] = __float2bfloat16_rn(s_data[i] * rms * __bfloat162float(weight[i]));
 }
 
+__device__ __forceinline__ float silu_f(float v) { return v / (1.0f + expf(-v)); }
+
+// GDN z-gated output norm: y = (w * x * rsqrt(mean(x^2)+eps)) * silu(z),
+// weight applied directly (no 1+w here, no residual stream).
+__global__ void gated_norm_kernel(const __nv_bfloat16* __restrict__ x,
+                                  const __nv_bfloat16* __restrict__ z,
+                                  const __nv_bfloat16* __restrict__ w,
+                                  __nv_bfloat16* __restrict__ out,
+                                  float eps,
+                                  int dim)
+{
+    extern __shared__ float s_data[];
+    __shared__ float s_reduce[32];
+
+    int tid = threadIdx.x;
+    int n_threads = blockDim.x;
+    const long row = blockIdx.x;
+    const __nv_bfloat16* xr = x + row * dim;
+    const __nv_bfloat16* zr = z + row * dim;
+    __nv_bfloat16* orow = out + row * dim;
+
+    float local_ss = 0.0f;
+    for (int i = tid; i < dim; i += n_threads) {
+        float v = __bfloat162float(xr[i]);
+        s_data[i] = v;
+        local_ss += v * v;
+    }
+    for (int offset = 16; offset > 0; offset >>= 1)
+        local_ss += __shfl_down_sync(0xffffffff, local_ss, offset);
+    int warp_id = tid >> 5;
+    if ((tid & 31) == 0) s_reduce[warp_id] = local_ss;
+    __syncthreads();
+    if (warp_id == 0) {
+        float v = (tid < (n_threads >> 5)) ? s_reduce[tid] : 0.0f;
+        for (int offset = 16; offset > 0; offset >>= 1)
+            v += __shfl_down_sync(0xffffffff, v, offset);
+        if (tid == 0) s_reduce[0] = rsqrtf(v / dim + eps);
+    }
+    __syncthreads();
+    float rms = s_reduce[0];
+    for (int i = tid; i < dim; i += n_threads)
+        orow[i] = __float2bfloat16_rn(s_data[i] * rms * __bfloat162float(w[i]) * silu_f(__bfloat162float(zr[i])));
+}
+
 at::Tensor fused_add_norm(at::Tensor hidden, at::Tensor residual, at::Tensor weight, double eps)
 {
     TORCH_CHECK(hidden.is_cuda() && hidden.scalar_type() == at::ScalarType::BFloat16,
@@ -1007,6 +1079,34 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("fused_add_norm",
           &fused_add_norm,
           "fused residual add + RMSNorm, in-place residual update (CUDA)");
+    m.def("gated_norm",
+          [](at::Tensor x, at::Tensor z, at::Tensor w, at::Tensor out, double eps) {
+              TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::ScalarType::BFloat16, "x must be CUDA bf16");
+              TORCH_CHECK(x.is_contiguous() && z.is_contiguous() && w.is_contiguous() && out.is_contiguous(),
+                          "inputs must be contiguous");
+              TORCH_CHECK(z.numel() == x.numel() && out.numel() == x.numel() && w.numel() == x.size(-1),
+                          "shape mismatch");
+              int64_t rows = x.numel() / x.size(-1);
+              int dim = (int)x.size(-1);
+              TORCH_CHECK((int64_t)dim * sizeof(float) <= 48 * 1024, "dim too large for shared memory");
+              auto stream = at::cuda::getCurrentCUDAStream();
+              int threads = std::min(1024, ((dim + 31) / 32) * 32);
+              if (threads == 0) threads = 32;
+              gated_norm_kernel<<<(int)rows, threads, (size_t)dim * sizeof(float), stream>>>(
+                  reinterpret_cast<const __nv_bfloat16*>(x.data_ptr<at::BFloat16>()),
+                  reinterpret_cast<const __nv_bfloat16*>(z.data_ptr<at::BFloat16>()),
+                  reinterpret_cast<const __nv_bfloat16*>(w.data_ptr<at::BFloat16>()),
+                  reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
+                  (float)eps,
+                  dim);
+              C10_CUDA_KERNEL_LAUNCH_CHECK();
+          },
+          "GDN z-gated output norm: (w * rms(x)) * silu(z)",
+          py::arg("x"),
+          py::arg("z"),
+          py::arg("w"),
+          py::arg("out"),
+          py::arg("eps"));
     m.def("triple_gemv",
           &triple_gemv,
           "b=1 QKV GEMV reading q/k/v weights directly, no concat (CUDA)");

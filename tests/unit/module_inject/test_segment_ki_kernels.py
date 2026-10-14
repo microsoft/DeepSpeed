@@ -28,6 +28,7 @@ from deepspeed.module_inject.kernel_reference import decode_attn as ref_decode_a
 from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul as ref_dual_gemv
 from deepspeed.module_inject.kernel_reference import fused_add_norm as ref_add_norm
 from deepspeed.module_inject.kernel_reference import gdn_gates as ref_gdn_gates
+from deepspeed.module_inject.kernel_reference import gated_norm as ref_gated_norm
 from deepspeed.module_inject.kernel_reference import gdn_input_proj as ref_gdn_proj
 from deepspeed.module_inject.kernel_reference import triple_gemv as ref_triple_gemv
 
@@ -68,6 +69,18 @@ def _rand_bf16(*shape, device=DEV):
 
 @pytest.mark.skipif(not GPU_AVAILABLE, reason="non-CPU device required")
 class TestKernelReferenceConsistency:
+
+    def test_gated_norm(self):
+        """GDN z-gated norm kernel vs reference: (w * rms(x)) * silu(z)."""
+        torch.manual_seed(0)
+        b, dim = 4, 256
+        x = _rand_bf16(b, dim)
+        z = _rand_bf16(b, dim)
+        w = _rand_bf16(dim)
+        out = torch.empty_like(x)
+        _op().gated_norm(x, z, w, out, 1e-6)
+        expected = ref_gated_norm(x.float(), z.float(), w.float())
+        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
 
     def test_dual_gemv_batched(self):
         """Batched dual_gemv_silu_mul vs the reference (two GEMMs + silu*up)."""
