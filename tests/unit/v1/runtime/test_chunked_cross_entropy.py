@@ -400,22 +400,18 @@ def test_real_vocabulary_backward_peak_drops_by_the_float32_tensors():
             cuda.empty_cache()
             cuda.synchronize()
             before_allocated = cuda.memory_allocated()
-            before_reserved = cuda.memory_reserved()
             cuda.reset_peak_memory_stats()
             loss = loss_function(leaf, labels, vocab)
             loss.backward()
             cuda.synchronize()
             peak_allocated = cuda.max_memory_allocated() - before_allocated
-            peak_reserved = cuda.max_memory_reserved() - before_reserved
-            return loss.detach(), leaf.grad, peak_allocated, peak_reserved
+            return loss.detach(), leaf.grad, peak_allocated
         finally:
             leaf = loss = None
 
-    measurements = {}
     expected_loss = expected_grad = loss = grad = candidates = None
     try:
-        expected_loss, expected_grad, stock_peak, stock_reserved_peak = backward_peak(loss_utils.ForCausalLMLoss)
-        measurements["stock"] = (stock_peak, stock_reserved_peak)
+        expected_loss, expected_grad, stock_peak = backward_peak(loss_utils.ForCausalLMLoss)
         required_savings = 2 * float32_logits_bytes
 
         candidates = [("torch", ChunkedCausalLMLoss(block_rows=torch_block_rows, backend="torch"))]
@@ -423,8 +419,7 @@ def test_real_vocabulary_backward_peak_drops_by_the_float32_tensors():
             candidates.append(("triton", ChunkedCausalLMLoss(backend="triton")))
 
         for backend, loss_function in candidates:
-            loss, grad, peak_allocated, peak_reserved = backward_peak(loss_function)
-            measurements[backend] = (peak_allocated, peak_reserved)
+            loss, grad, peak_allocated = backward_peak(loss_function)
             torch.testing.assert_close(loss, expected_loss, rtol=1e-5, atol=1e-5)
             max_distance, matching_fraction = _ulp_distance_statistics(grad, expected_grad, rows_per_chunk=8)
             assert max_distance <= 1
@@ -441,9 +436,6 @@ def test_real_vocabulary_backward_peak_drops_by_the_float32_tensors():
 
     assert post_allocated <= initial_allocated + 1024**2, (initial_allocated, post_allocated)
     assert post_reserved <= initial_reserved + 1024**2, (initial_reserved, post_reserved)
-
-    print("real-vocabulary CUDA memory (peak allocated, peak reserved):", measurements)
-    print("post-test CUDA memory (allocated, reserved):", (post_allocated, post_reserved))
 
 
 @pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is needed to check forked initialization")
