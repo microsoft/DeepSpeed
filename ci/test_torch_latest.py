@@ -1672,11 +1672,11 @@ def test_workflow_keeps_github_execution_trusted_and_preserves_modes():
     assert text.count("modal-torch-latest-test-selection") == 2
     assert "needs.collect-tests.outputs.mode != 'none'" in text
     assert "needs.collect-tests.result != 'success'" in text
-    assert 'python3 ci/torch_latest.py controller' in text
+    assert 'python3 ci/torch_latest.py controller' not in text
     assert 'python3 ci/torch_latest.py aws-controller' in text
     assert 'python3 ci/torch_latest.py cleanup-aws' in text
-    assert "steps.modal.outputs.fallback == 'true'" in text
-    assert 'if [ "$status" -eq 75 ]' in text
+    assert "steps.modal.outputs.fallback == 'true'" not in text
+    assert 'if [ "$status" -eq 75 ]' not in text
     assert "aws-actions/configure-aws-credentials" not in text
     assert "sts assume-role-with-web-identity" in text
     assert "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" in text
@@ -1705,6 +1705,8 @@ def test_workflow_keeps_github_execution_trusted_and_preserves_modes():
     assert "checkout-candidate" not in deploy
     assert "pull_request.head.sha || github.sha" in deploy
     assert "pull_request.head.repo.full_name || github.repository" in deploy
+    assert "modal==1.2.6" not in deploy
+    assert "if: ${{ always() }}" in deploy
 
 
 def test_launcher_source_has_no_local_packaging_or_shell_execution():
