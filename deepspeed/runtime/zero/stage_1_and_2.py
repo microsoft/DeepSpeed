@@ -2788,7 +2788,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             scaled_global_grad_norm = self.scaled_global_norm()
             # Group-norm helpers report inf/NaN as -1; combining that sentinel must
             # not produce a finite 1.0 and then skip overflow / apply an unclipped step.
-            if self.check_grad_overflow and is_invalid_grad_norm(scaled_global_grad_norm):
+            if (self.dtype != torch.bfloat16
+                    or self.check_grad_overflow) and is_invalid_grad_norm(scaled_global_grad_norm):
                 self.overflow = True
 
         prev_scale = self.loss_scale
