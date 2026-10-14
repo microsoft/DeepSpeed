@@ -57,6 +57,19 @@ def _ordered_bits(tensor):
     return torch.where(bits < 0, -32768 - bits, bits)
 
 
+def _ulp_distance_statistics(actual, expected, rows_per_chunk):
+    actual_rows = actual.reshape(-1, actual.shape[-1])
+    expected_rows = expected.reshape(-1, expected.shape[-1])
+    max_distance = 0
+    matching = 0
+    for start in range(0, actual_rows.shape[0], rows_per_chunk):
+        distance = (_ordered_bits(actual_rows[start:start + rows_per_chunk]) -
+                    _ordered_bits(expected_rows[start:start + rows_per_chunk])).abs()
+        max_distance = max(max_distance, distance.max().item())
+        matching += (distance == 0).sum().item()
+    return max_distance, matching / actual.numel()
+
+
 @pytest.mark.parametrize("backend, device", BACKEND_DEVICES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
 @pytest.mark.parametrize("block_rows", [None, 7])
@@ -359,9 +372,14 @@ def test_install_refuses_a_model_that_does_not_use_the_stock_loss():
         install_chunked_causal_lm_loss(model)
 
 
-@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="measures CUDA allocator peaks")
-def test_real_vocabulary_backward_peak_drops_by_the_float32_tensors():
-    """At Qwen3's vocabulary, the stock loss holds three FP32 [tokens, vocab] tensors when backward starts."""
+def _check_real_vocabulary_backward_peak(run_peak):
+    from deepspeed.runtime.chunked_cross_entropy import ChunkedCausalLMLoss, triton_backend_available
+
+    triton_on_cuda = torch.cuda.is_available() and triton_backend_available()  #ignore-cuda
+    loss_function = ChunkedCausalLMLoss(backend="triton" if triton_on_cuda else "torch")
+    if not run_peak:
+        return
+
     cuda = torch.cuda  #ignore-cuda
     tokens, vocab = 8192, 151936
     generator = torch.Generator(device="cuda").manual_seed(5)
@@ -380,13 +398,27 @@ def test_real_vocabulary_backward_peak_drops_by_the_float32_tensors():
         return loss.detach(), leaf.grad, cuda.max_memory_allocated() - before
 
     expected_loss, expected_grad, stock_peak = backward_peak(loss_utils.ForCausalLMLoss)
-    loss, grad, chunked_peak = backward_peak(ChunkedCausalLMLoss(backend="triton" if _TRITON_ON_CUDA else "torch"))
+    loss, grad, chunked_peak = backward_peak(loss_function)
 
     torch.testing.assert_close(loss, expected_loss, rtol=1e-5, atol=1e-5)
-    distance = (_ordered_bits(grad) - _ordered_bits(expected_grad)).abs()
-    assert distance.max().item() <= 1
-    assert (distance == 0).float().mean().item() >= 0.999
+    max_distance, matching_fraction = _ulp_distance_statistics(grad, expected_grad, rows_per_chunk=128)
+    assert max_distance <= 1
+    assert matching_fraction >= 0.999
     assert stock_peak - chunked_peak >= 2 * float32_logits_bytes, (stock_peak, chunked_peak)
+
+
+def test_real_vocabulary_backward_peak_drops_by_the_float32_tensors():
+    """At Qwen3's vocabulary, the stock loss holds three FP32 [tokens, vocab] tensors when backward starts."""
+    import subprocess
+    import sys
+    program = ("import runpy, sys; namespace = runpy.run_path(sys.argv[1]); "
+               "namespace['_check_real_vocabulary_backward_peak'](sys.argv[2] == 'cuda')")
+    mode = "cuda" if _CUDA_AVAILABLE else "initialize-only"
+    completed = subprocess.run([sys.executable, "-c", program, __file__, mode],
+                               capture_output=True,
+                               text=True,
+                               timeout=300)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 @pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is needed to check forked initialization")
