@@ -82,30 +82,6 @@ class TestKernelReferenceConsistency:
         expected = ref_gated_norm(x.float(), z.float(), w.float())
         torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
 
-    def test_dual_gemv_batched(self):
-        """Batched dual_gemv_silu_mul vs the reference (two GEMMs + silu*up)."""
-        torch.manual_seed(0)
-        b, h, inter = 4, 128, 96
-        hidden = _rand_bf16(b, h)
-        gw, uw = _rand_bf16(inter, h), _rand_bf16(inter, h)
-        out = torch.empty(b, inter, dtype=torch.bfloat16, device=DEV)
-        _op().dual_gemv_silu_mul(hidden, gw, uw, out)
-        expected = ref_dual_gemv(hidden.float(), gw.float(), uw.float())
-        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
-
-    def test_quad_gemv_batched(self):
-        """Batched quad_gemv writes the concatenated layout for b>1 rows
-        against the reference (four GEMMs + cat)."""
-        torch.manual_seed(0)
-        b, h = 4, 128
-        ws = [_rand_bf16(r, h) for r in (96, 48, 6, 6)]
-        hidden = _rand_bf16(b, h)
-        total = sum(w.shape[0] for w in ws)
-        out = torch.empty(b, total, dtype=torch.bfloat16, device=DEV)
-        _op().quad_gemv(hidden, *ws, out)
-        expected = ref_gdn_proj(hidden.float(), *[w.float() for w in ws])
-        torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
-
     def test_decode_attn_fused_q(self):
         """Fused q-side path: the kernel applies per-head RMSNorm (1+w),
         rotate-half RoPE at the row position, and the sigmoid output gate

@@ -178,14 +178,6 @@ class GDNInputProj(torch.autograd.Function):
             kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
             return out
         from deepspeed.module_inject.kernel_reference import gdn_input_proj
-        # batched rows take the batched kernel when eligible: it writes the
-        # concatenated layout directly, skipping the eager cat + repack
-        flat = hidden.reshape(-1, hidden.shape[-1]).contiguous()
-        if flat.shape[0] > 1 and _native_kernel_ready(kernel_op, flat, w_qkv, w_z, w_b, w_a):
-            total = w_qkv.shape[0] + w_z.shape[0] + w_b.shape[0] + w_a.shape[0]
-            out = torch.empty(flat.shape[0], total, dtype=hidden.dtype, device=hidden.device)
-            kernel_op.quad_gemv(flat, w_qkv, w_z, w_b, w_a, out)
-            return out.view(*hidden.shape[:-1], total)
         return gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a)
 
     @staticmethod
@@ -225,18 +217,12 @@ def _dual_weight_glu_forward(self, input):
     if input.numel() == input.shape[-1] and getattr(self, "_ki_dual_op", None) is not None:
         out = DualWeightGluGEMV.apply(input.reshape(-1), self.gate_proj.weight, self.up_proj.weight, self._ki_dual_op)
         return self.down_proj(out.reshape(*input.shape[:-1], -1))
-    # b>1 or no kernel: batched rows take the fused kernel when eligible,
-    # otherwise the composite reference (gradients also correct there)
+    # b>1 or no kernel: the composite reference (gradients also correct
+    # there). Batched GEMV kernels measured slower than cuBLAS GEMM at b=8
+    # (weight traffic dominates; fused vs eager launch structure is noise
+    # inside the captured graph), so batched rows stay on the GEMMs.
     from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul
-    flat = input.reshape(-1, input.shape[-1]).contiguous()
-    gw, uw = self.gate_proj.weight, self.up_proj.weight
-    op = getattr(self, "_ki_dual_op", None)
-    if (flat.shape[0] > 1 and op is not None and hasattr(op, "dual_gemv_silu_mul")
-            and _native_kernel_ready(op, flat, gw, uw)):
-        out = torch.empty(flat.shape[0], gw.shape[0], dtype=input.dtype, device=input.device)
-        op.dual_gemv_silu_mul(flat, gw, uw, out)
-        return self.down_proj(out.view(*input.shape[:-1], -1))
-    return self.down_proj(dual_gemv_silu_mul(input, gw, uw))
+    return self.down_proj(dual_gemv_silu_mul(input, self.gate_proj.weight, self.up_proj.weight))
 
 
 @dataclass

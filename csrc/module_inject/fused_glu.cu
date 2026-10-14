@@ -288,55 +288,6 @@ __global__ void dual_gemv_silu_mul_kernel(const __nv_bfloat16* __restrict__ hidd
     }
 }
 
-__global__ void dual_gemv_silu_mul_batched_kernel(const __nv_bfloat16* __restrict__ hidden,  // [b, in_f]
-                                                  const __nv_bfloat16* __restrict__ gate_w,
-                                                  const __nv_bfloat16* __restrict__ up_w,
-                                                  __nv_bfloat16* __restrict__ out,  // [b, out_f]
-                                                  int out_features,
-                                                  int in_features,
-                                                  int batch)
-{
-    // Weight-stationary: each warp owns one output feature for ALL rows, so
-    // the weight rows stream once regardless of batch (a row-split grid
-    // would re-read the weights per row — 8x the memory traffic).
-    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
-    int lane = threadIdx.x & 31;
-    if (warp_id >= out_features) return;
-
-    const __nv_bfloat16* gate_row = gate_w + (long)warp_id * in_features;
-    const __nv_bfloat16* up_row = up_w + (long)warp_id * in_features;
-
-    // Cache this lane's slice of both weight rows; in_features/32 elements
-    // per lane (e.g. 80 for 2560-wide) fits registers comfortably.
-    constexpr int MAX_EPL = 128;
-    const int epl = in_features / 32;
-    if (epl > MAX_EPL) return;  // guarded by launcher
-    float gw[MAX_EPL], uw[MAX_EPL];
-#pragma unroll 4
-    for (int e = 0; e < epl; e++) {
-        gw[e] = __bfloat162float(gate_row[lane * epl + e]);
-        uw[e] = __bfloat162float(up_row[lane * epl + e]);
-    }
-
-    for (int b = 0; b < batch; b++) {
-        const __nv_bfloat16* h = hidden + (long)b * in_features;
-        float gate_acc = 0.0f, up_acc = 0.0f;
-#pragma unroll 4
-        for (int e = 0; e < epl; e++) {
-            float hv = __bfloat162float(h[lane * epl + e]);
-            gate_acc += hv * gw[e];
-            up_acc += hv * uw[e];
-        }
-        for (int offset = 16; offset > 0; offset >>= 1) {
-            gate_acc += __shfl_down_sync(0xffffffff, gate_acc, offset);
-            up_acc += __shfl_down_sync(0xffffffff, up_acc, offset);
-        }
-        if (lane == 0) {
-            out[(long)b * out_features + warp_id] = __float2bfloat16_rn(SILU(gate_acc) * up_acc);
-        }
-    }
-}
-
 void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, at::Tensor out)
 {
     TORCH_CHECK(hidden.is_cuda() && hidden.scalar_type() == at::ScalarType::BFloat16,
@@ -346,24 +297,9 @@ void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, a
                 "gate|up weight shapes must match");
     int out_f = (int)gate_w.size(0);
     int in_f = (int)gate_w.size(1);
-    const int64_t batch = hidden.numel() / in_f;
-    TORCH_CHECK(hidden.numel() == batch * in_f && out.numel() == batch * out_f, "dual_gemv shape mismatch");
     int warps_per_block = 8;  // 256 threads
     int blocks = (out_f + warps_per_block - 1) / warps_per_block;
     auto stream = at::cuda::getCurrentCUDAStream();
-    if (batch > 1) {
-        TORCH_CHECK(in_f % 32 == 0 && in_f / 32 <= 128, "in_features out of the fused batched range");
-        dual_gemv_silu_mul_batched_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
-            reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
-            reinterpret_cast<const __nv_bfloat16*>(gate_w.data_ptr<at::BFloat16>()),
-            reinterpret_cast<const __nv_bfloat16*>(up_w.data_ptr<at::BFloat16>()),
-            reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
-            out_f,
-            in_f,
-            (int)batch);
-        C10_CUDA_KERNEL_LAUNCH_CHECK();
-        return;
-    }
     dual_gemv_silu_mul_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
         reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
         reinterpret_cast<const __nv_bfloat16*>(gate_w.data_ptr<at::BFloat16>()),
@@ -424,58 +360,6 @@ __global__ void quad_gemv_kernel(const __nv_bfloat16* __restrict__ hidden,
     if (lane == 0) { out[warp_id] = __float2bfloat16_rn(acc); }
 }
 
-__global__ void quad_gemv_batched_kernel(const __nv_bfloat16* __restrict__ hidden,  // [b, in_f]
-                                         const __nv_bfloat16* __restrict__ w0,
-                                         const __nv_bfloat16* __restrict__ w1,
-                                         const __nv_bfloat16* __restrict__ w2,
-                                         const __nv_bfloat16* __restrict__ w3,
-                                         __nv_bfloat16* __restrict__ out,  // [b, total]
-                                         int rows0,
-                                         int rows1,
-                                         int rows2,
-                                         int rows3,
-                                         int in_features,
-                                         int batch)
-{
-    // Weight-stationary across rows (see dual_gemv_silu_mul_batched_kernel).
-    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
-    int lane = threadIdx.x & 31;
-    int total = rows0 + rows1 + rows2 + rows3;
-    if (warp_id >= total) return;
-
-    const __nv_bfloat16* row;
-    int row_idx;
-    if (warp_id < rows0) {
-        row = w0 + (long)warp_id * in_features;
-        row_idx = warp_id;
-    } else if (warp_id < rows0 + rows1) {
-        row_idx = warp_id - rows0;
-        row = w1 + (long)row_idx * in_features;
-    } else if (warp_id < rows0 + rows1 + rows2) {
-        row_idx = warp_id - rows0 - rows1;
-        row = w2 + (long)row_idx * in_features;
-    } else {
-        row_idx = warp_id - rows0 - rows1 - rows2;
-        row = w3 + (long)row_idx * in_features;
-    }
-
-    constexpr int MAX_EPL = 128;
-    const int epl = in_features / 32;
-    if (epl > MAX_EPL) return;
-    float wr[MAX_EPL];
-#pragma unroll 4
-    for (int e = 0; e < epl; e++) wr[e] = __bfloat162float(row[lane * epl + e]);
-
-    for (int b = 0; b < batch; b++) {
-        const __nv_bfloat16* h = hidden + (long)b * in_features;
-        float acc = 0.0f;
-#pragma unroll 4
-        for (int e = 0; e < epl; e++) acc += __bfloat162float(h[lane * epl + e]) * wr[e];
-        for (int offset = 16; offset > 0; offset >>= 1) acc += __shfl_down_sync(0xffffffff, acc, offset);
-        if (lane == 0) { out[(long)b * total + warp_id] = __float2bfloat16_rn(acc); }
-    }
-}
-
 void quad_gemv(at::Tensor hidden,
                at::Tensor w0,
                at::Tensor w1,
@@ -492,29 +376,9 @@ void quad_gemv(at::Tensor hidden,
     int rows2 = (int)w2.size(0), rows3 = (int)w3.size(0);
     int in_f = (int)w0.size(1);
     int total = rows0 + rows1 + rows2 + rows3;
-    const int64_t batch = hidden.numel() / in_f;
-    TORCH_CHECK(hidden.numel() == batch * in_f && out.numel() == batch * total, "quad_gemv shape mismatch");
     int warps_per_block = 8;  // 256 threads
     int blocks = (total + warps_per_block - 1) / warps_per_block;
     auto stream = at::cuda::getCurrentCUDAStream();
-    if (batch > 1) {
-        TORCH_CHECK(in_f % 32 == 0 && in_f / 32 <= 128, "in_features out of the fused batched range");
-        quad_gemv_batched_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
-            reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
-            reinterpret_cast<const __nv_bfloat16*>(w0.data_ptr<at::BFloat16>()),
-            reinterpret_cast<const __nv_bfloat16*>(w1.data_ptr<at::BFloat16>()),
-            reinterpret_cast<const __nv_bfloat16*>(w2.data_ptr<at::BFloat16>()),
-            reinterpret_cast<const __nv_bfloat16*>(w3.data_ptr<at::BFloat16>()),
-            reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
-            rows0,
-            rows1,
-            rows2,
-            rows3,
-            in_f,
-            (int)batch);
-        C10_CUDA_KERNEL_LAUNCH_CHECK();
-        return;
-    }
     quad_gemv_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
         reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
         reinterpret_cast<const __nv_bfloat16*>(w0.data_ptr<at::BFloat16>()),
