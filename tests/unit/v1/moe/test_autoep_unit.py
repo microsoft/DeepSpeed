@@ -2817,7 +2817,6 @@ class TestReplacementSourceMap:
 @pytest.mark.parametrize("autocast", [False, True])
 def test_qwen35_autoep_preserves_native_router_and_text_outputs(wrapper, autocast):
     # Catches wrong wrapper paths, top-k/dtype drift, and post-softmax logit capture.
-    import copy
     transformers = pytest.importorskip("transformers")
     required = ("Qwen3_5MoeTextConfig", "Qwen3_5MoeConfig", "Qwen3_5MoeForCausalLM",
                 "Qwen3_5MoeForConditionalGeneration")
@@ -2827,8 +2826,6 @@ def test_qwen35_autoep_preserves_native_router_and_text_outputs(wrapper, autocas
     Qwen3_5MoeConfig = transformers.Qwen3_5MoeConfig
     Qwen3_5MoeForCausalLM = transformers.Qwen3_5MoeForCausalLM
     Qwen3_5MoeForConditionalGeneration = transformers.Qwen3_5MoeForConditionalGeneration
-    from deepspeed.module_inject.auto_ep import AutoEP
-    from deepspeed.module_inject.auto_ep_config import parse_autoep_config
 
     torch.manual_seed(42)
     config = Qwen3_5MoeTextConfig(vocab_size=128,
