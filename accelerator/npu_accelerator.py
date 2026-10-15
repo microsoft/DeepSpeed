@@ -61,12 +61,12 @@ class NPU_Accelerator(DeepSpeedAccelerator):
         return self.is_synchronized_device()
 
     def get_hifloat8_provider(self):
-        from .npu.low_precision import get_hifloat8_provider
+        from .npu.hifloat8 import get_hifloat8_provider
 
         return get_hifloat8_provider()
 
     def get_grouped_mm(self):
-        from .npu.grouped_mm import grouped_mm
+        from deepspeed.ops.npu.grouped_mm import grouped_mm
 
         return grouped_mm
 

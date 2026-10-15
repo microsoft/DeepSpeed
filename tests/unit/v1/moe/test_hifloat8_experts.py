@@ -149,7 +149,7 @@ def test_npu_hifloat8_expert_forward_and_gradients(counts, dim, hidden_dim, back
 @pytest.mark.parametrize("counts", [[0, 8, 0, 4], [0, 0, 0, 0]])
 def test_npu_native_grouped_mm_matches_matmul_with_partial_gradients(dtype, trans_b, input_grad, weight_grad, counts):
     # Catches saved-tensor ordering errors, packed dW orientation and empty-group leakage.
-    from deepspeed.accelerator.npu.grouped_mm import grouped_mm
+    from deepspeed.ops.npu.grouped_mm import grouped_mm
 
     torch.npu.set_device(0)
     torch.manual_seed(71)

@@ -399,14 +399,14 @@ def test_accelerator_without_hifloat8_fails_before_conversion(monkeypatch):
 
 def test_npu_provider_missing_dependency_has_install_hint(monkeypatch):
     from importlib.metadata import PackageNotFoundError
-    from deepspeed.accelerator.npu import low_precision
+    from deepspeed.accelerator.npu import hifloat8
 
     def missing_version(name):
         raise PackageNotFoundError(name)
 
-    monkeypatch.setattr(low_precision, "version", missing_version)
+    monkeypatch.setattr(hifloat8, "version", missing_version)
     with pytest.raises(ImportError, match="Install torchao"):
-        low_precision.get_hifloat8_provider()
+        hifloat8.get_hifloat8_provider()
 
 
 def test_removed_configuration_extension_reports_existing_schema():

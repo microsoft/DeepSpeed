@@ -48,8 +48,11 @@ routing/padding behavior.
 
 The separate `get_grouped_mm()` accelerator hook supplies ordinary high-precision
 GEMM. Its NPU implementation calls TorchNPU with explicit list-input autograd,
-packed `[E,N,K]` weights and empty-group gradients. BF16/FP16 grouped training does
-not require TorchAO. CPU/CUDA dispatch retains its existing implementation.
+packed `[E,N,K]` weights and empty-group gradients. The operator implementation
+lives in `deepspeed/ops/npu/grouped_mm.py`; the accelerator only resolves the
+capability. HiFloat8 API discovery lives in `accelerator/npu/hifloat8.py`.
+BF16/FP16 grouped training does not require TorchAO. CPU/CUDA dispatch retains
+its existing implementation.
 
 ## Optional TorchAO policy
 
