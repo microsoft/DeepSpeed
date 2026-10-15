@@ -256,16 +256,16 @@ class TestKernelReferenceConsistency:
             torch.testing.assert_close(got.float(), exp, atol=5e-2, rtol=5e-2)
 
     def test_fused_add_norm(self):
-        h = _rand_bf16(1, 128)
-        r = _rand_bf16(1, 128)
-        w = _rand_bf16(128)
-        h_kernel = h.clone()  # the kernel updates hidden in place
-        r_kernel = r.clone()
-        out = _op().fused_add_norm(h_kernel, r_kernel, w, 1e-5)
-        ref_out = ref_add_norm(h, r, w, eps=1e-5)
-        torch.testing.assert_close(out.float(), ref_out.float(), atol=5e-2, rtol=5e-2)
-        # hidden is updated in place to the pre-norm sum
-        torch.testing.assert_close(h_kernel.float(), (h.float() + r.float()), atol=5e-2, rtol=5e-2)
+        for rows in (1, 4):  # the kernel is one-block-per-row
+            h = _rand_bf16(rows, 128)
+            r = _rand_bf16(rows, 128)
+            w = _rand_bf16(128)
+            h_kernel = h.clone()  # the kernel updates hidden in place
+            out = _op().fused_add_norm(h_kernel, r, w, 1e-5)
+            ref_out = ref_add_norm(h, r, w, eps=1e-5)
+            torch.testing.assert_close(out.float(), ref_out.float(), atol=5e-2, rtol=5e-2)
+            # hidden is updated in place to the pre-norm sum, every row
+            torch.testing.assert_close(h_kernel.float(), (h.float() + r.float()), atol=5e-2, rtol=5e-2)
 
     def test_decode_attn(self):
         """Batched decode attention vs reference: uniform b=1, b=4 with a

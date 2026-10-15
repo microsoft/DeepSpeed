@@ -715,12 +715,18 @@ __global__ void fused_add_norm_kernel(__nv_bfloat16* __restrict__ hidden,
 
     int tid = threadIdx.x;
     int n_threads = blockDim.x;
+    // one block per row (the original kernel indexed a single row only;
+    // multi-row launches silently left rows 1+ of `out` uninitialized)
+    const long row = blockIdx.x;
+    __nv_bfloat16* hrow = hidden + row * dim;
+    const __nv_bfloat16* rrow = residual + row * dim;
+    __nv_bfloat16* orow = out + row * dim;
 
     float local_ss = 0.0f;
     for (int i = tid; i < dim; i += n_threads) {
-        float h = __bfloat162float(hidden[i]) + __bfloat162float(residual[i]);
+        float h = __bfloat162float(hrow[i]) + __bfloat162float(rrow[i]);
         s_data[i] = h;
-        hidden[i] = __float2bfloat16_rn(h);
+        hrow[i] = __float2bfloat16_rn(h);
         local_ss += h * h;
     }
 
@@ -740,7 +746,7 @@ __global__ void fused_add_norm_kernel(__nv_bfloat16* __restrict__ hidden,
     float rms = s_reduce[0];
 
     for (int i = tid; i < dim; i += n_threads)
-        out[i] = __float2bfloat16_rn(s_data[i] * rms * __bfloat162float(weight[i]));
+        orow[i] = __float2bfloat16_rn(s_data[i] * rms * __bfloat162float(weight[i]));
 }
 
 __device__ __forceinline__ float silu_f(float v) { return v / (1.0f + expf(-v)); }
