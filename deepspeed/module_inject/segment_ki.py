@@ -411,6 +411,9 @@ def _install_gdn_segment(seg: GDNSegment) -> bool:
     return True
 
 
+_NATIVE_OP_LOAD_WHY = None
+
+
 def _load_native_op():
     """Best-effort load of the segment-KI native op; None → composite.
 
@@ -419,17 +422,27 @@ def _load_native_op():
     futile JIT attempt, while a backend that implements the op later is
     picked up automatically. A registered builder whose JIT toolchain is
     unusable on this host falls back instead of raising through rollout
-    construction."""
+    construction. The fallback reason is logged once so users can tell
+    which path is running."""
+    global _NATIVE_OP_LOAD_WHY
     from deepspeed.accelerator import get_accelerator
+    import logging
+    logger = logging.getLogger(__name__)
     try:
         builder = get_accelerator().get_op_builder("FusedGLUBuilder")
-    except Exception:
+    except Exception as e:
+        _NATIVE_OP_LOAD_WHY = f"builder lookup failed: {e}"
+        logger.warning("segment-KI native op disabled (%s); using composite fallback", _NATIVE_OP_LOAD_WHY)
         return None
     if builder is None or builder.__name__ == "NotImplementedBuilder":
+        _NATIVE_OP_LOAD_WHY = f"accelerator registers no FusedGLUBuilder ({builder.__name__ if builder else 'None'})"
+        logger.warning("segment-KI native op disabled (%s); using composite fallback", _NATIVE_OP_LOAD_WHY)
         return None
     try:
         return builder().load()
-    except Exception:
+    except Exception as e:
+        _NATIVE_OP_LOAD_WHY = f"JIT load failed: {e}"
+        logger.warning("segment-KI native op disabled (%s); using composite fallback", _NATIVE_OP_LOAD_WHY)
         return None
 
 
