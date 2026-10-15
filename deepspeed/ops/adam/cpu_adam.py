@@ -88,7 +88,10 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
         self.adam_w_mode = adamw_mode
         self.fp32_optimizer_states = fp32_optimizer_states
-        self.ds_opt_adam = CPUAdamBuilder().load()
+        try:
+            self.ds_opt_adam = CPUAdamBuilder().load()
+        except Exception as e:
+            raise RuntimeError("DeepSpeedCPUAdam requires the cpu_adam op, which failed to build/load.") from e
 
         self.ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay, adamw_mode,
                                      should_log_le("info"))

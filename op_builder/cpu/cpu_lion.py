@@ -3,21 +3,21 @@
 
 # DeepSpeed Team
 
-from .builder import TorchCPUOpBuilder
+from .builder import CPUOpBuilder
 
 
-class CPUAdamBuilder(TorchCPUOpBuilder):
-    BUILD_VAR = "DS_BUILD_CPU_ADAM"
-    NAME = "cpu_adam"
+class CPULionBuilder(CPUOpBuilder):
+    BUILD_VAR = "DS_BUILD_CPU_LION"
+    NAME = "cpu_lion"
 
     def __init__(self):
         super().__init__(name=self.NAME)
 
     def absolute_name(self):
-        return f'deepspeed.ops.adam.{self.NAME}_op'
+        return f'deepspeed.ops.lion.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp']
+        return ['csrc/lion/cpu_lion.cpp', 'csrc/lion/cpu_lion_impl.cpp']
 
     def libraries_args(self):
         args = super().libraries_args()
