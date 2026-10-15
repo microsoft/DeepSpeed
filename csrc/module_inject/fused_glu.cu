@@ -41,9 +41,10 @@ __global__ void gdn_gates_kernel(const __nv_bfloat16* __restrict__ a,
         float av = __bfloat162float(a[off]);
         float bv = __bfloat162float(b[off]);
         float sp_x = av + dt_bias[h];
-        // Numerically stable softplus: for large x, log(1+exp(x)) == x to fp32
-        // precision and the naive form loses significant digits.
-        float sp = (sp_x > 20.0f) ? sp_x : logf(1.0f + expf(sp_x));
+        // Numerically stable softplus: 1+exp(x) rounds to 1 in fp32 for
+        // strongly negative x (log(1+exp(-20)) == 0), so use log1p there;
+        // for large x, log(1+exp(x)) == x to fp32 precision.
+        float sp = (sp_x > 20.0f) ? sp_x : (sp_x < -10.0f) ? log1pf(expf(sp_x)) : logf(1.0f + expf(sp_x));
         beta_out[i] = __float2bfloat16(1.0f / (1.0f + expf(-bv)));
         g_out[i] = __float2bfloat16(-expf(a_log[h]) * sp);
     }
