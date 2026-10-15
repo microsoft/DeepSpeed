@@ -369,6 +369,35 @@ def _run_experts_triton_grouped_mm(
 # ---------------------------------------------------------------------------
 
 
+def _run_experts_with_grouped_mm(w1,
+                                 w2,
+                                 w3,
+                                 x,
+                                 num_tokens_per_expert,
+                                 activation="swiglu",
+                                 alpha=1.702,
+                                 limit=7.0,
+                                 *,
+                                 grouped_mm):
+    """Keep routing, padding and activation independent of the GEMM backend."""
+    offsets = num_tokens_per_expert.cumsum(0).to(torch.int64)
+    rows = int(offsets[-1].item())
+    if rows < 0 or rows > x.shape[0]:
+        raise ValueError("Expert token counts exceed the available rows")
+    inputs = x[:rows]
+
+    def mm(lhs, weight):
+        return grouped_mm(lhs, weight.to(x.dtype), offsets, trans_b=True).to(lhs.dtype)
+
+    gate = mm(inputs, w1)
+    up = mm(inputs, w3)
+    hidden = apply_expert_activation(gate, up, activation, alpha, limit, fused=False)
+    output = mm(hidden, w2)
+    if rows == x.shape[0]:
+        return output
+    return torch.cat((output, output.new_zeros((x.shape[0] - rows, output.shape[-1]))))
+
+
 class GroupedExperts(nn.Module):
     """Grouped expert computation for MoE layers.
 
@@ -429,6 +458,7 @@ class GroupedExperts(nn.Module):
         self.w3.is_expert_group = True
         self.use_triton_grouped_mm = False
         self.use_grouped_mm = use_grouped_mm
+        self.grouped_mm = None
 
         # Resolve the Triton path. The device-specific decision is delegated to
         # the accelerator backend (e.g. the CUDA backend prefers Triton on
@@ -437,7 +467,8 @@ class GroupedExperts(nn.Module):
         if use_grouped_mm and not disable_triton_grouped_mm:
             self.use_triton_grouped_mm = get_accelerator().prefer_triton_grouped_mm()
 
-        if use_grouped_mm and not hasattr(torch, "_grouped_mm") and not self.use_triton_grouped_mm:
+        if (use_grouped_mm and not hasattr(torch, "_grouped_mm") and not self.use_triton_grouped_mm
+                and get_accelerator().get_grouped_mm() is None):
             raise RuntimeError("GroupedExperts was constructed with use_grouped_mm=True but "
                                "torch._grouped_mm is not available in this PyTorch build. "
                                "Upgrade PyTorch to a build that provides torch._grouped_mm, install "
@@ -474,6 +505,20 @@ class GroupedExperts(nn.Module):
         """
 
         act = (self.activation, self.activation_alpha, self.activation_limit)
+        grouped_mm = self.grouped_mm
+        accelerator = get_accelerator()
+        if grouped_mm is None and self.use_grouped_mm and accelerator.on_accelerator(x):
+            grouped_mm = accelerator.get_grouped_mm()
+        if grouped_mm is not None:
+            if getattr(self, "gate_up_impl", "auto") == "fused":
+                raise RuntimeError("The accelerator grouped GEMM override requires separate gate/up projections")
+            return _run_experts_with_grouped_mm(self.w1,
+                                                self.w2,
+                                                self.w3,
+                                                x,
+                                                num_tokens_per_expert,
+                                                *act,
+                                                grouped_mm=grouped_mm)
         if self.use_triton_grouped_mm:
             return _run_experts_triton_grouped_mm(self.w1, self.w2, self.w3, x, num_tokens_per_expert, *act)
         elif self.use_grouped_mm:

@@ -60,6 +60,16 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def use_host_timers(self):
         return self.is_synchronized_device()
 
+    def get_hifloat8_provider(self):
+        from .npu.hifloat8 import get_hifloat8_provider
+
+        return get_hifloat8_provider()
+
+    def get_grouped_mm(self):
+        from deepspeed.ops.npu.grouped_mm import grouped_mm
+
+        return grouped_mm
+
     def resolves_data_dependency(self):
         return self.is_synchronized_device()
 
