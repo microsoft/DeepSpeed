@@ -11,6 +11,11 @@ public `torchao.quantization.quantize_` call. DeepSpeed owns selection, activati
 routing/padding, communication, optimizer and checkpoint lifecycle. TorchAO owns
 numerical policy and the quantization/GEMM implementations.
 
+## Quick start
+
+Add the following section to your existing DeepSpeed training configuration.
+AutoEP topology, batch size and optimizer settings remain in that configuration.
+
 ```json
 {
   "bf16": {"enabled": true},
@@ -23,6 +28,22 @@ numerical policy and the quantization/GEMM implementations.
   }
 }
 ```
+
+Pass the configuration to the normal initialization call; DeepSpeed applies
+HiFloat8 after AutoEP replacement and device placement, before optimizer setup:
+
+```python
+import deepspeed
+
+engine, optimizer, _, _ = deepspeed.initialize(
+    model=model,
+    model_parameters=model.parameters(),
+    config=ds_config,
+)
+```
+
+For a Dense-only model, omit AutoEP and select the actual Linear module names.
+Set `hifloat8.enabled=false` to return to the high-precision path.
 
 AutoEP topology and trainable-parameter selection are configured separately.
 Every pattern must match an eligible module. Optional `expected_module_count`
@@ -58,7 +79,10 @@ its existing implementation.
 
 Install `torchao>=0.18,<0.19` and the paired Ascend extension with public HiFloat8
 policy/probe/grouped APIs. An upstream Linear-only extension is insufficient.
-No backend import or user preloading step is required. Missing APIs, versions,
+With the extension's automatic activation enabled, DeepSpeed imports
+`torchao.hifloat8`; users do not need to import `torchao_npu` or convert the model
+manually. Upstream TorchAO alone does not provide this HiFloat8 implementation.
+Missing APIs, versions,
 invalid policy or unavailable requested forward/dX/dW kernels fail before
 conversion; policy parsing uses `HiFloat8Config.from_dict`.
 
@@ -74,7 +98,8 @@ their working/output dtype contract. Scaling currently supports per-tensor only.
 
 The current NPU HiFloat8 path requires BF16 model parameters and accepts ZeRO
 stages 0–2. ZeRO-3, PipelineModule, AutoTP, custom MPU and explicit DeepSpeed MoE
-layers are rejected. Quantized checkpoint ingestion into ZeRO-3 is unsupported;
+layers are rejected, as is an explicit fused gate/up override on selected experts.
+Quantized checkpoint ingestion into ZeRO-3 is unsupported;
 checkpoints retain high-precision weights and their original state names.
 Reconstruct the same policy for resume. The opt-in DP2/GAS2 lifecycle entry point
 is `tests/unit/runtime/hifloat8_resume_validation.py`, whose experts are replicated.
