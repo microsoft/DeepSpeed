@@ -41,7 +41,7 @@ def ds_triton_implementation(vals, gamma, beta, epsilon):
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("batch", [1, 32])
 @pytest.mark.parametrize("seq_len", [1, 128])
-@pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
+@pytest.mark.parametrize("channels", [64, 96, 128, 384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", get_dtypes())
 @pytest.mark.parametrize("use_triton_ops", [False, True])
 def test_layer_norm(batch, seq_len, channels, dtype, use_triton_ops):
@@ -89,7 +89,7 @@ def residual_ds_triton_implementation(vals, bias, res, gamma, beta, epsilon):
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("batch", [1, 32])
 @pytest.mark.parametrize("seq_len", [1, 128])
-@pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
+@pytest.mark.parametrize("channels", [64, 96, 128, 384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", get_dtypes())
 @pytest.mark.parametrize("use_triton_ops", [False, True])
 def test_layer_norm_residual(batch, seq_len, channels, dtype, use_triton_ops):
@@ -136,7 +136,7 @@ def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("batch", [1, 32])
 @pytest.mark.parametrize("seq_len", [1, 128])
-@pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
+@pytest.mark.parametrize("channels", [64, 96, 128, 384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", get_dtypes())
 def test_layer_norm_residual_store_pre_ln_res(batch, seq_len, channels, dtype):
     vals = torch.randn((batch, seq_len, channels), dtype=dtype, device=get_accelerator().current_device_name())
