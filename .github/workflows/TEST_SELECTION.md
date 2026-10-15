@@ -242,6 +242,26 @@ Triage checks out the SHA the nightly actually ran rather than current master,
 so the classifier and the sentinel protocol it parses come from the same
 revision.
 
+#### Multi-rank CPU nightly
+
+`cpu-torch-multi-latest.yml` covers the axis the selector does not model:
+`world_size`. `cpu-torch-latest` advertises a single device, so the per-device gate
+in `tests/unit/common.py` skips every `world_size > 1` test there. The nightly sets
+`LOCAL_SIZE=4` to admit `world_size <= 4` and selects only those tests with
+`DS_MULTIRANK_ONLY=1` (a `pytest_collection_modifyitems` hook in
+`tests/conftest.py`): one phase for the non-v1 half (120m budget) and one for the
+`sequential`-marked tests (25m), which the parallel phase deselects.
+
+It is deliberately not a pre-merge or merge-queue check: the non-v1 half needs
+70-90 minutes on a 4-vCPU runner, against 39 minutes for the longest current
+pre-merge job, and a wedged rank would hold up the queue.
+
+`cpu-multi-triage.yml` routes its outcome through the same sentinel protocol and
+reporter as the modal nightly, but with its own issue titles and its own
+`nightly-cpu-multi-last-green` tag, so `nightly-last-green` keeps meaning "the last
+revision the full GPU suite verified". Issue #8805 (bf16 `check_grad_overflow`
+semantics) is an example of a regression only this selection can see.
+
 
 ## How a decision is made
 
