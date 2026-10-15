@@ -1060,6 +1060,10 @@ class HybridEngineRollout(RolloutEngine):
             attention_mask=prefill_mask,
             past_key_values=prefill_cache,
             use_cache=True,
+            # explicit position tensors: HF derives them from the cache
+            # otherwise, which D2H-syncs and aborts stream capture on some
+            # model/cache combinations (reproduced with LLaMA + StaticCache)
+            cache_position=torch.arange(prompt_len, device=device),
         )
         next_token = prefill_out.logits[:, -1, :].argmax(dim=-1, keepdim=True)
 
@@ -1107,6 +1111,14 @@ class HybridEngineRollout(RolloutEngine):
         # Decode-step mask argument: the per-type dict for hybrid models, the
         # plain 4-D tensor for standard full-attention ones.
         decode_mask = {"full_attention": static_attn, "linear_attention": None} if is_hybrid else static_attn
+
+        # Persistent decode position tensors as VIEWS of write_pos: the
+        # captured forwards read this memory, and the in-graph step kernel
+        # advances write_pos itself — so replays see the new position with
+        # no host-side mirror updates. (A clone here would freeze the
+        # captured value and desync the b=1 full-step path.)
+        static_cache_pos = write_pos[:1]
+        static_pos_ids = write_pos.unsqueeze(1)
 
         full_token_buf = torch.zeros(batch_size, max_len, dtype=torch.long, device=device)
         full_token_buf[:, :prompt_len] = prompt_ids
@@ -1175,6 +1187,8 @@ class HybridEngineRollout(RolloutEngine):
                         attention_mask=decode_mask,
                         past_key_values=ds_cache,
                         use_cache=True,
+                        cache_position=static_cache_pos,
+                        position_ids=static_pos_ids,
                     )
             get_accelerator().current_stream().wait_stream(s)
             restore_gdn_states()
@@ -1200,6 +1214,8 @@ class HybridEngineRollout(RolloutEngine):
                     attention_mask=decode_mask,
                     past_key_values=ds_cache,
                     use_cache=True,
+                    cache_position=static_cache_pos,
+                    position_ids=static_pos_ids,
                 )
                 static_logits = out.logits
                 # decode_step_graph kernel is b=1 only (single-sequence argmax);
