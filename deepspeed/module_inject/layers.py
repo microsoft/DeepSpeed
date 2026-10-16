@@ -406,6 +406,8 @@ class TensorParallel_Layer(nn.Module, ABC):
         else:
             self.tp_world_size: int = 1
             self.tp_index: int = 0
+        # Cached once so hot and compiled paths need no process-group query per call.
+        self.is_tp_parallel: bool = pg_utils.is_parallel(mp_group)
 
         # backward compatibility
         self.world_size = self.tp_world_size
@@ -907,7 +909,7 @@ class LinearAllreduce(TensorParallel_Layer):
         if weight is None:
             return
 
-        if self.mp_group is None or self.tp_world_size == 1:
+        if not self.is_tp_parallel:
             weight.data = weight.data.contiguous()
             return
 
@@ -1016,7 +1018,7 @@ class LinearLayer(TensorParallel_Layer):
             if param is None:
                 continue
 
-            if self.mp_group is None or self.tp_world_size == 1:
+            if not self.is_tp_parallel:
                 params_list[idx].data = param.data.contiguous()
                 continue
 
@@ -1164,7 +1166,7 @@ class VocabParallelEmbedding(TensorParallel_Layer):
 
     def forward(self, input):
         self._assert_compiled_if_deferred()
-        if self.mp_group is None or self.tp_world_size == 1:
+        if not self.is_tp_parallel:
             output = F.embedding(input, self.weight, padding_idx=self.padding_idx)
         else:
             # Tokens outside this rank's vocab shard are remapped to index 0 so the local lookup
@@ -1184,7 +1186,7 @@ class VocabParallelEmbedding(TensorParallel_Layer):
         for idx, param in enumerate(params_list):
             if param is None:
                 continue
-            if self.mp_group is None or self.tp_world_size == 1:
+            if not self.is_tp_parallel:
                 params_list[idx].data = param.data.contiguous()
                 continue
             params_list[idx].data = self._all_gather_shards(param, self._partition_sizes, dim=0).contiguous()
@@ -1274,7 +1276,7 @@ class HiddenParallelEmbedding(TensorParallel_Layer):
                              self.weight,
                              padding_idx=self.padding_idx,
                              scale_grad_by_freq=self.scale_grad_by_freq)
-        if self.mp_group is not None and self.tp_world_size > 1:
+        if self.is_tp_parallel:
             output = GatherFromTensorParallelRegion.apply(self.mp_group, output, self._partition_sizes)
         if self.embed_scale is not None:
             output = output * self.embed_scale.to(self.weight.dtype)
@@ -1285,7 +1287,7 @@ class HiddenParallelEmbedding(TensorParallel_Layer):
         for idx, param in enumerate(params_list):
             if param is None:
                 continue
-            if self.mp_group is None or self.tp_world_size == 1:
+            if not self.is_tp_parallel:
                 params_list[idx].data = param.data.contiguous()
                 continue
             params_list[idx].data = self._all_gather_shards(param, self._partition_sizes, dim=1).contiguous()
