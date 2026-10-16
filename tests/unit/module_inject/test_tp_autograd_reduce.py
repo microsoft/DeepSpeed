@@ -7,7 +7,7 @@ import torch
 
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.module_inject.layers import ColumnParallel, ScatterToTensorParallelRegion
+from deepspeed.module_inject.layers import ColumnParallel, RowParallel, ScatterToTensorParallelRegion
 
 from unit.common import DistributedTest
 
@@ -24,6 +24,18 @@ def _tp_group(kind):
 
 class TestTensorParallelBackwardReduce(DistributedTest):
     world_size = 2
+
+    @pytest.mark.parametrize("kind", ["pair", "single", "none"])
+    def test_row_parallel_forward(self, kind):
+        group = _tp_group(kind)
+        rank = dist.get_rank()
+        x = torch.full((3, ), rank + 1.0, device=get_accelerator().device_name())
+
+        out = RowParallel.apply(group, x, False)
+
+        # Only a multi-rank TP group sums the partial outputs (1 + 2); None must not reduce over the world.
+        expected = 3.0 if kind == "pair" else rank + 1.0
+        assert torch.all(out == expected)
 
     @pytest.mark.parametrize("kind", ["pair", "single", "none"])
     def test_column_parallel(self, kind):

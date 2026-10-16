@@ -217,7 +217,7 @@ class RowParallel(torch.autograd.Function):
         Forward pass.
         """
         ctx.group = group
-        if group == None:
+        if not pg_utils.is_parallel(group):
             return input
         if is_inference_mode:
             dist.inference_all_reduce(input, group=group)
