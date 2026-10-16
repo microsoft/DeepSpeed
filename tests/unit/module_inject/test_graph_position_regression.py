@@ -24,7 +24,7 @@ class _Shim:
         self.module = m
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
 def test_graph_capture_standard_model():
     """Graph capture on a standard (non-hybrid) LLaMA must not sync-abort
     when HF would otherwise derive cache positions internally."""

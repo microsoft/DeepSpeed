@@ -44,7 +44,9 @@ __global__ void gdn_gates_kernel(const __nv_bfloat16* __restrict__ a,
         // Numerically stable softplus: 1+exp(x) rounds to 1 in fp32 for
         // strongly negative x (log(1+exp(-20)) == 0), so use log1p there;
         // for large x, log(1+exp(x)) == x to fp32 precision.
-        float sp = (sp_x > 20.0f) ? sp_x : (sp_x < -10.0f) ? log1pf(expf(sp_x)) : logf(1.0f + expf(sp_x));
+        float sp = (sp_x > 20.0f)    ? sp_x
+                   : (sp_x < -10.0f) ? log1pf(expf(sp_x))
+                                     : logf(1.0f + expf(sp_x));
         beta_out[i] = __float2bfloat16(1.0f / (1.0f + expf(-bv)));
         g_out[i] = __float2bfloat16(-expf(a_log[h]) * sp);
     }
@@ -406,22 +408,23 @@ void quad_gemv(at::Tensor hidden,
 // the head dimension (HEAD_DIM/32 elements) for coalesced K/V row loads.
 
 template <int HEAD_DIM>
-__global__ void __launch_bounds__(512) decode_attn_kernel(const __nv_bfloat16* __restrict__ q,
-                                                          const __nv_bfloat16* __restrict__ K,
-                                                          const __nv_bfloat16* __restrict__ V,
-                                                          const int64_t* __restrict__ write_pos,
-                                                          __nv_bfloat16* __restrict__ out,
-                                                          int num_q_heads,
-                                                          int num_kv_heads,
-                                                          int max_len,
-                                                          float scale,
-                                                          int pos_stride,
-                                                          const float* __restrict__ q_norm_w,  // [HEAD_DIM], pre-scaled (1+w)
-                                                          const float* __restrict__ cos_t,     // [max_len, rope_dim]
-                                                          const float* __restrict__ sin_t,     // [max_len, rope_dim]
-                                                          const __nv_bfloat16* __restrict__ gate,  // q layout
-                                                          float eps,
-                                                          int rope_dim)
+__global__ void __launch_bounds__(512)
+    decode_attn_kernel(const __nv_bfloat16* __restrict__ q,
+                       const __nv_bfloat16* __restrict__ K,
+                       const __nv_bfloat16* __restrict__ V,
+                       const int64_t* __restrict__ write_pos,
+                       __nv_bfloat16* __restrict__ out,
+                       int num_q_heads,
+                       int num_kv_heads,
+                       int max_len,
+                       float scale,
+                       int pos_stride,
+                       const float* __restrict__ q_norm_w,      // [HEAD_DIM], pre-scaled (1+w)
+                       const float* __restrict__ cos_t,         // [max_len, rope_dim]
+                       const float* __restrict__ sin_t,         // [max_len, rope_dim]
+                       const __nv_bfloat16* __restrict__ gate,  // q layout
+                       float eps,
+                       int rope_dim)
 {
     constexpr int EPL = HEAD_DIM / 32;  // head-dim elements owned per lane
     const int q_per_kv = num_q_heads / num_kv_heads;
@@ -448,8 +451,7 @@ __global__ void __launch_bounds__(512) decode_attn_kernel(const __nv_bfloat16* _
 
     float q_reg[EPL];
 #pragma unroll
-    for (int e = 0; e < EPL; e++)
-        q_reg[e] = __bfloat162float(q_row[lane * EPL + e]);
+    for (int e = 0; e < EPL; e++) q_reg[e] = __bfloat162float(q_row[lane * EPL + e]);
 
     if (q_norm_w != nullptr) {
         // Fused q-side preprocessing (the eager path's biggest elementwise
@@ -473,8 +475,8 @@ __global__ void __launch_bounds__(512) decode_attn_kernel(const __nv_bfloat16* _
         const int j0 = lane * EPL;
         const int half_lanes = rope_dim > 0 ? (rope_dim / 2) / EPL : 0;
         const int partner = (j0 < rope_dim / 2) ? lane + half_lanes
-            : (j0 < rope_dim)             ? lane - half_lanes
-                                           : lane;
+                            : (j0 < rope_dim)   ? lane - half_lanes
+                                                : lane;
         float pair[EPL];
 #pragma unroll
         for (int e = 0; e < EPL; e++) pair[e] = __shfl_sync(0xffffffff, q_reg[e], partner);
@@ -561,8 +563,10 @@ __global__ void __launch_bounds__(512) decode_attn_kernel(const __nv_bfloat16* _
 #pragma unroll
         for (int e = 0; e < EPL; e++) {
             float v = acc[e] * inv;
-            if (gate != nullptr) v *= 1.0f / (1.0f + expf(-__bfloat162float(g_row[lane * EPL + e])));
-            out[((long)(row * num_q_heads + q_head)) * HEAD_DIM + lane * EPL + e] = __float2bfloat16_rn(v);
+            if (gate != nullptr)
+                v *= 1.0f / (1.0f + expf(-__bfloat162float(g_row[lane * EPL + e])));
+            out[((long)(row * num_q_heads + q_head)) * HEAD_DIM + lane * EPL + e] =
+                __float2bfloat16_rn(v);
         }
     }
 }
@@ -617,9 +621,10 @@ void decode_attn(at::Tensor q,
     const bool fuse_q = q_norm_w.defined() && q_norm_w.numel() == head_dim;
     const bool use_gate = gate.defined() && gate.numel() == q.numel();
     TORCH_CHECK(!use_gate || gate.is_contiguous(), "gate must be contiguous");
-    TORCH_CHECK(!fuse_q || (cos_t.defined() && sin_t.defined() &&
-                            cos_t.numel() == (int64_t)max_len * rope_dim && sin_t.numel() == cos_t.numel()),
-                "fused q path needs cos/sin tables of [max_len, rope_dim]");
+    TORCH_CHECK(
+        !fuse_q || (cos_t.defined() && sin_t.defined() &&
+                    cos_t.numel() == (int64_t)max_len * rope_dim && sin_t.numel() == cos_t.numel()),
+        "fused q path needs cos/sin tables of [max_len, rope_dim]");
     TORCH_CHECK(!fuse_q || (rope_dim % (2 * (head_dim / 32)) == 0),
                 "rope_dim/2 must be a multiple of the per-lane element count");
 
@@ -632,65 +637,68 @@ void decode_attn(at::Tensor q,
     auto qn_ptr = fuse_q ? q_norm_w.data_ptr<float>() : nullptr;
     auto cos_ptr = fuse_q ? cos_t.data_ptr<float>() : nullptr;
     auto sin_ptr = fuse_q ? sin_t.data_ptr<float>() : nullptr;
-    auto g_ptr = use_gate ? reinterpret_cast<const __nv_bfloat16*>(gate.data_ptr<at::BFloat16>()) : nullptr;
+    auto g_ptr = use_gate ? reinterpret_cast<const __nv_bfloat16*>(gate.data_ptr<at::BFloat16>())
+                          : nullptr;
 
     switch (head_dim) {
         case 64:
-            decode_attn_kernel<64>
-                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(q_ptr,
-                                                                             k_ptr,
-                                                                             v_ptr,
-                                                                             write_pos.data_ptr<int64_t>(),
-                                                                             o_ptr,
-                                                                             (int)num_q_heads,
-                                                                             (int)num_kv_heads,
-                                                                             (int)max_len,
-                                                                             scale,
-                                                                             pos_stride,
-                                                                             qn_ptr,
-                                                                             cos_ptr,
-                                                                             sin_ptr,
-                                                                             g_ptr,
-                                                                             (float)eps,
-                                                                             (int)rope_dim);
+            decode_attn_kernel<64><<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                write_pos.data_ptr<int64_t>(),
+                o_ptr,
+                (int)num_q_heads,
+                (int)num_kv_heads,
+                (int)max_len,
+                scale,
+                pos_stride,
+                qn_ptr,
+                cos_ptr,
+                sin_ptr,
+                g_ptr,
+                (float)eps,
+                (int)rope_dim);
             break;
         case 128:
             decode_attn_kernel<128>
-                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(q_ptr,
-                                                                             k_ptr,
-                                                                             v_ptr,
-                                                                             write_pos.data_ptr<int64_t>(),
-                                                                             o_ptr,
-                                                                             (int)num_q_heads,
-                                                                             (int)num_kv_heads,
-                                                                             (int)max_len,
-                                                                             scale,
-                                                                             pos_stride,
-                                                                             qn_ptr,
-                                                                             cos_ptr,
-                                                                             sin_ptr,
-                                                                             g_ptr,
-                                                                             (float)eps,
-                                                                             (int)rope_dim);
+                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(
+                    q_ptr,
+                    k_ptr,
+                    v_ptr,
+                    write_pos.data_ptr<int64_t>(),
+                    o_ptr,
+                    (int)num_q_heads,
+                    (int)num_kv_heads,
+                    (int)max_len,
+                    scale,
+                    pos_stride,
+                    qn_ptr,
+                    cos_ptr,
+                    sin_ptr,
+                    g_ptr,
+                    (float)eps,
+                    (int)rope_dim);
             break;
         case 256:
             decode_attn_kernel<256>
-                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(q_ptr,
-                                                                             k_ptr,
-                                                                             v_ptr,
-                                                                             write_pos.data_ptr<int64_t>(),
-                                                                             o_ptr,
-                                                                             (int)num_q_heads,
-                                                                             (int)num_kv_heads,
-                                                                             (int)max_len,
-                                                                             scale,
-                                                                             pos_stride,
-                                                                             qn_ptr,
-                                                                             cos_ptr,
-                                                                             sin_ptr,
-                                                                             g_ptr,
-                                                                             (float)eps,
-                                                                             (int)rope_dim);
+                <<<(int)(batch * num_q_heads), warps_per_block * 32, 0, stream>>>(
+                    q_ptr,
+                    k_ptr,
+                    v_ptr,
+                    write_pos.data_ptr<int64_t>(),
+                    o_ptr,
+                    (int)num_q_heads,
+                    (int)num_kv_heads,
+                    (int)max_len,
+                    scale,
+                    pos_stride,
+                    qn_ptr,
+                    cos_ptr,
+                    sin_ptr,
+                    g_ptr,
+                    (float)eps,
+                    (int)rope_dim);
             break;
         default: TORCH_CHECK(false, "Unsupported head_dim: ", head_dim);
     }
@@ -790,7 +798,8 @@ __global__ void gated_norm_kernel(const __nv_bfloat16* __restrict__ x,
     __syncthreads();
     float rms = s_reduce[0];
     for (int i = tid; i < dim; i += n_threads)
-        orow[i] = __float2bfloat16_rn(s_data[i] * rms * __bfloat162float(w[i]) * silu_f(__bfloat162float(zr[i])));
+        orow[i] = __float2bfloat16_rn(s_data[i] * rms * __bfloat162float(w[i]) *
+                                      silu_f(__bfloat162float(zr[i])));
 }
 
 at::Tensor fused_add_norm(at::Tensor hidden, at::Tensor residual, at::Tensor weight, double eps)
@@ -906,22 +915,43 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     // two explicit overloads: at::Tensor() pybind defaults proved fragile
     // in this toolchain (the 9-arg call failed to bind)
-    m.def("decode_attn",
-          [](at::Tensor q, at::Tensor K, at::Tensor V, at::Tensor write_pos, at::Tensor out, int64_t num_q_heads,
-             int64_t num_kv_heads, int64_t head_dim, int64_t max_len) {
-              return decode_attn(q, K, V, write_pos, out, num_q_heads, num_kv_heads, head_dim, max_len, {}, {}, {},
-                                 {}, 1e-6, 0);
-          },
-          "batched decode attention (GQA, valid-length)",
-          py::arg("q"),
-          py::arg("K"),
-          py::arg("V"),
-          py::arg("write_pos"),
-          py::arg("out"),
-          py::arg("num_q_heads"),
-          py::arg("num_kv_heads"),
-          py::arg("head_dim"),
-          py::arg("max_len"));
+    m.def(
+        "decode_attn",
+        [](at::Tensor q,
+           at::Tensor K,
+           at::Tensor V,
+           at::Tensor write_pos,
+           at::Tensor out,
+           int64_t num_q_heads,
+           int64_t num_kv_heads,
+           int64_t head_dim,
+           int64_t max_len) {
+            return decode_attn(q,
+                               K,
+                               V,
+                               write_pos,
+                               out,
+                               num_q_heads,
+                               num_kv_heads,
+                               head_dim,
+                               max_len,
+                               {},
+                               {},
+                               {},
+                               {},
+                               1e-6,
+                               0);
+        },
+        "batched decode attention (GQA, valid-length)",
+        py::arg("q"),
+        py::arg("K"),
+        py::arg("V"),
+        py::arg("write_pos"),
+        py::arg("out"),
+        py::arg("num_q_heads"),
+        py::arg("num_kv_heads"),
+        py::arg("head_dim"),
+        py::arg("max_len"));
     m.def("decode_attn",
           &decode_attn,
           "batched decode attention (GQA, valid-length, fused q-norm/rope/gate)",
@@ -950,34 +980,39 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("fused_add_norm",
           &fused_add_norm,
           "fused residual add + RMSNorm, in-place residual update (CUDA)");
-    m.def("gated_norm",
-          [](at::Tensor x, at::Tensor z, at::Tensor w, at::Tensor out, double eps) {
-              TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::ScalarType::BFloat16, "x must be CUDA bf16");
-              TORCH_CHECK(x.is_contiguous() && z.is_contiguous() && w.is_contiguous() && out.is_contiguous(),
-                          "inputs must be contiguous");
-              TORCH_CHECK(z.numel() == x.numel() && out.numel() == x.numel() && w.numel() == x.size(-1),
-                          "shape mismatch");
-              int64_t rows = x.numel() / x.size(-1);
-              int dim = (int)x.size(-1);
-              TORCH_CHECK((int64_t)dim * sizeof(float) <= 48 * 1024, "dim too large for shared memory");
-              auto stream = at::cuda::getCurrentCUDAStream();
-              int threads = std::min(1024, ((dim + 31) / 32) * 32);
-              if (threads == 0) threads = 32;
-              gated_norm_kernel<<<(int)rows, threads, (size_t)dim * sizeof(float), stream>>>(
-                  reinterpret_cast<const __nv_bfloat16*>(x.data_ptr<at::BFloat16>()),
-                  reinterpret_cast<const __nv_bfloat16*>(z.data_ptr<at::BFloat16>()),
-                  reinterpret_cast<const __nv_bfloat16*>(w.data_ptr<at::BFloat16>()),
-                  reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
-                  (float)eps,
-                  dim);
-              C10_CUDA_KERNEL_LAUNCH_CHECK();
-          },
-          "GDN z-gated output norm: (w * rms(x)) * silu(z)",
-          py::arg("x"),
-          py::arg("z"),
-          py::arg("w"),
-          py::arg("out"),
-          py::arg("eps"));
+    m.def(
+        "gated_norm",
+        [](at::Tensor x, at::Tensor z, at::Tensor w, at::Tensor out, double eps) {
+            TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::ScalarType::BFloat16,
+                        "x must be CUDA bf16");
+            TORCH_CHECK(
+                x.is_contiguous() && z.is_contiguous() && w.is_contiguous() && out.is_contiguous(),
+                "inputs must be contiguous");
+            TORCH_CHECK(
+                z.numel() == x.numel() && out.numel() == x.numel() && w.numel() == x.size(-1),
+                "shape mismatch");
+            int64_t rows = x.numel() / x.size(-1);
+            int dim = (int)x.size(-1);
+            TORCH_CHECK((int64_t)dim * sizeof(float) <= 48 * 1024,
+                        "dim too large for shared memory");
+            auto stream = at::cuda::getCurrentCUDAStream();
+            int threads = std::min(1024, ((dim + 31) / 32) * 32);
+            if (threads == 0) threads = 32;
+            gated_norm_kernel<<<(int)rows, threads, (size_t)dim * sizeof(float), stream>>>(
+                reinterpret_cast<const __nv_bfloat16*>(x.data_ptr<at::BFloat16>()),
+                reinterpret_cast<const __nv_bfloat16*>(z.data_ptr<at::BFloat16>()),
+                reinterpret_cast<const __nv_bfloat16*>(w.data_ptr<at::BFloat16>()),
+                reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
+                (float)eps,
+                dim);
+            C10_CUDA_KERNEL_LAUNCH_CHECK();
+        },
+        "GDN z-gated output norm: (w * rms(x)) * silu(z)",
+        py::arg("x"),
+        py::arg("z"),
+        py::arg("w"),
+        py::arg("out"),
+        py::arg("eps"));
     m.def("triple_gemv",
           &triple_gemv,
           "b=1 QKV GEMV reading q/k/v weights directly, no concat (CUDA)");

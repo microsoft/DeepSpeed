@@ -98,7 +98,7 @@ class DeepSpeedStaticLayer:
             cache_position = self._write_position[:key_states.shape[0]].to(self.device)
             # bounds check needs a host sync; skip it while capturing (the
             # warmup forwards already validated the positions)
-            capturing = self.keys.is_cuda and torch.cuda.is_current_stream_capturing()
+            capturing = self.keys.is_cuda and torch.cuda.is_current_stream_capturing()  #ignore-cuda
             if not capturing:
                 if (cache_position < 0).any() or (cache_position >= self.max_cache_len).any():
                     raise ValueError("per-row write positions must be within the cache bounds")

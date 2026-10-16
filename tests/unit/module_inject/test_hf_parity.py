@@ -43,7 +43,7 @@ def _pick_layer(model, want_block):
     pytest.skip(f"no {want_block} layer found")
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
 class TestFullAttentionLayerParity:
 
     def test_forward_and_backward(self, model):
@@ -70,7 +70,7 @@ class TestFullAttentionLayerParity:
         torch.testing.assert_close(grad_i, grad_p, atol=GATOL, rtol=GRTOL)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
 class TestGDNLayerParity:
 
     def test_forward_and_backward(self, model):
@@ -94,7 +94,7 @@ class TestGDNLayerParity:
         torch.testing.assert_close(grad_i, grad_p, atol=GATOL, rtol=GRTOL)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
 class TestMLPParity:
     """Injected GLU replacement vs the HF formula on the same weights."""
 
@@ -117,7 +117,7 @@ class TestMLPParity:
         torch.testing.assert_close(x1.grad.float(), x2.grad.float(), atol=GATOL, rtol=GRTOL)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
 class TestFusedAddNormVsHFFormula:
     """The reviewer's rounding-order case: HF materializes the residual sum
     in bf16 before the norm; the kernel keeps the fp32 sum for the output
