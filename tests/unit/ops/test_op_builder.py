@@ -225,8 +225,8 @@ def test_non_jit_branch_canonical_dedupe_mixed_ptx_combinations():
 
 def test_cuda_capability_major_skips_probe_when_context_not_initialized():
     # Probing device properties forces a lazy CUDA-context init, which creates a
-    # CUDA context. Doing that while checking op compatibility at "import deepspeed"
-    # time poisons fork()-based multiprocessing (issue #7918): a forked child cannot
+    # CUDA context. Doing that while checking op compatibility for deepspeed.ops.__compatible_ops__
+    # poisons fork()-based multiprocessing (issue #7918): a forked child cannot
     # reuse the parent's context. With no context yet, the probe must be skipped.
     builder = make_builder()
     with patch.object(CUDA_API, "is_initialized", return_value=False):
@@ -303,6 +303,46 @@ def test_forked_child_can_use_cuda_after_importing_deepspeed():
                                     "(a CUDA context was created during import, issue #7918):\n" + result.stderr)
 
 
+def test_import_deepspeed_defers_device_queries_compilation_and_transformers():
+    # These used to run at "import deepspeed" and made it seconds slower: probing every op builder
+    # and the module level availability checks query the GPUs (several seconds without GPU
+    # persistence mode), @jit_script_compat called torch.compile, @compiler.disable imported
+    # torch._dynamo, and transformers was imported eagerly. With the accelerator given explicitly,
+    # the import must do none of them. torch._dynamo is only checked from torch 2.4, the first
+    # version whose torch._disable_dynamo (used by compiler.lazy_disable) caches the disabled function.
+    # deepspeed.compile.backend is checked because it imports torch._dynamo and torch._inductor.
+    from deepspeed.accelerator import get_accelerator
+
+    program = "\n".join([
+        "import sys, torch",
+        "calls = []",
+        "def counting(name, fn):",
+        "    def wrapper(*args, **kwargs):",
+        "        calls.append(name)",
+        "        return fn(*args, **kwargs)",
+        "    return wrapper",
+        "torch.compile = counting('torch.compile', torch.compile)",
+        "torch.cuda.device_count = counting('device_count', torch.cuda.device_count)",  #ignore-cuda
+        "torch.cuda.is_available = counting('is_available', torch.cuda.is_available)",  #ignore-cuda
+        "import deepspeed",
+        "assert not calls, calls",
+        "assert 'transformers' not in sys.modules, 'transformers was imported'",
+        "assert 'deepspeed.compile.backend' not in sys.modules, 'deepspeed.compile.backend was imported'",
+        "from deepspeed.utils.torch import required_torch_version",
+        "if required_torch_version(min_version=2.4):",
+        "    assert 'torch._dynamo' not in sys.modules, 'torch._dynamo was imported'",
+    ])
+    env = os.environ.copy()
+    env["DS_ACCELERATOR"] = get_accelerator().device_name()
+    repo_root = str(Path(__file__).resolve().parents[3])
+    env["PYTHONPATH"] = repo_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    result = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True, env=env, timeout=300)
+    if result.returncode != 0 and ("No module named 'deepspeed'" in result.stderr
+                                   or "No module named 'torch'" in result.stderr):
+        pytest.skip("deepspeed/torch not importable in a subprocess in this environment")
+    assert result.returncode == 0, "'import deepspeed' did work that should be deferred:\n" + result.stderr
+
+
 def test_installed_cuda_version_reports_a_runtime_only_cuda_home_as_missing(tmp_path):
     # CUDA_HOME often points at a runtime only install (a pip torch wheel, a conda cudatoolkit) that has
     # no nvcc under bin/. That has to surface as MissingCUDAException, because that is what the callers
@@ -330,8 +370,8 @@ class _AnsweringBuilder:
 
 
 def test_probe_is_compatible_does_not_propagate_a_failed_probe():
-    # Every op is probed at "import deepspeed" time whether or not it will ever be built, so one op
-    # builder that cannot answer must not take the whole import down.
+    # Every op is probed the first time deepspeed.ops.__compatible_ops__ is read, whether or not it will
+    # ever be built, so one op builder that cannot answer must not break reading it.
     assert probe_is_compatible(_RaisingBuilder()) is False
 
 
