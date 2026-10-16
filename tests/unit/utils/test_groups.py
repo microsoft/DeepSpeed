@@ -3,7 +3,16 @@
 
 # DeepSpeed Team
 
+import weakref
+
+import deepspeed.comm as dist
+import pytest
+import torch
+
+from deepspeed.comm import comm
+from deepspeed.utils import groups
 from deepspeed.utils.groups import _get_expert_parallel_ranks
+from unit.common import DistributedTest
 
 
 def test_get_expert_parallel_ranks():
@@ -36,3 +45,125 @@ def test_get_expert_parallel_ranks():
         [5, 13],
         [7, 15],
     ]
+
+
+def test_destroy_process_group_failure_preserves_references(monkeypatch):
+    world_group = object()
+
+    class Backend:
+
+        def destroy_process_group(self, group=None):
+            raise RuntimeError("destroy failed")
+
+    monkeypatch.setattr(comm, "cdb", Backend())
+    monkeypatch.setattr(groups, "_WORLD_GROUP", world_group)
+
+    with pytest.raises(RuntimeError, match="destroy failed"):
+        comm.destroy_process_group()
+    assert groups._WORLD_GROUP is world_group
+
+
+class TestGroupCacheTeardown(DistributedTest):
+    world_size = 2
+    backend = "gloo"
+    requires_cuda_env = False
+
+    @pytest.mark.world_size(1)
+    @pytest.mark.parametrize("explicit_world", [False, True])
+    def test_default_destroy_releases_cached_groups(self, explicit_world):
+
+        class MPU:
+            pass
+
+        groups._clone_world_group()
+        groups._create_expert_and_data_parallel(expert_parallel_size_=1)
+        groups._init_tp_groups_with_new_group(tensor_model_parallel_size=1)
+        ranks = list(range(dist.get_world_size()))
+        groups._ZERO_PARAM_INTRA_PARALLEL_GROUP = dist.new_group(ranks=ranks)
+        groups._ALL_TO_ALL_GROUP["test"] = dist.new_group(ranks=ranks)
+        groups._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = dist.get_world_size()
+        groups._MPU_TENSOR_MODEL_PARALLEL_RANK = dist.get_rank()
+        groups.expert_tensor_parallel_world_size = dist.get_world_size()
+        groups.mesh_device = object()
+        ds_only_mpu = MPU()
+        ds_only_mpu.process_group = groups._TENSOR_MODEL_PARALLEL_GROUP
+        group_ref = weakref.ref(ds_only_mpu.process_group)
+        mpu_ref = weakref.ref(ds_only_mpu)
+        groups.mpu = ds_only_mpu
+        del ds_only_mpu
+
+        world_group = dist.get_world_group() if explicit_world else None
+        dist.destroy_process_group(group=world_group)
+
+        assert group_ref() is None
+        assert mpu_ref() is None
+        assert all(not cache for cache in (groups._EXPERT_PARALLEL_GROUP, groups._EXPERT_PARALLEL_GROUP_RANKS,
+                                           groups._EXPERT_DATA_PARALLEL_GROUP,
+                                           groups._EXPERT_DATA_PARALLEL_GROUP_RANKS, groups._ALL_TO_ALL_GROUP))
+        assert all(group is None for group in (groups._WORLD_GROUP, groups._ZERO_PARAM_INTRA_PARALLEL_GROUP,
+                                               groups._TENSOR_MODEL_PARALLEL_GROUP, groups._MODEL_PARALLEL_GROUP,
+                                               groups._DATA_PARALLEL_GROUP, groups.mesh_device))
+        assert (groups._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE, groups._MPU_TENSOR_MODEL_PARALLEL_RANK,
+                groups.expert_tensor_parallel_world_size) == (None, None, 1)
+        assert groups.mpu is None
+
+        dist.init_distributed(dist_backend="gloo")
+        groups._init_tp_groups_with_new_group(tensor_model_parallel_size=1, data_parallel_size=1)
+        fresh_group = groups._TENSOR_MODEL_PARALLEL_GROUP
+        assert fresh_group is not None
+        value = torch.ones(1)
+        dist.all_reduce(value, group=fresh_group)
+        assert value.item() == 1
+
+        caller_owned_mpu = MPU()
+        caller_owned_mpu.process_group = fresh_group
+        groups.mpu = caller_owned_mpu
+        dist.destroy_process_group(group=dist.get_world_group())
+        assert groups.mpu is None
+        assert caller_owned_mpu.process_group is fresh_group
+
+    def test_subgroup_destroy_preserves_unrelated_groups(self):
+        ranks = list(range(self.world_size))
+        target_group = dist.new_group(ranks=ranks)
+        unrelated_group = dist.new_group(ranks=ranks)
+        groups._TENSOR_MODEL_PARALLEL_GROUP = target_group
+        groups._MODEL_PARALLEL_GROUP = target_group
+        groups._DATA_PARALLEL_GROUP = unrelated_group
+        groups._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = self.world_size
+        groups._MPU_TENSOR_MODEL_PARALLEL_RANK = dist.get_rank()
+        groups._EXPERT_PARALLEL_GROUP["target"] = target_group
+        groups._EXPERT_PARALLEL_GROUP_RANKS["target"] = ranks
+        groups._EXPERT_PARALLEL_GROUP["unrelated"] = unrelated_group
+        groups._EXPERT_PARALLEL_GROUP_RANKS["unrelated"] = ranks
+        caller_mpu = object()
+        groups.mpu = caller_mpu
+
+        dist.destroy_process_group(group=target_group)
+
+        assert dist.is_initialized()
+        assert groups._TENSOR_MODEL_PARALLEL_GROUP is None
+        assert groups._MODEL_PARALLEL_GROUP is None
+        assert groups._DATA_PARALLEL_GROUP is unrelated_group
+        assert groups._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE is None
+        assert groups._MPU_TENSOR_MODEL_PARALLEL_RANK is None
+        assert groups._EXPERT_PARALLEL_GROUP == {"unrelated": unrelated_group}
+        assert groups._EXPERT_PARALLEL_GROUP_RANKS == {"unrelated": ranks}
+        assert groups.mpu is caller_mpu
+        dist.barrier(group=unrelated_group)
+        dist.barrier()
+
+    def test_nonmember_destroy_preserves_cached_groups(self):
+        for rank in range(self.world_size):
+            groups._ALL_TO_ALL_GROUP[f"rank_{rank}"] = dist.new_group(ranks=[rank])
+        cached_groups = dict(groups._ALL_TO_ALL_GROUP)
+
+        # A nonmember sentinel represents no destroyed group; unrelated cache
+        # entries must survive just as they do in the backend's no-op contract.
+        dist.destroy_process_group(group=cached_groups[f"rank_{1 - dist.get_rank()}"])
+
+        assert groups._ALL_TO_ALL_GROUP == cached_groups
+        value = torch.ones(1)
+        dist.all_reduce(value, group=groups._ALL_TO_ALL_GROUP[f"rank_{dist.get_rank()}"])
+        assert value.item() == 1
+        dist.all_reduce(value)
+        assert value.item() == self.world_size
