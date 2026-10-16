@@ -199,6 +199,12 @@ constructed, including when the caller supplied a lazily initialized process
 group. This initialization does not run on subsequent forwards. The standard
 ``comm`` and ``autoep_size=1`` paths are unchanged.
 
+Received rows and routing weights are passed through without a prefix slice
+when their buffers already contain exactly the arrived rows. Overallocated
+buffers are still trimmed independently to the handle's row count. This avoids
+redundant slice-gradient zero-fills and copies during checkpoint recomputation;
+it changes neither row weighting nor DeepEP's communication volume.
+
 Both reentrant and non-reentrant activation checkpointing are supported with
 DeepEP. The order in which DeepEP delivers rows depends on arrival timing, and a
 non-reentrant checkpoint keeps the forward pass's autograd nodes, together with
