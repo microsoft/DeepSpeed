@@ -7,6 +7,7 @@ import logging
 import torch
 import re
 from deepspeed import comm as dist
+from deepspeed.comm import pg_utils
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.parameter import Parameter
@@ -249,8 +250,7 @@ class ScatterToTensorParallelRegion(torch.autograd.Function):
         # layers need the sum of all slices, not this rank's padded gradient.
         grad_input = grad_output.new_zeros(ctx.input_shape)
         grad_input.narrow(-1, ctx.offset, ctx.size).copy_(grad_output)
-        if ctx.group is not None:
-            dist.all_reduce(grad_input, group=ctx.group)
+        pg_utils.all_reduce_if_parallel(grad_input, group=ctx.group)
         return None, grad_input, None, None
 
 
@@ -306,7 +306,7 @@ class ColumnParallel(torch.autograd.Function):
         """
         Backward pass.
         """
-        if ctx.group == None:
+        if not pg_utils.is_parallel(ctx.group):
             return None, grad_output
 
         dist.all_reduce(grad_output.contiguous(), group=ctx.group)

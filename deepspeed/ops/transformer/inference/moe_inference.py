@@ -16,6 +16,7 @@ from .op_binding.einsum_sec_sm_ecm import EinsumSecSmEcmOp
 from .op_binding.layer_norm import LayerNormOp
 from ....moe.sharded_moe import TopKGate
 from deepspeed import comm as dist
+from deepspeed.comm import pg_utils
 from .op_binding.moe_res_matmul import MoEResMatmulOp
 
 
@@ -117,7 +118,7 @@ class DeepSpeedMLPFunction(Function):
             output = vector_matmul_func(intermediate, output_w, q_scales[3], q_groups, (merge_count))
         else:
             output = gelu_gemm_func(input, inter_w, inter_b, output_w, config.epsilon, config.pre_layer_norm, async_op)
-        if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
+        if pg_utils.is_parallel(mp_group):
             dist.all_reduce(output, group=mp_group, async_op=async_op)
 
         return output + output_b

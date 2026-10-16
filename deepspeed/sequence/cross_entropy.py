@@ -8,6 +8,7 @@ from torch import nn
 from functools import lru_cache
 
 import deepspeed.comm as dist
+from deepspeed.comm import pg_utils
 from deepspeed.accelerator import get_accelerator
 from deepspeed.utils.logging import logger
 
@@ -67,18 +68,18 @@ class _VocabParallelCrossEntropy(torch.autograd.Function):
 
         local_max = logits.amax(dim=-1)
         global_max = local_max.clone()
-        dist.all_reduce_if_parallel(global_max, op=dist.ReduceOp.MAX, group=tp_group)
+        pg_utils.all_reduce_if_parallel(global_max, op=dist.ReduceOp.MAX, group=tp_group)
 
         exp_logits = torch.exp(logits - global_max.unsqueeze(-1))
         global_sum_exp = exp_logits.sum(dim=-1)
-        dist.all_reduce_if_parallel(global_sum_exp, op=dist.ReduceOp.SUM, group=tp_group)
+        pg_utils.all_reduce_if_parallel(global_sum_exp, op=dist.ReduceOp.SUM, group=tp_group)
 
         valid_target = target != ignore_index
         target_in_partition = valid_target & (target >= vocab_start_index) & (target < vocab_end_index)
         local_target = (target - vocab_start_index).clamp(min=0, max=local_vocab_size - 1)
         target_logits = logits.gather(-1, local_target.unsqueeze(-1)).squeeze(-1)
         target_logits = torch.where(target_in_partition, target_logits, torch.zeros_like(target_logits))
-        dist.all_reduce_if_parallel(target_logits, op=dist.ReduceOp.SUM, group=tp_group)
+        pg_utils.all_reduce_if_parallel(target_logits, op=dist.ReduceOp.SUM, group=tp_group)
 
         loss = torch.log(global_sum_exp) + global_max - target_logits
         loss = torch.where(valid_target, loss, torch.zeros_like(loss))
@@ -128,7 +129,7 @@ class _GatherSequenceLoss(torch.autograd.Function):
 
 
 def _global_sp_sum(local_value, sp_group):
-    if sp_group is None or dist.get_world_size(sp_group) == 1:
+    if not pg_utils.is_parallel(sp_group):
         return local_value
 
     global_value = local_value.detach().clone()
@@ -216,7 +217,7 @@ def vocab_parallel_cross_entropy(vocab_parallel_logits,
         raise ValueError("vocab_parallel_logits and target must have matching non-vocabulary dimensions")
     # With tensor parallelism an empty shard is rejected from the all-gathered shard
     # metadata so every rank fails together; only the single-process case can raise here.
-    if vocab_parallel_logits.shape[-1] == 0 and (tp_group is None or dist.get_world_size(tp_group) == 1):
+    if vocab_parallel_logits.shape[-1] == 0 and not pg_utils.is_parallel(tp_group):
         raise ValueError("vocab_parallel_logits must contain at least one local vocabulary entry")
     if reduction not in ("none", "sum", "mean"):
         raise ValueError(f"Unsupported reduction: {reduction}")
@@ -264,7 +265,7 @@ def vocab_parallel_cross_entropy(vocab_parallel_logits,
         return loss_sum
 
     valid_tokens = (target != ignore_index).sum().to(dtype=loss.dtype)
-    dist.all_reduce_if_parallel(valid_tokens, op=dist.ReduceOp.SUM, group=sp_group)
+    pg_utils.all_reduce_if_parallel(valid_tokens, op=dist.ReduceOp.SUM, group=sp_group)
     return loss_sum / valid_tokens.clamp_min(1)
 
 

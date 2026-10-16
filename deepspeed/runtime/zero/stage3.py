@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from deepspeed import comm as dist
+from deepspeed.comm import pg_utils
 from deepspeed.utils import groups, z3_leaf_parameter
 
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
@@ -1992,8 +1993,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not counts_every_rank:
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
         autoep_ep_group = self._autoep_expert_parallel_group(params)
-        if autoep_ep_group is not None:
-            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=autoep_ep_group)
+        pg_utils.all_reduce_if_parallel(total_norm_cuda, op=dist.ReduceOp.SUM, group=autoep_ep_group)
 
         total_norm = total_norm_cuda[0]**(1. / norm_type)
 
@@ -2411,10 +2411,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.
         """
-        if self.model_parallel_group is None:
-            pass
-        else:
-            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
+        pg_utils.all_reduce_if_parallel(tensor, op=op, group=self.model_parallel_group)
 
     @instrument_w_nvtx
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
@@ -2444,8 +2441,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             # Take max across all GPUs.
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
             autoep_ep_group = self._autoep_expert_parallel_group(params)
-            if autoep_ep_group is not None:
-                dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=autoep_ep_group)
+            pg_utils.all_reduce_if_parallel(total_norm_cuda, op=dist.ReduceOp.MAX, group=autoep_ep_group)
             total_norm = total_norm_cuda[0]
         else:
             # if dist.get_rank() == 0:
@@ -2472,8 +2468,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if not counts_every_rank:
                 self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
             autoep_ep_group = self._autoep_expert_parallel_group(params)
-            if autoep_ep_group is not None:
-                dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=autoep_ep_group)
+            pg_utils.all_reduce_if_parallel(total_norm_cuda, op=dist.ReduceOp.SUM, group=autoep_ep_group)
 
             total_norm = total_norm_cuda**(1. / norm_type)
 

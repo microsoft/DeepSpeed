@@ -87,6 +87,7 @@ def gumbel_rsample(shape: Tuple, device: torch.device) -> Tensor:
 
 
 from deepspeed import comm as dist
+from deepspeed.comm import pg_utils
 
 # einsum dimensions: (g)roup, (s)equence, (e)xpert, (m)odel, (c)apacity
 # See https://arxiv.org/pdf/2006.16668.pdf for details.
@@ -247,8 +248,7 @@ def top1gating(logits: Tensor,
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
         # Communicate across expert processes to pick the maximum capacity.
-        if ep_group is not None and dist.get_world_size(group=ep_group) > 1:
-            dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+        pg_utils.all_reduce_if_parallel(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
@@ -366,8 +366,7 @@ def top2gating(logits: Tensor,
     else:
         # Do not drop tokens - set capacity according to current expert assignments
         new_capacity = torch.max(exp_counts)
-        if ep_group is not None and dist.get_world_size(group=ep_group) > 1:
-            dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+        pg_utils.all_reduce_if_parallel(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
@@ -464,8 +463,7 @@ def topkgating(
     else:
         # Do not drop tokens - set capacity according to current expert assignments
         new_capacity = torch.max(exp_counts)
-        if ep_group is not None and dist.get_world_size(group=ep_group) > 1:
-            dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+        pg_utils.all_reduce_if_parallel(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.

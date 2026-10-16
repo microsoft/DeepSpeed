@@ -10,6 +10,7 @@ import deepspeed.comm as dist
 import deepspeed
 from datetime import timedelta
 from deepspeed.comm.torch import TorchBackend
+from deepspeed.comm import pg_utils
 
 from unit.common import DistributedTest, DistributedFixture, get_master_port
 from unit.simple_model import SimpleModel
@@ -131,7 +132,7 @@ class TestDistAllReduce(DistributedTest):
         assert torch.all(x == result)
 
 
-class TestDistAllReduceIfParallel(DistributedTest):
+class TestPgUtilsAllReduceIfParallel(DistributedTest):
     world_size = 4
 
     def test(self):
@@ -140,30 +141,42 @@ class TestDistAllReduceIfParallel(DistributedTest):
         pairs = [dist.new_group([0, 1]), dist.new_group([2, 3])]
         singles = [dist.new_group([r]) for r in range(self.world_size)]
 
+        assert pg_utils.is_parallel(pairs[rank // 2])
+        assert pg_utils.is_parallel(dist.get_world_group())
+
         x = torch.full((3, ), float(rank + 1), device=device)
-        out = dist.all_reduce_if_parallel(x, group=pairs[rank // 2])
+        out = pg_utils.all_reduce_if_parallel(x, group=pairs[rank // 2])
         # Ranks {0, 1} hold 1 + 2 and ranks {2, 3} hold 3 + 4.
         expected = 3.0 if rank < 2 else 7.0
         assert out is x
         assert torch.all(x == expected)
 
         x = torch.full((3, ), float(rank + 1), device=device)
-        dist.all_reduce_if_parallel(x, op=dist.ReduceOp.MAX, group=pairs[rank // 2])
+        pg_utils.all_reduce_if_parallel(x, op=dist.ReduceOp.MAX, group=pairs[rank // 2])
         assert torch.all(x == (2.0 if rank < 2 else 4.0))
 
         # None marks an absent parallel dimension, so it must not reduce over the world group.
         for group in (None, singles[rank]):
+            assert not pg_utils.is_parallel(group)
             x = torch.full((3, ), float(rank + 1), device=device)
-            out = dist.all_reduce_if_parallel(x, group=group)
+            out = pg_utils.all_reduce_if_parallel(x, group=group)
             assert out is x
             assert torch.all(x == rank + 1)
 
 
-def test_all_reduce_if_parallel_without_process_group():
+def test_pg_utils_without_process_group():
     # Single-device code paths pass group=None before any process group exists.
+    assert not pg_utils.is_parallel(None)
     x = torch.arange(3.0)
-    assert dist.all_reduce_if_parallel(x) is x
+    assert pg_utils.all_reduce_if_parallel(x) is x
     assert torch.equal(x, torch.arange(3.0))
+
+
+def test_pg_utils_not_exported_from_comm():
+    # group=None means "no parallelism" here but "world group" for deepspeed.comm collectives; keeping the
+    # helpers out of the deepspeed.comm namespace prevents mistaking one for the other.
+    assert not hasattr(dist, "all_reduce_if_parallel")
+    assert not hasattr(dist, "is_parallel")
 
 
 class FakeP2PWork:
