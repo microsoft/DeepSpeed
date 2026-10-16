@@ -358,6 +358,66 @@ def test_validates_inputs():
         vocab_parallel_logprobs(logits, torch.zeros(2, 3, dtype=torch.long), global_vocab_size=11)
 
 
+def _triton_device():
+    import deepspeed
+    device = torch.device(get_accelerator().current_device_name())
+    if device.type not in ("cuda", "xpu") or not deepspeed.HAS_TRITON:
+        pytest.skip("the Triton kernels need a CUDA or XPU device with Triton")
+    return device
+
+
+def _triton_edge_case_logits(dtype):
+    torch.manual_seed(9)
+    # 5000 columns span two kernel blocks, so the running max and sum cross a block boundary.
+    student = (torch.randn(6, 5000) * 3).to(dtype)
+    teacher = (torch.randn(6, 5000) * 3).to(dtype)
+    student[1, :2500] = float("-inf")
+    teacher[1, :2500] = float("-inf")
+    student[2] = float("-inf")
+    teacher[3, 4321] = float("-inf")
+    student[3, 4321] = -200.0
+    student[4] += 1000.0
+    teacher[4] += 1000.0
+    return student, teacher
+
+
+def _run_on(device, op, student, teacher, index):
+    student = leaf(student.to(device))
+    teacher = leaf(teacher.to(device))
+    if op == "logprobs":
+        out = vocab_parallel_logprobs(student, index.to(device))
+    elif op == "entropy":
+        out = vocab_parallel_entropy(student)
+    else:
+        out = vocab_parallel_kl_div(student, teacher, reverse=(op == "reverse_kl"))
+    weight = torch.linspace(-1.0, 1.0, out.numel()).view_as(out)
+    finite = torch.isfinite(out.detach())
+    (out.where(finite, 0.0) * weight.to(device)).sum().backward()
+    teacher_grad = teacher.grad.cpu() if teacher.grad is not None else None
+    return out.detach().cpu(), student.grad.cpu(), teacher_grad
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("op", ["logprobs", "entropy", "forward_kl", "reverse_kl"])
+def test_triton_kernels_match_eager_path(op, dtype):
+    device = _triton_device()
+    student, teacher = _triton_edge_case_logits(dtype)
+    index = torch.randint(0, 5000, (6, 4))
+    index[0, 1] = index[0, 0]  # duplicate ids accumulate
+    index[1, 2] = -100
+    index[5] = -100  # a fully ignored row gets zero gradient
+
+    expected = _run_on("cpu", op, student, teacher, index)
+    actual = _run_on(device, op, student, teacher, index)
+
+    rtol, atol = (1e-4, 1e-4) if dtype == torch.float32 else (1.6e-2, 1e-3)
+    for actual_tensor, expected_tensor in zip(actual, expected):
+        if expected_tensor is None:
+            assert actual_tensor is None
+            continue
+        torch.testing.assert_close(actual_tensor, expected_tensor, rtol=rtol, atol=atol, equal_nan=True)
+
+
 class TestVocabParallelOpsTP(DistributedTest):
     world_size = 2
 

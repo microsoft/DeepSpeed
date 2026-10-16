@@ -343,6 +343,10 @@ Each op saves only its inputs and per-token statistics, and recomputes the
 softmax in bounded row chunks during backward. Its peak activation memory is
 therefore a small multiple of the local logits shard instead of the several
 fp32 copies that an equivalent composition of PyTorch ops keeps alive.
+On CUDA and XPU devices with Triton available, each pass over the logits runs
+in a fused Triton kernel that keeps no fp32 copy of the shard; other devices, or
+`deepspeed.HAS_TRITON = False`, use an eager implementation with the same
+semantics.
 
 ## Custom Patterns
 

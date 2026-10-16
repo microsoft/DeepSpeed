@@ -17,11 +17,16 @@ tensor-parallel group and same vocabulary range on every rank.
 
 A row whose logits are all ``-inf`` has no defined distribution: entropy and KL return NaN for
 it, but its logits get zero gradient so that callers can mask such rows (e.g. padding) out.
+
+On CUDA and XPU devices with Triton available, the per-row work runs in fused Triton kernels
+(``deepspeed.ops.triton_ops.vocab_parallel_softmax``); otherwise, or with
+``deepspeed.HAS_TRITON = False``, the same math runs eagerly in bounded row chunks.
 """
 
 import torch
 from torch.autograd.function import once_differentiable
 
+import deepspeed
 import deepspeed.comm as dist
 from deepspeed.sequence.cross_entropy import _resolve_vocab_metadata
 
@@ -40,6 +45,22 @@ def _all_reduce(tensor, op, tp_group):
     return tensor
 
 
+def _use_triton(*logits_2d):
+    # Eager row chunks run about a dozen separate memory-bound kernels per chunk; the Triton
+    # kernels read each logit once per pass and need contiguous rows.
+    if logits_2d[0].device.type not in ("cuda", "xpu"):
+        return False
+    if not all(logits.is_contiguous() for logits in logits_2d):
+        return False
+    return deepspeed.HAS_TRITON
+
+
+def _triton_kernels():
+    # Imported on first use because importing triton is slow.
+    from deepspeed.ops.triton_ops import vocab_parallel_softmax
+    return vocab_parallel_softmax
+
+
 def _row_chunks(logits_2d):
     rows_per_chunk = max(1, _CHUNK_NUMEL // max(1, logits_2d.shape[-1]))
     for start in range(0, logits_2d.shape[0], rows_per_chunk):
@@ -53,6 +74,9 @@ def _softmax_stats(logits_2d_list, tp_group):
     ``[len(logits_2d_list), rows]``. They are kept separate rather than summed into a single
     logsumexp because adding a small normalizer to a large max rounds it away in fp32.
     """
+    if _use_triton(*logits_2d_list):
+        return _triton_softmax_stats(logits_2d_list, tp_group)
+
     num_rows = logits_2d_list[0].shape[0]
     device = logits_2d_list[0].device
     global_max = torch.empty(len(logits_2d_list), num_rows, dtype=torch.float32, device=device)
@@ -71,6 +95,21 @@ def _softmax_stats(logits_2d_list, tp_group):
         for rows in _row_chunks(logits):
             sum_exp[i, rows] = torch.exp(logits[rows].float() - global_max[i, rows].unsqueeze(-1)).sum(dim=-1)
     _all_reduce(sum_exp, dist.ReduceOp.SUM, tp_group)
+    return global_max, torch.log(sum_exp)
+
+
+def _triton_softmax_stats(logits_2d_list, tp_group):
+    # Each shard's sum-exp is taken against its own max in the same read, then rescaled to the
+    # global max, so this still needs only one MAX and one SUM all-reduce.
+    kernels = _triton_kernels()
+    local_stats = [kernels.local_softmax_stats(logits) for logits in logits_2d_list]
+    local_max = torch.stack([stats[0] for stats in local_stats])
+    local_sum = torch.stack([stats[1] for stats in local_stats])
+    global_max = _all_reduce(local_max.clone(), dist.ReduceOp.MAX, tp_group)
+
+    # A shard with no finite logit in a row contributes 0; exp(-inf - -inf) would be NaN.
+    rescale = torch.where(local_max == float("-inf"), 0.0, torch.exp(local_max - global_max))
+    sum_exp = _all_reduce(local_sum * rescale, dist.ReduceOp.SUM, tp_group)
     return global_max, torch.log(sum_exp)
 
 
@@ -142,6 +181,11 @@ class _VocabParallelLogProbs(torch.autograd.Function):
         # Multiplying its softmax by 0 is not enough: a fully masked row's softmax is NaN.
         zero_grad_row = ~valid_index.any(dim=-1, keepdim=True) | _undefined_rows(global_max)
 
+        if _use_triton(logits):
+            grad_logits = _triton_kernels().logprobs_backward(logits, global_max, log_sum_exp, grad_sum, zero_grad_row,
+                                                              local_index, index_grad)
+            return grad_logits.view_as(vocab_parallel_logits), None, None, None, None
+
         # d logp(i) / d z_j = onehot(i)_j - softmax(z)_j, summed over the requested indices.
         grad_logits = torch.empty_like(logits)
         for rows in _row_chunks(logits):
@@ -158,10 +202,13 @@ class _VocabParallelEntropy(torch.autograd.Function):
     def forward(ctx, vocab_parallel_logits, tp_group):
         logits = _flatten(vocab_parallel_logits)
         global_max, log_sum_exp = (stat[0] for stat in _softmax_stats([logits], tp_group))
-        entropy = torch.empty_like(global_max)
-        for rows in _row_chunks(logits):
-            log_probs = _log_softmax(logits[rows], global_max[rows], log_sum_exp[rows])
-            entropy[rows] = -_weighted_by_probs(log_probs, log_probs).sum(dim=-1)
+        if _use_triton(logits):
+            entropy = _triton_kernels().entropy_forward(logits, global_max, log_sum_exp)
+        else:
+            entropy = torch.empty_like(global_max)
+            for rows in _row_chunks(logits):
+                log_probs = _log_softmax(logits[rows], global_max[rows], log_sum_exp[rows])
+                entropy[rows] = -_weighted_by_probs(log_probs, log_probs).sum(dim=-1)
         _all_reduce(entropy, dist.ReduceOp.SUM, tp_group)
 
         ctx.save_for_backward(vocab_parallel_logits, global_max, log_sum_exp, entropy)
@@ -174,6 +221,11 @@ class _VocabParallelEntropy(torch.autograd.Function):
         vocab_parallel_logits, global_max, log_sum_exp, entropy = ctx.saved_tensors
         logits = _flatten(vocab_parallel_logits)
         grad_output = grad_output.reshape(-1, 1).float()
+        if _use_triton(logits):
+            grad_logits = _triton_kernels().entropy_backward(logits, global_max, log_sum_exp, entropy,
+                                                             grad_output.contiguous())
+            return grad_logits.view_as(vocab_parallel_logits), None
+
         undefined_row = _undefined_rows(global_max)
 
         # dH / dz_j = -p_j * (log p_j + H)
@@ -200,12 +252,19 @@ class _VocabParallelKLDiv(torch.autograd.Function):
         teacher = _flatten(teacher_logits)
         global_max, log_sum_exp = _softmax_stats([student, teacher], tp_group)
 
-        kl = torch.empty_like(global_max[0])
-        for rows in _row_chunks(student):
-            student_log_probs = _log_softmax(student[rows], global_max[0, rows], log_sum_exp[0, rows])
-            teacher_log_probs = _log_softmax(teacher[rows], global_max[1, rows], log_sum_exp[1, rows])
-            a_log_probs, b_log_probs = _order_kl_arguments(student_log_probs, teacher_log_probs, reverse)
-            kl[rows] = _kl_terms(a_log_probs, b_log_probs).sum(dim=-1)
+        if _use_triton(student, teacher):
+            # Stats rows 0 and 1 belong to the student and the teacher, so A and B are ordered alike.
+            a, b = _order_kl_arguments(0, 1, reverse)
+            a_logits, b_logits = _order_kl_arguments(student, teacher, reverse)
+            kl = _triton_kernels().kl_forward(a_logits, b_logits, global_max[a], log_sum_exp[a], global_max[b],
+                                              log_sum_exp[b])
+        else:
+            kl = torch.empty_like(global_max[0])
+            for rows in _row_chunks(student):
+                student_log_probs = _log_softmax(student[rows], global_max[0, rows], log_sum_exp[0, rows])
+                teacher_log_probs = _log_softmax(teacher[rows], global_max[1, rows], log_sum_exp[1, rows])
+                a_log_probs, b_log_probs = _order_kl_arguments(student_log_probs, teacher_log_probs, reverse)
+                kl[rows] = _kl_terms(a_log_probs, b_log_probs).sum(dim=-1)
         _all_reduce(kl, dist.ReduceOp.SUM, tp_group)
 
         ctx.reverse = reverse
@@ -221,6 +280,21 @@ class _VocabParallelKLDiv(torch.autograd.Function):
         teacher = _flatten(teacher_logits)
         grad_output = grad_output.reshape(-1, 1).float()
         need_student_grad, need_teacher_grad = ctx.needs_input_grad[:2]
+        if _use_triton(student, teacher):
+            a, b = _order_kl_arguments(0, 1, ctx.reverse)
+            a_logits, b_logits = _order_kl_arguments(student, teacher, ctx.reverse)
+            need_a_grad, need_b_grad = _order_kl_arguments(need_student_grad, need_teacher_grad, ctx.reverse)
+            a_grad, b_grad = _triton_kernels().kl_backward(a_logits, b_logits, global_max[a],
+                                                           log_sum_exp[a], global_max[b], log_sum_exp[b], kl,
+                                                           grad_output.contiguous(), need_a_grad, need_b_grad)
+            # Swapping (A, B) back gives (student, teacher) in either direction.
+            grad_student, grad_teacher = _order_kl_arguments(a_grad, b_grad, ctx.reverse)
+            if grad_student is not None:
+                grad_student = grad_student.view_as(student_logits)
+            if grad_teacher is not None:
+                grad_teacher = grad_teacher.view_as(teacher_logits)
+            return grad_student, grad_teacher, None, None
+
         grad_student = torch.empty_like(student) if need_student_grad else None
         grad_teacher = torch.empty_like(teacher) if need_teacher_grad else None
         a_grad, b_grad = _order_kl_arguments(grad_student, grad_teacher, ctx.reverse)
