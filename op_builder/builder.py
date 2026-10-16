@@ -446,16 +446,6 @@ class OpBuilder(ABC):
             return '-march=rv64gc'
         return '-march=native'
 
-    def get_cuda_compile_flag(self):
-        try:
-            if not self.is_rocm_pytorch():
-                assert_no_cuda_mismatch(self.name)
-                return "-D__ENABLE_CUDA__"
-        except MissingCUDAException:
-            print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
-                  "only cpu ops can be compiled!")
-        return '-D__DISABLE_CUDA__'
-
     def _backup_cpuinfo(self):
         # Construct cpu_info dict from lscpu that is similar to what py-cpuinfo provides
         if not self.command_exists('lscpu'):
@@ -924,53 +914,3 @@ class CUDAOpBuilder(OpBuilder):
             return ['cublas', 'curand']
         else:
             return []
-
-
-class TorchCPUOpBuilder(CUDAOpBuilder):
-
-    def get_cuda_lib64_path(self):
-        import torch
-        if not self.is_rocm_pytorch():
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-            if not os.path.exists(CUDA_LIB64):
-                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
-        else:
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
-        return CUDA_LIB64
-
-    def extra_ldflags(self):
-        if self.build_for_cpu:
-            return ['-fopenmp']
-
-        if not self.is_rocm_pytorch():
-            ld_flags = ['-lcurand']
-            if not self.build_for_cpu:
-                ld_flags.append(f'-L{self.get_cuda_lib64_path()}')
-            return ld_flags
-
-        return []
-
-    def cxx_args(self):
-        args = []
-        if not self.build_for_cpu:
-            CUDA_LIB64 = self.get_cuda_lib64_path()
-
-            args += super().cxx_args()
-            args += [
-                f'-L{CUDA_LIB64}',
-                '-lcudart',
-                '-lcublas',
-                '-g',
-            ]
-
-        CPU_ARCH = self.cpu_arch()
-        SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = self.get_cuda_compile_flag()
-        args += [
-            CPU_ARCH,
-            '-fopenmp',
-            SIMD_WIDTH,
-            CUDA_ENABLE,
-        ]
-
-        return args

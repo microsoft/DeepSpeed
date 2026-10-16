@@ -54,14 +54,18 @@ class DeepSpeedCPULion(torch.optim.Optimizer):
         self.opt_id = DeepSpeedCPULion.optimizer_id
         DeepSpeedCPULion.optimizer_id = DeepSpeedCPULion.optimizer_id + 1
         self.fp32_optimizer_states = fp32_optimizer_states
-        self.ds_opt_lion = CPULionBuilder().load()
+        try:
+            self.ds_opt_lion = CPULionBuilder().load()
+        except Exception as e:
+            raise RuntimeError("DeepSpeedCPULion requires the cpu_lion op, which failed to build/load.") from e
 
         self.ds_opt_lion.create_lion(self.opt_id, lr, betas[0], betas[1], weight_decay, should_log_le("info"))
 
     def __del__(self):
         # need to destroy the C++ object explicitly to avoid a memory leak when deepspeed.initialize
         # is used multiple times in the same process (notebook or pytest worker)
-        self.ds_opt_lion.destroy_lion(self.opt_id)
+        if hasattr(self, 'ds_opt_lion'):
+            self.ds_opt_lion.destroy_lion(self.opt_id)
 
     def __setstate__(self, state):
         super(DeepSpeedCPULion, self).__setstate__(state)
