@@ -7,7 +7,7 @@ import torch
 
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.module_inject.layers import ColumnParallel, RowParallel, ScatterToTensorParallelRegion
+from deepspeed.module_inject.layers import ColumnParallel, LmHeadLinearAllreduce, RowParallel, ScatterToTensorParallelRegion
 
 from unit.common import DistributedTest
 
@@ -69,3 +69,19 @@ class TestTensorParallelBackwardReduce(DistributedTest):
         else:
             expected = torch.full((4, ), rank + 1.0)
         assert torch.equal(x.grad.cpu(), expected)
+
+    @pytest.mark.parametrize("kind", ["pair", "single", "none"])
+    def test_lm_head_linear_allreduce(self, kind):
+        group = _tp_group(kind)
+        device = get_accelerator().device_name()
+        torch.manual_seed(0)
+        linear = torch.nn.Linear(4, 3, bias=False).to(device)
+        x = torch.randn(1, 2, 4, device=device)
+        expected = linear(x).detach()
+
+        with torch.no_grad():
+            out = LmHeadLinearAllreduce(linear, group)(x)
+
+        # Every layout must reproduce the unsharded projection: a 2-rank group sums the partial products of
+        # its input shards, and without TP the single rank holds the full weight and must not reduce again.
+        assert torch.allclose(out, expected, atol=1e-5)

@@ -2642,7 +2642,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.
         """
-        pg_utils.all_reduce_if_parallel(tensor, op=op, group=self.model_parallel_group)
+        if pg_utils.is_parallel(self.model_parallel_group):
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
         """Clips gradient norm of an iterable of parameters.

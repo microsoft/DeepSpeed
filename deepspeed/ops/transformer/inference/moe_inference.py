@@ -309,7 +309,7 @@ class DeepSpeedMoEInference(nn.Module):
                 res_mlp_out = self.res_mlp(attention_output, async_op=True)
                 res_coef_out = self.res_coef_func(attention_output, async_op=True)
 
-            if self.expert_mp_group is not None:
+            if pg_utils.is_parallel(self.expert_mp_group):
                 world_size = dist.get_world_size(group=self.expert_mp_group)
                 gather_buffer = torch.empty(world_size * attention_output.numel(),
                                             dtype=attention_output.dtype,
@@ -325,7 +325,7 @@ class DeepSpeedMoEInference(nn.Module):
             output = self.scale_expert_output(attention_output, expert_output, combined_weights)
             ################################################
 
-            if self.expert_mp_group is not None:
+            if pg_utils.is_parallel(self.expert_mp_group):
                 output = output.split(output.shape[0] // dist.get_world_size(group=self.expert_mp_group),
                                       dim=0)[dist.get_rank(group=self.expert_mp_group)]
 

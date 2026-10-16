@@ -248,7 +248,8 @@ def top1gating(logits: Tensor,
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
         # Communicate across expert processes to pick the maximum capacity.
-        pg_utils.all_reduce_if_parallel(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+        if pg_utils.is_parallel(ep_group):
+            dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
@@ -366,7 +367,8 @@ def top2gating(logits: Tensor,
     else:
         # Do not drop tokens - set capacity according to current expert assignments
         new_capacity = torch.max(exp_counts)
-        pg_utils.all_reduce_if_parallel(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+        if pg_utils.is_parallel(ep_group):
+            dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
@@ -463,7 +465,8 @@ def topkgating(
     else:
         # Do not drop tokens - set capacity according to current expert assignments
         new_capacity = torch.max(exp_counts)
-        pg_utils.all_reduce_if_parallel(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+        if pg_utils.is_parallel(ep_group):
+            dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.

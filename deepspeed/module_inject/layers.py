@@ -250,7 +250,8 @@ class ScatterToTensorParallelRegion(torch.autograd.Function):
         # layers need the sum of all slices, not this rank's padded gradient.
         grad_input = grad_output.new_zeros(ctx.input_shape)
         grad_input.narrow(-1, ctx.offset, ctx.size).copy_(grad_output)
-        pg_utils.all_reduce_if_parallel(grad_input, group=ctx.group)
+        if pg_utils.is_parallel(ctx.group):
+            dist.all_reduce(grad_input, group=ctx.group)
         return None, grad_input, None, None
 
 
@@ -1703,7 +1704,7 @@ class LmHeadLinearAllreduce(LinearAllreduce):
         input_shard_offset = sum(input_shard_sizes[0:self.tp_index])
         output = torch.matmul(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
                               self.weight.transpose(-1, -2))
-        if self.mp_group is not None:
+        if pg_utils.is_parallel(self.mp_group):
             dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
             output = add_bias(output, self.bias)

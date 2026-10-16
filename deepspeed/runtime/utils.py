@@ -940,7 +940,8 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, moe_ep_grou
                 dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=bwc_pipeline_parallel_group(mpu))
 
         # MoE grads: max across expert parallel group
-        pg_utils.all_reduce_if_parallel(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
+        if pg_utils.is_parallel(moe_ep_group):
+            dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
         total_norm = device_total_norm.to(input_tensors[0].device)
     else:
 
@@ -961,7 +962,8 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, moe_ep_grou
                 dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=bwc_pipeline_parallel_group(mpu))
 
         # MoE grads: sum across expert parallel group
-        pg_utils.all_reduce_if_parallel(device_total_norm, op=dist.ReduceOp.SUM, group=moe_ep_group)
+        if pg_utils.is_parallel(moe_ep_group):
+            dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=moe_ep_group)
         total_norm = device_total_norm.to(input_tensors[0].device).pow(1. / norm_type)
 
     mask_nan_or_inf_with_val_inplace(total_norm, device=total_norm.device)
