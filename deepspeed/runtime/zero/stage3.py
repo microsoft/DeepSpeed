@@ -50,8 +50,6 @@ from deepspeed.checkpoint.constants import (
     LOSS_SCALER,
 )
 from deepspeed.accelerator import get_accelerator
-from deepspeed.runtime.zero.muon.original_muon import muon_update
-from deepspeed.runtime.zero.muon.muon_optimizer import MuonWithAuxAdam
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -352,6 +350,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.all2all_process_group = all2all_process_group
 
         self.reduce_scatter = reduce_scatter
+        # Imported here because importing Muon compiles its kernels, which slows down import deepspeed.
+        from deepspeed.runtime.zero.muon.muon_optimizer import MuonWithAuxAdam
         self.use_muon = isinstance(self.optimizer, MuonWithAuxAdam)
         # Sub-groups whose Muon update was written into the gradient partitions without loss scale.
         self.sub_groups_lacking_loss_scale = set()
@@ -1702,6 +1702,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         all-gathered, so every rank ends with the full update in `grad` and its own momentum
         partition written back.
         """
+        from deepspeed.runtime.zero.muon.original_muon import muon_update
         params = [param for param, _, _ in group_items]
         grads = [grad for _, _, grad in group_items]
         if not params:
@@ -2589,6 +2590,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         """Orthogonalize full logical gradients before clipping CPU-offloaded updates."""
         if not self.use_muon:
             return
+        from deepspeed.runtime.zero.muon.original_muon import muon_update
 
         accelerator_device = get_accelerator().current_device_name()
         for sub_group_id, params in enumerate(self.fp16_groups):

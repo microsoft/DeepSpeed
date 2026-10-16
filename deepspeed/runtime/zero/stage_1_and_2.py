@@ -37,9 +37,7 @@ from deepspeed.git_version_info import version
 
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.accelerator import get_accelerator
-from deepspeed.runtime.zero.muon.original_muon import muon_update
 from deepspeed.module_inject.auto_ep_folding import apply_folding_correction_to_grad_buffer
-from deepspeed.runtime.zero.muon.muon_optimizer import MuonWithAuxAdam
 from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARAM_ALIGNMENT_PADDINGS, PARTITION_COUNT,
                                             LOSS_SCALER, SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE,
                                             BASE_OPTIMIZER_STATE_STEP, CLIP_GRAD, ZERO_STAGE, PARAM_SLICE_MAPPINGS)
@@ -1589,6 +1587,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                                         output_bucket=small_bucket_outputs)
 
     def average_tensor(self, tensor: torch.Tensor, communication_data_type: torch.dtype):
+        # Imported here because importing Muon compiles its kernels, which slows down import deepspeed.
+        from deepspeed.runtime.zero.muon.muon_optimizer import MuonWithAuxAdam
         if self._offload_gradient_safety_enabled:
             stream = self.reduction_stream if self.overlap_comm else get_accelerator().current_stream()
             for event in self.ipg_buckets[communication_data_type].ready_events.values():
@@ -2057,8 +2057,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     @torch.no_grad()
     def _apply_muon_updates_cpu_offload(self):
         """Orthogonalize full Muon gradients before clipping CPU-offloaded updates."""
+        from deepspeed.runtime.zero.muon.muon_optimizer import MuonWithAuxAdam
         if not isinstance(self.optimizer, MuonWithAuxAdam):
             return
+        from deepspeed.runtime.zero.muon.original_muon import muon_update
 
         accelerator_device = get_accelerator().current_device_name()
         for group_idx, group in enumerate(self.round_robin_bit16_groups):
@@ -2745,6 +2747,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         partition_id = dist.get_rank(group=self.real_dp_process_group[param_group_idx])
         buffer_idx = 0
+        from deepspeed.runtime.zero.muon.original_muon import muon_update
         for i, tensor in enumerate(tensor_list):
             grad_accum = self.all_grad_tensors[param_group_idx][i]
             if getattr(tensor, 'use_muon', False) and 'muon' in self.optimizer.__class__.__name__.lower():
@@ -2853,6 +2856,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             staged_momentum = self._muon_staging_momentum(flatten_copy, param_group_idx)
 
         buffer_idx = 0
+        from deepspeed.runtime.zero.muon.original_muon import muon_update
         for i, tensor in enumerate(tensor_list):
             grad_accum = self.all_grad_tensors[param_group_idx][i]
             if getattr(tensor, 'use_muon', False) and 'muon' in self.optimizer.__class__.__name__.lower():
