@@ -12,6 +12,8 @@ capturing", reproduced by the reviewer on PyTorch 2.9.1 / Transformers
 import pytest
 import torch
 
+from deepspeed.accelerator import get_accelerator
+
 from deepspeed.runtime.rollout.hybrid_engine_rollout import HybridEngineRollout, HybridEngineRolloutConfig
 from deepspeed.runtime.rollout.base import RolloutRequest, SamplingConfig
 
@@ -24,7 +26,7 @@ class _Shim:
         self.module = m
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
+@pytest.mark.skipif(get_accelerator().device_name() == "cpu", reason="non-CPU device required")
 def test_graph_capture_standard_model():
     """Graph capture on a standard (non-hybrid) LLaMA must not sync-abort
     when HF would otherwise derive cache positions internally."""

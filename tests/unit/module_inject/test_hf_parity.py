@@ -13,6 +13,8 @@ where HF rounds to bf16 mid-way) are expected within these tolerances.
 import pytest
 import torch
 
+from deepspeed.accelerator import get_accelerator
+
 _TEST_MODEL = "Qwen/Qwen3.5-0.8B-Base"
 
 # bf16 forward parity: fused paths differ from HF only in intermediate
@@ -43,7 +45,7 @@ def _pick_layer(model, want_block):
     pytest.skip(f"no {want_block} layer found")
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
+@pytest.mark.skipif(get_accelerator().device_name() == "cpu", reason="non-CPU device required")
 class TestFullAttentionLayerParity:
 
     def test_forward_and_backward(self, model):
@@ -70,7 +72,7 @@ class TestFullAttentionLayerParity:
         torch.testing.assert_close(grad_i, grad_p, atol=GATOL, rtol=GRTOL)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
+@pytest.mark.skipif(get_accelerator().device_name() == "cpu", reason="non-CPU device required")
 class TestGDNLayerParity:
 
     def test_forward_and_backward(self, model):
@@ -94,7 +96,7 @@ class TestGDNLayerParity:
         torch.testing.assert_close(grad_i, grad_p, atol=GATOL, rtol=GRTOL)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
+@pytest.mark.skipif(get_accelerator().device_name() == "cpu", reason="non-CPU device required")
 class TestMLPParity:
     """Injected GLU replacement vs the HF formula on the same weights."""
 
@@ -117,7 +119,7 @@ class TestMLPParity:
         torch.testing.assert_close(x1.grad.float(), x2.grad.float(), atol=GATOL, rtol=GRTOL)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")  #ignore-cuda
+@pytest.mark.skipif(get_accelerator().device_name() == "cpu", reason="non-CPU device required")
 class TestFusedAddNormVsHFFormula:
     """The reviewer's rounding-order case: HF materializes the residual sum
     in bf16 before the norm; the kernel keeps the fp32 sum for the output
