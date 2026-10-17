@@ -956,6 +956,10 @@ class AutoTP():
             spec = self.partition_config.find_matching_spec(param_name, model_type)
             if spec is None or not spec.grad_allreduce:
                 continue
+            # A frozen parameter, such as one of a distillation teacher, has no gradient to reduce,
+            # and PyTorch refuses hooks on tensors that do not require gradients.
+            if not param.requires_grad:
+                continue
             if getattr(param, "_ds_grad_allreduce_registered", False):
                 continue
             param.register_hook(make_grad_allreduce_hook(self.mp_group))
