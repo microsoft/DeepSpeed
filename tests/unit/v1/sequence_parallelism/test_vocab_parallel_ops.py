@@ -418,6 +418,61 @@ def test_triton_kernels_match_eager_path(op, dtype):
         torch.testing.assert_close(actual_tensor, expected_tensor, rtol=rtol, atol=atol, equal_nan=True)
 
 
+@pytest.mark.parametrize("layout", ["sequence_slice", "strided_vocab"])
+@pytest.mark.parametrize("op", ["logprobs", "entropy", "forward_kl", "reverse_kl"])
+def test_triton_kernels_match_eager_path_on_non_contiguous_logits(op, layout):
+    # A next-token shift such as logits[:, :-1] cannot be viewed as [rows, vocab] without a copy, and a
+    # strided vocabulary cannot be read in place at all. Positions outside the view hold NaN, so reading
+    # any of them would show up in the outputs or gradients.
+    device = _triton_device()
+    student, teacher = _triton_edge_case_logits(torch.bfloat16)
+    index = torch.randint(0, 5000, (6, 4))
+    expected = _run_on("cpu", op, student, teacher, index)
+
+    def embed(logits):
+        if layout == "sequence_slice":
+            padded = torch.full((2, 4, 5000), float("nan"), dtype=logits.dtype)
+            padded[:, :-1] = logits.view(2, 3, 5000)
+            padded = leaf(padded.to(device))
+            return padded, padded[:, :-1]
+        padded = torch.full((6, 10000), float("nan"), dtype=logits.dtype)
+        padded[:, ::2] = logits
+        padded = leaf(padded.to(device))
+        return padded, padded[:, ::2]
+
+    padded_student, student_rows = embed(student)
+    padded_teacher, teacher_rows = embed(teacher)
+    if op == "logprobs":
+        out = vocab_parallel_logprobs(student_rows, index.view(*student_rows.shape[:-1], 4).to(device))
+    elif op == "entropy":
+        out = vocab_parallel_entropy(student_rows)
+    else:
+        out = vocab_parallel_kl_div(student_rows, teacher_rows, reverse=(op == "reverse_kl"))
+    weight = torch.linspace(-1.0, 1.0, out.numel()).view_as(out)
+    finite = torch.isfinite(out.detach())
+    (out.where(finite, 0.0) * weight.to(device)).sum().backward()
+
+    def rows_of(padded):
+        grad = padded.grad[:, :-1] if layout == "sequence_slice" else padded.grad[:, ::2]
+        return grad.cpu().reshape(6, 5000)
+
+    expected_out, expected_student_grad, expected_teacher_grad = expected
+    rtol, atol = 1.6e-2, 1e-3
+    torch.testing.assert_close(out.detach().cpu().view_as(expected_out),
+                               expected_out,
+                               rtol=rtol,
+                               atol=atol,
+                               equal_nan=True)
+    # As in the test above, a row whose KL is infinite has NaN gradients under a zero output gradient.
+    torch.testing.assert_close(rows_of(padded_student), expected_student_grad, rtol=rtol, atol=atol, equal_nan=True)
+    if expected_teacher_grad is not None:
+        torch.testing.assert_close(rows_of(padded_teacher),
+                                   expected_teacher_grad,
+                                   rtol=rtol,
+                                   atol=atol,
+                                   equal_nan=True)
+
+
 class TestVocabParallelOpsTP(DistributedTest):
     world_size = 2
 
