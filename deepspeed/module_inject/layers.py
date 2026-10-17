@@ -420,9 +420,11 @@ class TensorParallel_Layer(nn.Module, ABC):
         # (e.g. the from_weights back-compat constructor).
         self.tp_meta: AutoTPMeta = kwargs.get('tp_meta') or AutoTPMeta()
 
-        # Snapshot the process-wide mode so a model keeps the mode it was sharded in, even when
-        # another engine (e.g. a training student next to an inference teacher) changes it later.
-        self.autotp_training = is_autotp_training_mode()
+        # A model keeps the mode it was sharded in, so a frozen inference teacher and a training
+        # student can live in one process without sharing the process-wide AutoTP mode.
+        self.autotp_training = self.tp_meta.training
+        if self.autotp_training is None:
+            self.autotp_training = is_autotp_training_mode()
 
     def _assert_compiled_if_deferred(self):
         """Fail loudly if a deferred layer is executed outside a compiled region.

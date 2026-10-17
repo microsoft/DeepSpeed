@@ -59,7 +59,6 @@ from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .module_inject import replace_transformer_layer, set_autotp_mode
-from .module_inject.layers import is_autotp_training_mode
 
 from .utils import log_dist, OnDevice, logger
 from .comm.comm import init_distributed
@@ -744,15 +743,7 @@ def init_inference(model: torch.nn.Module,
 
     ds_inference_config = DeepSpeedInferenceConfig(**config_dict)
 
-    # AutoTP shards models according to a process-wide mode that deepspeed.initialize switches to
-    # training. A model built here, such as a frozen distillation teacher next to a training student,
-    # must still be sharded for inference, and the caller's mode is restored for later engines.
-    was_training = is_autotp_training_mode()
-    set_autotp_mode(training=False)
-    try:
-        engine = InferenceEngine(model, config=ds_inference_config)
-    finally:
-        set_autotp_mode(training=was_training)
+    engine = InferenceEngine(model, config=ds_inference_config)
 
     return engine
 

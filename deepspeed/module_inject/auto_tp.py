@@ -221,7 +221,7 @@ class AutoTP():
                  vocab_parallel_lm_head=False,
                  model_config=None,
                  tp_grain_size: int = 1,
-                 training_mode: bool = False):
+                 training_mode: Optional[bool] = None):
         self.module = module
         self.all_reduce_linears = all_reduce_linears
         self.prefix = prefix
@@ -229,9 +229,12 @@ class AutoTP():
 
         self.mp_size = None
         self.mp_group = None
+        # None keeps the legacy behavior of following the process-wide AutoTP mode.
+        if training_mode is None:
+            training_mode = is_autotp_training_mode()
         # Per-model TP metadata threaded through every layer / helper so each AutoTP instance
-        # shards by its own model's kv-head / grain values.
-        self.tp_meta = AutoTPMeta.from_model_config(model_config, tp_grain_size)
+        # shards by its own model's kv-head / grain values and keeps its own training mode.
+        self.tp_meta = AutoTPMeta.from_model_config(model_config, tp_grain_size, training=training_mode)
         self.linear_layer_setting = linear_layer_setting
         self.orig_layer_impl = orig_layer_impl
         self.linear_policies = None
@@ -394,7 +397,7 @@ class AutoTP():
 
     def set_tensor_parallel_config(self, mp_size, mp_group):
 
-        if is_autotp_training_mode():
+        if self.training_mode:
             self.mp_group = groups.get_tensor_model_parallel_group()
             self.mp_size = groups.get_tensor_model_parallel_world_size()
             return
