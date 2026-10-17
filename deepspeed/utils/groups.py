@@ -26,6 +26,7 @@
 """
 
 import os
+import sys
 
 from deepspeed import comm as dist
 from deepspeed.utils import log_dist
@@ -103,6 +104,9 @@ def _release_process_group_references(group=None):
     global mpu
 
     if group is None:
+        sequence_parallel = sys.modules.get("deepspeed.runtime.sequence_parallel.parallel_state_sp")
+        if sequence_parallel is not None:
+            sequence_parallel._release_sequence_parallel_groups()
         _EXPERT_PARALLEL_GROUP.clear()
         _EXPERT_PARALLEL_GROUP_RANKS.clear()
         _EXPERT_DATA_PARALLEL_GROUP.clear()
