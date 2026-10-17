@@ -7,6 +7,8 @@ Most tests are CPU-only; the native shared-prefill cache test runs only when CUD
 the transformer inference extension are available.
 """
 
+import gc
+import weakref
 from types import SimpleNamespace
 from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
@@ -14,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 
+from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.transformer.inference.op_binding.workspace import WorkspaceOp
 from deepspeed.runtime.hybrid_engine import DeepSpeedHybridEngine
 from deepspeed.runtime.rollout.base import RolloutRequest, SamplingConfig
@@ -241,6 +244,35 @@ def test_continuous_graph_capture_preserves_attention_implementation(mock_get_ac
 
     assert module.attention_implementations == ["sdpa"] * 4
     assert module.config._attn_implementation == "sdpa"
+
+
+def test_continuous_graph_keeps_cache_position_alive_for_replay():
+    accelerator = get_accelerator()
+    if accelerator.device_name() != "cuda" or not accelerator.is_available():
+        pytest.skip("requires CUDA graph capture")
+
+    class DecodeModule(torch.nn.Module):
+
+        def __init__(self):
+            super().__init__()
+            self.config = SimpleNamespace(num_hidden_layers=1, num_attention_heads=1, hidden_size=1)
+            self.cache_position_ref = None
+
+        def forward(self, input_ids, cache_position, **_kwargs):
+            self.cache_position_ref = weakref.ref(cache_position)
+            return SimpleNamespace(logits=(input_ids + cache_position).unsqueeze(-1))
+
+    module = DecodeModule()
+    rollout = HybridEngineRollout(SimpleNamespace(module=module), _make_tokenizer())
+    state = rollout._get_continuous_graph_state(module, 1, 3, 5, torch.device(accelerator.current_device_name()),
+                                                torch.float32, DeepSpeedStaticCache)
+    gc.collect()
+
+    # A captured kernel retains only the device pointer, not the Python tensor.
+    assert module.cache_position_ref() is not None
+    state.static_input.fill_(7)
+    accelerator.replay_graph(state.graph)
+    assert torch.equal(state.static_logits, torch.full_like(state.static_logits, 11))
 
 
 def test_continuous_graph_state_reuses_matching_capture_and_rebuilds_for_weight_updates():

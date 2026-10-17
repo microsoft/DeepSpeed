@@ -106,6 +106,7 @@ class _ContinuousGraphState:
     static_causal_attention: torch.Tensor
     static_position_ids: torch.Tensor
     static_write_positions: torch.Tensor
+    static_cache_position: torch.Tensor
     graph: object
     static_logits: torch.Tensor
 
@@ -783,6 +784,7 @@ class HybridEngineRollout(RolloutEngine):
                 static_causal_attention,
                 static_position_ids,
                 static_write_positions,
+                static_cache_position,
                 graph,
                 static_logits,
             )
