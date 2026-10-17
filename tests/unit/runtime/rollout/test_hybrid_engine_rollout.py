@@ -300,8 +300,8 @@ def test_continuous_prefill_requests_last_logits_only():
                                    cache_kwargs={"cache_position": cache_position})
             if input_ids.shape[1] > 1:
                 self.prefill_logits_to_keep.append(logits_to_keep)
-            logits = torch.zeros((input_ids.shape[0], input_ids.shape[1], 16))
-            logits[:, :, 7] = 1
+            # Each position predicts its own token + 5, so reading any position but the last changes the output.
+            logits = torch.nn.functional.one_hot((input_ids + 5) % 16, num_classes=16).to(torch.float32)
             if logits_to_keep:
                 logits = logits[:, -logits_to_keep:]
             return SimpleNamespace(logits=logits, past_key_values=past_key_values)
@@ -311,7 +311,7 @@ def test_continuous_prefill_requests_last_logits_only():
     request = RolloutRequest(torch.tensor([[1, 2, 3], [1, 2, 4]]), torch.ones((2, 3), dtype=torch.long))
     output = rollout.generate(request, SamplingConfig(max_new_tokens=2, temperature=0, continuous_batch_size=2))
 
-    assert output.input_ids[:, 3:].tolist() == [[7, 7], [7, 7]]
+    assert output.input_ids[:, 3:].tolist() == [[8, 13], [9, 14]]
     assert model.prefill_logits_to_keep == [1]
 
 
