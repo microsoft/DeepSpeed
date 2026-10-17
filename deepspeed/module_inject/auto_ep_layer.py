@@ -22,6 +22,7 @@ import torch.nn as nn
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.autoep_affine import (autoep_experts_for_rank, autoep_placement_to_affine_map,
+                                                autoep_placements_equal, autoep_storage_affine_map,
                                                 legacy_uniform_autoep_placement_descriptor,
                                                 plan_autoep_placement_transfer)
 from deepspeed.checkpoint.affine import ParamAffineMap
@@ -769,24 +770,100 @@ class AutoEPMoELayer(nn.Module):
         # descriptor that says otherwise would address shards the weights do not have.
         packed_placement = legacy_uniform_autoep_placement_descriptor(self.num_experts, self.num_local_experts,
                                                                       self.ep_size)
-        if self.expert_placement_descriptor != packed_placement:
+        if not autoep_placements_equal(self.expert_placement_descriptor, packed_placement):
             raise NotImplementedError("AutoEP expert weights are packed with the contiguous uniform placement; "
                                       "the layer's expert placement descriptor does not describe them.")
         return self.expert_placement_descriptor
+
+    def _live_expert_affine_map(self, name: str, placement: dict) -> ParamAffineMap:
+        param = getattr(self.experts, name)
+        affine_map = autoep_placement_to_affine_map(placement, self._expert_logical_shape(param))
+        # Checkpoints publish this map; planning from a different one would move other elements.
+        published = getattr(param, DS_AUTOEP_UC_META, None)
+        if published is not None:
+            if not autoep_placements_equal(published[AUTOEP_EXPERT_PLACEMENT], placement):
+                raise ValueError(f"AutoEP expert parameter '{name}' publishes a placement that differs from the "
+                                 "layer's expert placement descriptor.")
+            if published[AFFINE_MAP] != affine_map.to_dict():
+                raise ValueError(f"AutoEP expert parameter '{name}' publishes an affine map that differs from its "
+                                 "expert placement descriptor.")
+        return affine_map
 
     def expert_affine_maps(self) -> dict[str, ParamAffineMap]:
         """Return the affine map of each live expert parameter (``w1``, ``w2``, ``w3``).
 
         Map ranks are EP-local ranks; translate them with ``dist.get_global_rank(self.ep_group, rank)``.
-        Each rank's shard is the unpartitioned packed ``[local_experts, ...]`` tensor, so ZeRO-3 and
-        expert-data-parallel fragments of it are outside the map.
+        Each rank's shard is the unpartitioned packed ``[local_experts, ...]`` tensor; use
+        :meth:`expert_storage_affine_maps` for the expert-data-parallel and ZeRO-3 storage.
         """
         placement = self._live_expert_placement()
-        affine_maps = {}
-        for name in ("w1", "w2", "w3"):
-            param = getattr(self.experts, name)
-            affine_maps[name] = autoep_placement_to_affine_map(placement, self._expert_logical_shape(param))
-        return affine_maps
+        return {name: self._live_expert_affine_map(name, placement) for name in ("w1", "w2", "w3")}
+
+    def _expert_storage_group(self, params: dict[str, nn.Parameter]):
+        partitioned = [hasattr(param, "ds_id") for param in params.values()]
+        if all(partitioned):
+            storage_groups = {id(param.ds_process_group): param.ds_process_group for param in params.values()}
+            if len(storage_groups) != 1:
+                raise ValueError("AutoEP expert parameters are ZeRO-3 partitioned over different process groups.")
+            return next(iter(storage_groups.values()))
+        if any(partitioned):
+            raise ValueError("Only some AutoEP expert parameters are ZeRO-3 partitioned.")
+        if self.folding_group_handles is not None:
+            return self.folding_group_handles.edp_group
+        from deepspeed.utils import groups
+        return groups._get_expert_data_parallel_group(self.ep_group_name)
+
+    def expert_storage_affine_maps(self) -> dict[str, ParamAffineMap]:
+        """Return the affine map of the storage each global rank holds for ``w1``, ``w2`` and ``w3``.
+
+        This is a collective over the default process group, so every rank must call it.
+
+        Map ranks are global ranks and the logical shape is the flattened parameter. Each shard is
+        a rank's flat storage: the packed ``[local_experts, ...]`` tensor under ZeRO-0/1/2, where all
+        expert-data-parallel replicas are listed as holders, or the rank's ZeRO-3 partition
+        ``ds_tensor`` without its trailing padding. Optimizer state is not described.
+        """
+        if self.folding_group_handles is not None and self.folding_group_handles.spec.etp_size > 1:
+            raise NotImplementedError("Expert storage maps do not describe expert tensor-parallel shards yet.")
+        placement = self._live_expert_placement()
+        params = {name: getattr(self.experts, name) for name in ("w1", "w2", "w3")}
+        for name in params:
+            self._live_expert_affine_map(name, placement)
+        storage_group = self._expert_storage_group(params)
+        partitioned = hasattr(params["w1"], "ds_id")
+
+        # Each rank knows only its own EP and storage groups; one exchange gives every rank the
+        # global ranks that store each EP rank's packed tensor, without assuming a rank layout.
+        record = {
+            "ep_rank": self.ep_rank,
+            "ep_ranks": dist.get_all_ranks_from_group(self.ep_group),
+            "storage_ranks": dist.get_all_ranks_from_group(storage_group),
+            "partition_numel": {
+                name: param.ds_tensor.ds_numel
+                for name, param in params.items()
+            } if partitioned else None,
+        }
+        records = [None] * dist.get_world_size()
+        dist.all_gather_object(records, record)
+
+        holders_by_ep_rank = {}
+        partition_records = {}
+        for ep_rank, global_rank in enumerate(record["ep_ranks"]):
+            holder_record = records[global_rank]
+            if holder_record["ep_rank"] != ep_rank:
+                raise RuntimeError(f"Global rank {global_rank} reports EP rank {holder_record['ep_rank']}, but the "
+                                   f"EP group places it at EP rank {ep_rank}.")
+            holders_by_ep_rank[ep_rank] = holder_record["storage_ranks"]
+            partition_records[ep_rank] = holder_record["partition_numel"]
+
+        storage_maps = {}
+        for name, param in params.items():
+            partition_numel_by_ep_rank = None
+            if partitioned:
+                partition_numel_by_ep_rank = {ep_rank: numels[name] for ep_rank, numels in partition_records.items()}
+            storage_maps[name] = autoep_storage_affine_map(placement, self._expert_logical_shape(param),
+                                                           holders_by_ep_rank, partition_numel_by_ep_rank)
+        return storage_maps
 
     def plan_expert_transfer(self,
                              target_placement: dict,
@@ -802,6 +879,7 @@ class AutoEPMoELayer(nn.Module):
         plans = {}
         for name in ("w1", "w2", "w3"):
             param = getattr(self.experts, name)
+            self._live_expert_affine_map(name, placement)
             plans[name] = plan_autoep_placement_transfer(placement,
                                                          target_placement,
                                                          self._expert_logical_shape(param),

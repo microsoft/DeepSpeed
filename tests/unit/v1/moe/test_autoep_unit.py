@@ -754,6 +754,38 @@ class TestAutoEPConfig:
         with pytest.raises(NotImplementedError, match="placement"):
             layer.plan_expert_transfer(uniform_placement)
 
+    def test_live_expert_maps_identify_placement_ranks_by_id(self):
+        from deepspeed.checkpoint.constants import AUTOEP_PLACEMENT_RANKS
+
+        layer = AutoEPMoELayer(_make_spec(),
+                               MockMoEBlock(num_experts=4, ffn_hidden=128, hidden_size=64),
+                               ep_size=2,
+                               ep_rank=0,
+                               config=_runtime_config(enabled=True, autoep_size=2))
+        expected = {name: affine_map.to_dict() for name, affine_map in layer.expert_affine_maps().items()}
+        reordered = dict(layer.expert_placement_descriptor)
+        reordered[AUTOEP_PLACEMENT_RANKS] = list(reversed(reordered[AUTOEP_PLACEMENT_RANKS]))
+        layer.expert_placement_descriptor = reordered
+
+        assert {name: affine_map.to_dict() for name, affine_map in layer.expert_affine_maps().items()} == expected
+
+    def test_live_expert_maps_reject_a_published_map_the_placement_does_not_produce(self):
+        from deepspeed.checkpoint.constants import AFFINE_MAP, DS_AUTOEP_UC_META
+
+        layer = AutoEPMoELayer(_make_spec(),
+                               MockMoEBlock(num_experts=4, ffn_hidden=128, hidden_size=64),
+                               ep_size=2,
+                               ep_rank=0,
+                               config=_runtime_config(enabled=True, autoep_size=2))
+        uniform_placement = layer.expert_placement_descriptor
+        published = getattr(layer.experts.w2, DS_AUTOEP_UC_META)
+        published[AFFINE_MAP] = layer.expert_affine_maps()["w1"].to_dict()
+
+        with pytest.raises(ValueError, match="w2"):
+            layer.expert_affine_maps()
+        with pytest.raises(ValueError, match="w2"):
+            layer.plan_expert_transfer(uniform_placement)
+
     def test_checkpoint_source_placement_does_not_need_to_match_target_topology(self):
         from deepspeed.checkpoint.autoep_affine import make_autoep_placement_descriptor
         from deepspeed.checkpoint.constants import (
