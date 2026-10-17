@@ -359,10 +359,10 @@ def test_validates_inputs():
 
 
 def _triton_device():
-    import deepspeed
+    from deepspeed.sequence.vocab_parallel_ops import _use_triton
     device = torch.device(get_accelerator().current_device_name())
-    if device.type not in ("cuda", "xpu") or not deepspeed.HAS_TRITON:
-        pytest.skip("the Triton kernels need a CUDA or XPU device with Triton")
+    if not _use_triton(torch.empty(0, device=device)):
+        pytest.skip("the Triton kernels are not used on this device")
     return device
 
 

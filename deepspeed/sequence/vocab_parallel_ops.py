@@ -18,7 +18,7 @@ tensor-parallel group and same vocabulary range on every rank.
 A row whose logits are all ``-inf`` has no defined distribution: entropy and KL return NaN for
 it, but its logits get zero gradient so that callers can mask such rows (e.g. padding) out.
 
-On CUDA and XPU devices with Triton available, the per-row work runs in fused Triton kernels
+When Triton supports the logits' device, the per-row work runs in fused Triton kernels
 (``deepspeed.ops.triton_ops.vocab_parallel_softmax``); otherwise, or with
 ``deepspeed.HAS_TRITON = False``, the same math runs eagerly in bounded row chunks.
 """
