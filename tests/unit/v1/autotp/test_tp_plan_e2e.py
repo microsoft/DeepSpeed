@@ -433,6 +433,70 @@ class TestReplicatedGradAllreduce(DistributedTest):
             expected = reference.to(device=device, dtype=logits.dtype)(input_ids=input_ids, use_cache=False).logits
         torch.testing.assert_close(logits, expected, rtol=2e-2, atol=2e-2)
 
+    def test_unfreezing_replicated_param_after_initialize_raises(self):
+        """A replicated parameter frozen at initialize has no TP gradient all-reduce.
+
+        Training it after unfreezing would let the tensor-parallel ranks drift apart silently, so the
+        engine must refuse the backward instead.
+        """
+        if get_accelerator().device_name() == "cpu":
+            import pytest
+            pytest.skip("CPU does not support this test yet")
+        import pytest
+        transformers = pytest.importorskip("transformers")
+        if not hasattr(transformers, "Qwen3ForCausalLM"):
+            pytest.skip("transformers build has no Qwen3")
+
+        config = transformers.Qwen3Config(vocab_size=256,
+                                          hidden_size=64,
+                                          intermediate_size=128,
+                                          num_hidden_layers=2,
+                                          num_attention_heads=8,
+                                          num_key_value_heads=8,
+                                          head_dim=8,
+                                          max_position_embeddings=64,
+                                          use_cache=False,
+                                          tie_word_embeddings=False)
+        config._attn_implementation = "sdpa"
+        torch.manual_seed(42)
+        model = transformers.Qwen3ForCausalLM(config)
+        for layer in model.model.layers:
+            layer.self_attn.q_norm.requires_grad_(False)
+
+        ds_config = {
+            "train_micro_batch_size_per_gpu": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-3,
+                    "torch_adam": True
+                }
+            },
+            "tensor_parallel": {
+                "autotp_size": self.world_size
+            },
+            "zero_optimization": {
+                "stage": 0
+            },
+        }
+        engine, _, _, _ = deepspeed.initialize(model=model,
+                                               model_parameters=[p for p in model.parameters() if p.requires_grad],
+                                               config=ds_config)
+
+        device = torch.device(get_accelerator().current_device_name())
+        torch.manual_seed(1234)
+        input_ids = torch.randint(0, 256, (1, 16), device=device)
+
+        # Partially frozen models still train.
+        loss = engine(input_ids=input_ids, labels=input_ids, use_cache=False).loss
+        engine.backward(loss)
+        engine.step()
+
+        engine.module.model.layers[0].self_attn.q_norm.weight.requires_grad_(True)
+        loss = engine(input_ids=input_ids, labels=input_ids, use_cache=False).loss
+        with pytest.raises(RuntimeError, match="frozen at deepspeed.initialize"):
+            engine.backward(loss)
+
 
 class TestInferenceTeacherAfterTrainingStudent(DistributedTest):
     """Distillation builds a training student and an inference teacher in one process.

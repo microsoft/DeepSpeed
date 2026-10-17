@@ -937,9 +937,12 @@ class AutoTP():
         first optimizer step. The hook runs when the gradient is computed, before accumulation,
         so it holds under gradient accumulation and under the DeepCompile pass, whose compiled
         backward still accumulates leaf gradients through the autograd engine.
+
+        Returns the ``(name, param)`` pairs skipped because they were frozen, so the engine can
+        reject them if they are unfrozen later and would train without the reduction.
         """
         if self.partition_config is None or self.mp_group is None or self.mp_size <= 1:
-            return
+            return []
 
         def make_grad_allreduce_hook(group):
 
@@ -952,6 +955,7 @@ class AutoTP():
 
         model_type = self._get_model_type()
         registered = []
+        frozen = []
         for param_name, param in model.named_parameters():
             spec = self.partition_config.find_matching_spec(param_name, model_type)
             if spec is None or not spec.grad_allreduce:
@@ -959,6 +963,7 @@ class AutoTP():
             # A frozen parameter, such as one of a distillation teacher, has no gradient to reduce,
             # and PyTorch refuses hooks on tensors that do not require gradients.
             if not param.requires_grad:
+                frozen.append((param_name, param))
                 continue
             if getattr(param, "_ds_grad_allreduce_registered", False):
                 continue
@@ -970,6 +975,7 @@ class AutoTP():
                 f"AutoTP: registered tensor-parallel grad all-reduce for {len(registered)} replicated "
                 f"parameters, e.g. {registered[0]!r}",
                 ranks=[0])
+        return frozen
 
     def update_mp_params(self, child, name=None):
         if getattr(child, "replaced", False) == True:
