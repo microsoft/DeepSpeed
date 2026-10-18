@@ -354,7 +354,11 @@ def safe_update_full_grad_vectorized(param_list: List[torch.nn.Parameter], updat
     """
     partitioned_grad_params = []
     for p in param_list:
-        if p.grad is not None:
+        if getattr(p, '_hp_grad', None) is not None:
+            old_grad = safe_get_full_grad(p)
+            new_grad = update_func(old_grad, p)
+            p._hp_grad.copy_(new_grad.reshape_as(p._hp_grad))
+        elif p.grad is not None:
             p.grad.copy_(update_func(p.grad, p))
         elif p.requires_grad:
             partitioned_grad_params.append(p)

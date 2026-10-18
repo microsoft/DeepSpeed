@@ -15,6 +15,7 @@ from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_set_full_grad
+from deepspeed.utils import safe_update_full_grad_vectorized
 from unit.v1.zero.test_zero_user_backward import (initialize_distributed, create_ddp_model, collect_ddp_gradients,
                                                   collect_gradients_safe, compare_gradients)
 
@@ -672,7 +673,8 @@ class TestBF16FullGradientReconstruction(DistributedTest):
 
     @pytest.mark.parametrize("zero_stage", [1, 2])
     @pytest.mark.parametrize("immediate_grad_update", [False, True])
-    def test_set_full_grad_updates_optimizer_input(self, zero_stage, immediate_grad_update):
+    @pytest.mark.parametrize("vectorized", [False, True], ids=["setter", "vectorized"])
+    def test_full_grad_updates_optimizer_input(self, zero_stage, immediate_grad_update, vectorized):
         if not bf16_required_version_check():
             pytest.skip("DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA >= 11.0 and HW support")
         config = {
@@ -700,7 +702,7 @@ class TestBF16FullGradientReconstruction(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(model=SimpleModel(4), config=config)
         if zero_stage == 1:
             assert isinstance(engine.optimizer, BF16_Optimizer)
-        inputs = torch.ones(1, 4, dtype=torch.bfloat16, device=engine.device)
+        inputs = torch.ones(1, 4, dtype=torch.bfloat16, device=engine.device) * (dist.get_rank() + 1)
         labels = torch.zeros(1, dtype=torch.long, device=engine.device)
         try:
             for replacement_value in [0.0, 0.25]:
@@ -712,13 +714,29 @@ class TestBF16FullGradientReconstruction(DistributedTest):
                     engine.backward(engine(inputs, labels))
                     if micro_batch == 0:
                         engine.step()
-                for param in engine.module.parameters():
-                    replacement = torch.full_like(param, replacement_value, dtype=torch.float32)
-                    safe_set_full_grad(param, replacement)
-                    torch.testing.assert_close(safe_get_full_grad(param), replacement, rtol=0, atol=0)
+                params = list(engine.module.parameters())
+                original_gradients = {id(param): safe_get_full_grad(param).clone() for param in params}
+                replacements = {
+                    id(param):
+                    original_gradients[id(param)] * replacement_value +
+                    replacement_value if vectorized else torch.full_like(param, replacement_value, dtype=torch.float32)
+                    for param in params
+                }
+                if vectorized:
+
+                    def update_gradient(old_grad, param):
+                        torch.testing.assert_close(old_grad, original_gradients[id(param)], rtol=0, atol=0)
+                        return old_grad * replacement_value + replacement_value
+
+                    safe_update_full_grad_vectorized(params, update_gradient)
+                else:
+                    for param in params:
+                        safe_set_full_grad(param, replacements[id(param)])
+                for param in params:
+                    torch.testing.assert_close(safe_get_full_grad(param), replacements[id(param)], rtol=0, atol=0)
                 engine.step()
                 for name, param in engine.module.named_parameters():
-                    expected = before[name] - config["optimizer"]["params"]["lr"] * replacement_value
+                    expected = before[name] - config["optimizer"]["params"]["lr"] * replacements[id(param)]
                     torch.testing.assert_close(safe_get_full_fp32_param(param), expected, rtol=0, atol=1e-7)
         finally:
             engine.destroy()
