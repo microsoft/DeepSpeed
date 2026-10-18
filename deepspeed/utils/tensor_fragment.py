@@ -245,7 +245,9 @@ def safe_set_full_grad(param, value):
             param (``torch.nn.Parameter``): A model parameter
             value (``torch.Tensor``): The un-partitioned new gradient value.
     """
-    if param.grad is not None:
+    if getattr(param, '_hp_grad', None) is not None:
+        param._hp_grad.copy_(value.reshape_as(param._hp_grad))
+    elif param.grad is not None:
         param.grad.copy_(value)
     elif hasattr(param, 'ds_id'):
         # ZeRO stage 3 param
