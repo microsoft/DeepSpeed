@@ -747,6 +747,69 @@ def test_yuan_weight_is_no_longer_refused_by_conversion(layer_name, out_features
     assert r"^proj\.weight$" not in info.get(AUTOTP_UNSUPPORTED_PARAMETER_PATTERNS, {})
 
 
+@pytest.mark.parametrize('num_heads, mp_size', [(8, 2), (8, 4), (16, 4)])
+def test_yuan_output_projection_keeps_its_bias_whole(num_heads, mp_size):
+    """The output projection's bias must survive partitioning unchanged on every rank.
+
+    LinearAllreduce sums the ranks' partial products first and adds the bias once afterwards,
+    so each rank needs the whole bias. Partitioning used to raise on a bias here, and dividing
+    it by the world size instead would scale the output's bias by the same factor. The
+    unsharded layer is the reference for both.
+    """
+    from deepspeed.module_inject.fusedqkv_utils import shard_value_with_share_qk, shared_qk_value_head_ids
+
+    head_dim, out_features = 4, 12
+    in_features = num_heads * head_dim
+    meta = AutoTPMeta(num_kv_heads=num_heads)
+    torch.manual_seed(0)
+    weight = torch.randn(out_features, in_features, dtype=torch.float64)
+    bias = torch.randn(out_features, dtype=torch.float64)
+    x = torch.randn(3, in_features, dtype=torch.float64)
+
+    reduced = torch.zeros(3, out_features, dtype=torch.float64)
+    bias_shards = []
+    for rank in range(mp_size):
+        weight_shard, bias_shard = shard_value_with_share_qk(weight, torch.nn.Parameter(bias.clone()), rank, mp_size,
+                                                             False, meta)
+        columns = torch.cat([
+            torch.arange(head * head_dim, (head + 1) * head_dim)
+            for head in shared_qk_value_head_ids(num_heads, mp_size, rank)
+        ])
+        reduced += x[:, columns] @ weight_shard.detach().T
+        bias_shards.append(bias_shard.detach())
+
+    for bias_shard in bias_shards:
+        assert torch.equal(bias_shard, bias)
+    assert torch.allclose(reduced + bias_shards[0], x @ weight.T + bias)
+
+
+def test_yuan_output_projection_bias_is_described_as_replicated():
+    """With its bias kept whole, Yuan's output projection has nothing left to refuse.
+
+    The bias was the last parameter in tree published as unsupported whatever the configuration.
+    It is an ordinary replicated piece: every rank holds all of it, unscaled.
+    """
+    from deepspeed.checkpoint.affine import ParamAffineMap
+    from deepspeed.checkpoint.constants import (AFFINE_MAP, AFFINE_MAP_PARAMS, AUTOTP_UNSUPPORTED_PARAMETER_PATTERNS)
+    from deepspeed.module_inject.layers import Yuan_LinearAllreduce, collect_autotp_universal_checkpoint_info
+
+    mp_size = 2
+    layer = Yuan_LinearAllreduce(torch.nn.Linear(8, 8, bias=True), mp_group=None, name='o_proj')
+    layer.tp_world_size = mp_size
+    layer.tp_meta = AutoTPMeta(num_kv_heads=8)
+
+    model = torch.nn.Module()
+    model.o_proj = layer
+    info = collect_autotp_universal_checkpoint_info(model)
+
+    assert info.get(AUTOTP_UNSUPPORTED_PARAMETER_PATTERNS, {}) == {}
+    bias_map = ParamAffineMap.from_dict(info[AFFINE_MAP][AFFINE_MAP_PARAMS][r"^o_proj\.bias$"])
+    for rank in range(mp_size):
+        (piece, ) = bias_map.pieces_by_rank[rank]
+        assert piece.locations == frozenset(range(mp_size))
+        assert piece.scale == 1.0
+
+
 def test_a_layout_without_head_counts_stays_unsupported():
     """Describing Yuan needs the kv head count, so without it the layout must not be claimed."""
     from deepspeed.checkpoint.constants import AUTOTP_UNSUPPORTED_PARAMETER_PATTERNS
