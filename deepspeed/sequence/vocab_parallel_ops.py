@@ -28,21 +28,12 @@ from torch.autograd.function import once_differentiable
 
 import deepspeed
 import deepspeed.comm as dist
+from deepspeed.comm import pg_utils
 from deepspeed.sequence.cross_entropy import _resolve_vocab_metadata
 
 # Elementwise work is done on row chunks of at most this many logits so that fp32 temporaries
 # stay bounded no matter how many tokens are processed; only per-token statistics span all rows.
 _CHUNK_NUMEL = 1 << 24
-
-
-def _tp_active(tp_group):
-    return tp_group is not None and dist.get_world_size(tp_group) > 1
-
-
-def _all_reduce(tensor, op, tp_group):
-    if _tp_active(tp_group):
-        dist.all_reduce(tensor, op=op, group=tp_group)
-    return tensor
 
 
 def _use_triton(*logits):
@@ -94,13 +85,15 @@ def _softmax_stats(logits_2d_list, tp_group):
             continue
         for rows in _row_chunks(logits):
             global_max[i, rows] = logits[rows].amax(dim=-1).float()
-    _all_reduce(global_max, dist.ReduceOp.MAX, tp_group)
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(global_max, op=dist.ReduceOp.MAX, group=tp_group)
 
     sum_exp = torch.empty_like(global_max)
     for i, logits in enumerate(logits_2d_list):
         for rows in _row_chunks(logits):
             sum_exp[i, rows] = torch.exp(logits[rows].float() - global_max[i, rows].unsqueeze(-1)).sum(dim=-1)
-    _all_reduce(sum_exp, dist.ReduceOp.SUM, tp_group)
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(sum_exp, op=dist.ReduceOp.SUM, group=tp_group)
     return global_max, torch.log(sum_exp)
 
 
@@ -111,9 +104,13 @@ def _triton_softmax_stats(logits_2d_list, tp_group):
     local_stats = [kernels.local_softmax_stats(logits) for logits in logits_2d_list]
     local_max = torch.stack([stats[0] for stats in local_stats])
     local_sum = torch.stack([stats[1] for stats in local_stats])
-    global_max = _all_reduce(local_max.clone(), dist.ReduceOp.MAX, tp_group)
+    global_max = local_max.clone()
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(global_max, op=dist.ReduceOp.MAX, group=tp_group)
     _, rescale = _rescale_to_global_max(local_max, global_max)
-    sum_exp = _all_reduce(local_sum * rescale, dist.ReduceOp.SUM, tp_group)
+    sum_exp = local_sum * rescale
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(sum_exp, op=dist.ReduceOp.SUM, group=tp_group)
     return global_max, torch.log(sum_exp)
 
 
@@ -129,10 +126,14 @@ def _triton_entropy(logits, tp_group):
     # entropy share one MAX and one SUM all-reduce.
     stats = _triton_kernels().entropy_stats(logits)
     local_max = stats[0]
-    global_max = _all_reduce(local_max.clone(), dist.ReduceOp.MAX, tp_group)
+    global_max = local_max.clone()
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(global_max, op=dist.ReduceOp.MAX, group=tp_group)
     seen, rescale = _rescale_to_global_max(local_max, global_max)
     weighted = torch.where(seen, rescale * (stats[2] - (global_max - local_max) * stats[1]), 0.0)
-    sums = _all_reduce(torch.stack([stats[1] * rescale, weighted]), dist.ReduceOp.SUM, tp_group)
+    sums = torch.stack([stats[1] * rescale, weighted])
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(sums, op=dist.ReduceOp.SUM, group=tp_group)
     log_sum_exp = torch.log(sums[0])
     return global_max, log_sum_exp, log_sum_exp - sums[1] / sums[0]
 
@@ -143,14 +144,18 @@ def _triton_kl_div(a_logits, b_logits, tp_group):
     # the SUM all-reduce with the weighted log-ratio.
     stats = _triton_kernels().kl_stats(a_logits, b_logits)
     local_a_max, local_b_max = stats[0], stats[1]
-    a_max, b_max, mismatch = _all_reduce(stats[:3].clone(), dist.ReduceOp.MAX, tp_group)
+    maxima = stats[:3].clone()
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(maxima, op=dist.ReduceOp.MAX, group=tp_group)
+    a_max, b_max, mismatch = maxima
     a_seen, a_rescale = _rescale_to_global_max(local_a_max, a_max)
     b_seen, b_rescale = _rescale_to_global_max(local_b_max, b_max)
     shift = (a_max - local_a_max) - (b_max - local_b_max)
     # A shard with A but no finite B holds only mismatched terms, which +inf replaces below.
     weighted = torch.where(a_seen & b_seen, a_rescale * (stats[5] - shift * stats[3]), 0.0)
-    sums = _all_reduce(torch.stack([stats[3] * a_rescale, stats[4] * b_rescale, weighted]), dist.ReduceOp.SUM,
-                       tp_group)
+    sums = torch.stack([stats[3] * a_rescale, stats[4] * b_rescale, weighted])
+    if pg_utils.is_parallel(tp_group):
+        dist.all_reduce(sums, op=dist.ReduceOp.SUM, group=tp_group)
     a_lse, b_lse = torch.log(sums[0]), torch.log(sums[1])
     kl = torch.where(mismatch > 0, float("inf"), sums[2] / sums[0] - a_lse + b_lse)
     # As in the eager path, KL is NaN where either distribution is undefined.
@@ -210,7 +215,8 @@ class _VocabParallelLogProbs(torch.autograd.Function):
         gathered = logits.gather(-1, local_index.view(*logits.shape[:-1], local_index.shape[-1]))
         shifted_logits = gathered.reshape(local_index.shape).float() - global_max.unsqueeze(-1)
         shifted_logits = torch.where(index_in_partition, shifted_logits, torch.zeros_like(shifted_logits))
-        _all_reduce(shifted_logits, dist.ReduceOp.SUM, tp_group)
+        if pg_utils.is_parallel(tp_group):
+            dist.all_reduce(shifted_logits, op=dist.ReduceOp.SUM, group=tp_group)
 
         logprobs = shifted_logits - log_sum_exp.unsqueeze(-1)
         logprobs = torch.where(valid_index, logprobs, torch.zeros_like(logprobs))
@@ -260,7 +266,8 @@ class _VocabParallelEntropy(torch.autograd.Function):
             for rows in _row_chunks(logits):
                 log_probs = _log_softmax(logits[rows], global_max[rows], log_sum_exp[rows])
                 entropy[rows] = -_weighted_by_probs(log_probs, log_probs).sum(dim=-1)
-            _all_reduce(entropy, dist.ReduceOp.SUM, tp_group)
+            if pg_utils.is_parallel(tp_group):
+                dist.all_reduce(entropy, op=dist.ReduceOp.SUM, group=tp_group)
 
         ctx.save_for_backward(vocab_parallel_logits, global_max, log_sum_exp, entropy)
         # Callers may mask the result in place, so it must not alias the saved entropy.
@@ -316,7 +323,8 @@ class _VocabParallelKLDiv(torch.autograd.Function):
                 teacher_log_probs = _log_softmax(teacher[rows], global_max[1, rows], log_sum_exp[1, rows])
                 a_log_probs, b_log_probs = _order_kl_arguments(student_log_probs, teacher_log_probs, reverse)
                 kl[rows] = _kl_terms(a_log_probs, b_log_probs).sum(dim=-1)
-            _all_reduce(kl, dist.ReduceOp.SUM, tp_group)
+            if pg_utils.is_parallel(tp_group):
+                dist.all_reduce(kl, op=dist.ReduceOp.SUM, group=tp_group)
 
         ctx.reverse = reverse
         ctx.save_for_backward(student_logits, teacher_logits, global_max, log_sum_exp, kl)
