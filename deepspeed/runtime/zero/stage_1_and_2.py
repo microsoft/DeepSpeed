@@ -27,7 +27,7 @@ from deepspeed.runtime.utils import (empty_cache, see_memory_usage, has_inf_or_n
                                      combine_grad_norm_groups, count_used_parameters_in_backward, is_invalid_grad_norm,
                                      is_optimized_parameter)
 from deepspeed.runtime.zero.config import ZeroStageEnum
-from deepspeed.runtime.zero.utils import get_norm_dtype
+from deepspeed.runtime.zero.utils import get_norm_dtype, OverlappedHostWriteback
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.utils import logger
@@ -2064,6 +2064,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         from deepspeed.runtime.zero.muon.original_muon import muon_update
 
         accelerator_device = get_accelerator().current_device_name()
+        # The update and momentum of one batch go back to the host while the next batch is
+        # gathered and orthogonalized.
+        writeback = OverlappedHostWriteback()
         for group_idx, group in enumerate(self.round_robin_bit16_groups):
             muon_params = [param for param in group if getattr(param, "use_muon", False)]
             if not muon_params:
@@ -2080,7 +2083,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             momentum_was_created = momentum is None or momentum.numel() != local_grad.numel()
             if momentum_was_created:
                 # A newly allocated state is zero on every rank, so it needs no all-gather.
-                momentum = torch.zeros_like(flat_param)
+                if self.cpu_offload_pin_memory:
+                    momentum = get_accelerator().pin_empty_like(flat_param).zero_()
+                else:
+                    momentum = torch.zeros_like(flat_param)
+                state["momentum_buffer"] = momentum
+            elif self.cpu_offload_pin_memory and not get_accelerator().is_pinned(momentum):
+                # The momentum crosses PCIe both ways every step, and pageable memory cuts that
+                # bandwidth several times. Loading a checkpoint replaces the state with pageable
+                # tensors, so the pin is restored here rather than only at creation.
+                momentum = get_accelerator().pin_memory(momentum)
                 state["momentum_buffer"] = momentum
             loss_scale = float(self.loss_scale)
             optimizer_group = self.optimizer.param_groups[group_idx]
@@ -2099,6 +2111,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     for grad in full_grad:
                         grad.div_(loss_scale)
 
+                copies = []
                 for param, grad, param_momentum in zip(batch, full_grad, full_momentum):
                     param_id = self.get_param_id(param)
                     update = muon_update(grad,
@@ -2117,12 +2130,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         local_update = update.view(-1).narrow(0, source_offset, num_elements)
                         # Rescale so downstream unscale_and_clip_grads cancels it.
                         scaled_local_update = local_update * loss_scale if loss_scale != 1.0 else local_update
-                        local_grad.narrow(0, dest_offset, num_elements).copy_(scaled_local_update.to(local_grad.dtype))
+                        copies.append((local_grad.narrow(0, dest_offset,
+                                                         num_elements), scaled_local_update.to(local_grad.dtype)))
                         self.norm_for_param_grads[param_id] = scaled_local_update.to(get_norm_dtype()).norm(2)
                         momentum_update = param_momentum.view(-1).narrow(0, source_offset, num_elements)
-                        momentum.narrow(0, dest_offset, num_elements).copy_(momentum_update.to(momentum.dtype))
+                        copies.append((momentum.narrow(0, dest_offset,
+                                                       num_elements), momentum_update.to(momentum.dtype)))
                         del local_update, scaled_local_update, momentum_update
-                del full_grad, full_momentum, grad, param_momentum, update
+                writeback.submit(copies)
+                del full_grad, full_momentum, grad, param_momentum, update, copies
+        writeback.drain()
 
     ############################################################################################
     def _get_param_group_idx(self, param):

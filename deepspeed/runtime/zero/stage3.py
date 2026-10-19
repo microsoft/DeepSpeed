@@ -32,7 +32,7 @@ from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 import deepspeed.runtime.zenflow.engine_stage3 as zf_engine_stage3
-from deepspeed.runtime.zero.utils import get_mapping_to_flat_buffer, defragment, get_norm_dtype
+from deepspeed.runtime.zero.utils import get_mapping_to_flat_buffer, defragment, get_norm_dtype, OverlappedHostWriteback
 from deepspeed.runtime.zero.offload_states import (offload_adam_states, reload_adam_states,
                                                    unpin_offloaded_optimizer_states)
 from deepspeed.ops.adam import DeepSpeedCPUAdam
@@ -1063,20 +1063,33 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         return sub_group_partitions
 
+    def _pins_muon_momentum(self, sub_group_id):
+        """Whether this sub-group's Muon momentum should live in pinned host memory.
+
+        The CPU-offload Muon update copies the momentum to the accelerator and back every step.
+        A momentum the swapper moves to NVMe is left to it, as it manages its own pinned buffers.
+        """
+        if not (self.offload_optimizer and self.offload_optimizer_pin_memory):
+            return False
+        return self.save_muon_momentum_buffer_in_memory or not self._swappable_optimizer_subgroup(sub_group_id)
+
     def _create_momentum_buffer(self, num_elements, i, ds_id):
         if self.use_muon and self.sub_groups_using_muon[i]:
-            unpinned_fp32_buffer_momentum = torch.zeros(num_elements,
-                                                        device=self.device,
-                                                        dtype=self.communication_data_type)
-            unpinned_fp32_buffer_momentum.requires_grad = False
+            if self._pins_muon_momentum(i):
+                fp32_buffer_momentum = get_accelerator().pin_empty(num_elements, dtype=self.communication_data_type)
+                fp32_buffer_momentum.zero_()
+            else:
+                fp32_buffer_momentum = torch.zeros(num_elements,
+                                                   device=self.device,
+                                                   dtype=self.communication_data_type)
+            fp32_buffer_momentum.requires_grad = False
             if self.save_muon_momentum_buffer_in_memory:
-                unpinned_fp32_buffer_momentum.swappable = False
-                self.muon_momentum_buffer_partitioned_groups_flat[i] = unpinned_fp32_buffer_momentum
+                fp32_buffer_momentum.swappable = False
+                self.muon_momentum_buffer_partitioned_groups_flat[i] = fp32_buffer_momentum
                 self.muon_momentum_buffer_partitioned_groups_flat[i].ds_id = ds_id
             if self.fp32_partitioned_groups_flat[i] not in self.optimizer.state:
                 self.optimizer.state[self.fp32_partitioned_groups_flat[i]] = {}
-            self.optimizer.state[
-                self.fp32_partitioned_groups_flat[i]]["momentum_buffer"] = unpinned_fp32_buffer_momentum
+            self.optimizer.state[self.fp32_partitioned_groups_flat[i]]["momentum_buffer"] = fp32_buffer_momentum
 
     def _create_fp32_partitions(self):
         cpu_memory_usage = 0
@@ -2592,6 +2605,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         from deepspeed.runtime.zero.muon.original_muon import muon_update
 
         accelerator_device = get_accelerator().current_device_name()
+        # The update and momentum of one parameter go back to the host while the next one is
+        # orthogonalized.
+        writeback = OverlappedHostWriteback()
         for sub_group_id, params in enumerate(self.fp16_groups):
             muon_params = [param for param in params if getattr(param, "use_muon", False)]
             if not muon_params:
@@ -2608,6 +2624,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 if momentum_was_created:
                     self._create_momentum_buffer(subgroup_numel, sub_group_id, fp32_param.ds_id)
                     momentum = self.muon_momentum_buffer_partitioned_groups_flat[sub_group_id]
+                elif self._pins_muon_momentum(sub_group_id) and not get_accelerator().is_pinned(momentum):
+                    pinned = get_accelerator().pin_memory(momentum)
+                    pinned.swappable = False
+                    pinned.ds_id = momentum.ds_id
+                    momentum = pinned
+                    self.muon_momentum_buffer_partitioned_groups_flat[sub_group_id] = momentum
             else:
                 state = self.optimizer.state.setdefault(fp32_param, {})
                 momentum = state.get("momentum_buffer")
@@ -2616,6 +2638,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     # A newly allocated state is zero on every rank, so it needs no all-gather.
                     self._create_momentum_buffer(subgroup_numel, sub_group_id, fp32_param.ds_id)
                     momentum = state["momentum_buffer"]
+                elif self._pins_muon_momentum(sub_group_id) and not get_accelerator().is_pinned(momentum):
+                    # Loading a checkpoint replaces the state with pageable tensors.
+                    momentum = get_accelerator().pin_memory(momentum)
+                    state["momentum_buffer"] = momentum
 
             local_grad_parts = []
             local_momentum_parts = []
@@ -2663,21 +2689,25 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 _, dest_offset, _ = self.grad_position[self.get_param_id(param)]
                 # Rescale by loss_scale so downstream unscale_and_clip_grads cancels it cleanly
                 scaled_local_update = local_update * loss_scale if loss_scale != 1.0 else local_update
-                fp32_param.grad.narrow(0, dest_offset,
-                                       partition_numel).copy_(scaled_local_update.to(fp32_param.grad.dtype))
                 local_momentum = torch.zeros(partition_numel, dtype=full_momentum.dtype, device=accelerator_device)
                 if real_numel > 0:
                     local_momentum[:real_numel].copy_(full_momentum.view(-1).narrow(0, start, real_numel))
-                momentum.narrow(0, dest_offset, partition_numel).copy_(local_momentum.to(momentum.dtype))
                 self.norm_for_param_grads[self.get_param_id(param)] = scaled_local_update.to(get_norm_dtype()).norm(2)
+                writeback.submit([
+                    (fp32_param.grad.narrow(0, dest_offset,
+                                            partition_numel), scaled_local_update.to(fp32_param.grad.dtype)),
+                    (momentum.narrow(0, dest_offset, partition_numel), local_momentum.to(momentum.dtype)),
+                ])
 
             if self.save_muon_momentum_buffer_in_memory and fp32_param in self.optimizer.state:
                 self.optimizer.state[fp32_param]["momentum_buffer"] = momentum
 
             if self._swappable_optimizer_subgroup(sub_group_id):
+                writeback.drain()
                 self._writeback_swap_state(sub_group_id,
                                            write_opt_state=not self.save_muon_momentum_buffer_in_memory,
                                            write_gradients=True)
+        writeback.drain()
 
     @instrument_w_nvtx
     def _prepare_fp32_grad_for_sub_group(self, sub_group_id):

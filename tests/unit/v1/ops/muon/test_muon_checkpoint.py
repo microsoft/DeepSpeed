@@ -163,3 +163,61 @@ class TestMuonSeparateGradAccumDtype(DistributedTest):
         moved = sum(1 for b, a in zip(before, after) if not torch.equal(b, a))
         assert moved > 0, "no parameter moved, so Muon never applied an update"
         assert _momentum_norm(engine) > 0.0, "the momentum buffer stayed empty"
+
+
+def _momentum_buffers(engine):
+    optimizer = getattr(engine.optimizer, "optimizer", engine.optimizer)
+    return [state["momentum_buffer"] for state in optimizer.state.values() if "momentum_buffer" in state]
+
+
+@pytest.mark.parametrize("zero_stage", [1, 2, 3])
+@pytest.mark.parametrize("pin_memory", [True, False])
+class TestMuonOffloadPinnedMomentum(DistributedTest):
+    """With CPU optimizer offload, Muon copies its momentum to the accelerator and back every
+    step, so `offload_optimizer.pin_memory` has to cover it like the other buffers that cross
+    PCIe. Loading a checkpoint swaps the optimizer state for freshly allocated pageable tensors;
+    the pin has to come back, or a resumed run silently loses the bandwidth.
+    """
+    world_size = 2
+
+    def test_momentum_follows_pin_memory_across_resume(self, tmpdir, zero_stage, pin_memory):
+        accelerator = get_accelerator()
+        if not accelerator.is_pinned(accelerator.pin_memory(torch.empty(1))):
+            pytest.skip(f"{accelerator.device_name()} cannot pin host memory")
+        if torch.bfloat16 not in accelerator.supported_dtypes():
+            pytest.skip(f"bf16 not supported by {accelerator.device_name()}")
+
+        hidden_dim, steps = 32, 3
+        ckpt_dir = str(tmpdir)
+        config = _config(zero_stage, "bf16")
+        config["zero_optimization"]["offload_optimizer"] = {"device": "cpu", "pin_memory": pin_memory}
+
+        def build():
+            torch.manual_seed(1234)
+            model = SimpleModel(hidden_dim, nlayers=3)
+            engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config)
+            return engine
+
+        def train(engine):
+            for _ in range(steps):
+                engine.backward(engine(batch, labels))
+                engine.step()
+
+        uninterrupted = build()
+        batch = torch.randn(2, hidden_dim, device=uninterrupted.device, dtype=torch.bfloat16)
+        labels = torch.randn(2, hidden_dim, device=uninterrupted.device, dtype=torch.bfloat16)
+        train(uninterrupted)
+        buffers = _momentum_buffers(uninterrupted)
+        assert buffers and all(accelerator.is_pinned(buffer) == pin_memory for buffer in buffers)
+        uninterrupted.save_checkpoint(ckpt_dir, tag="mid")
+        train(uninterrupted)
+        straight_through = [float(p.float().norm()) for p in uninterrupted.module.parameters()]
+
+        resumed = build()
+        resumed.load_checkpoint(ckpt_dir, tag="mid")
+        train(resumed)
+        buffers = _momentum_buffers(resumed)
+        assert buffers and all(accelerator.is_pinned(buffer) == pin_memory for buffer in buffers)
+        after_resume = [float(p.float().norm()) for p in resumed.module.parameters()]
+        for straight, restored in zip(straight_through, after_resume):
+            assert straight == pytest.approx(restored, abs=1e-4)

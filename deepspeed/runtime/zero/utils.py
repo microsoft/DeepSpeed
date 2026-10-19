@@ -241,3 +241,55 @@ def defragment(tensors: List[torch.Tensor]) -> torch.Tensor:
         tensor.data = device_buffer.narrow(0, offset, tensor_numel)
 
     return device_buffer
+
+
+class OverlappedHostWriteback:
+    """Copies device results to host memory on a side stream while the next ones are computed.
+
+    `submit` takes the copies of the work just queued on the current stream, and issues the
+    copies of the previous submission. Every dependency is enforced by the host with event
+    synchronization: a stream waiting on an event of another stream serializes the two on
+    some accelerators, which would remove the overlap this exists for. Sources stay referenced
+    until their copy completes, and `drain` has to run before the host reads a destination.
+    """
+
+    def __init__(self):
+        accelerator = get_accelerator()
+        self.stream = None if accelerator.is_synchronized_device() else accelerator.Stream()
+        self.computed = None
+        self.in_flight = None
+
+    def submit(self, copies):
+        if self.stream is None:
+            for destination, source in copies:
+                destination.copy_(source)
+            return
+        computed = get_accelerator().Event()
+        computed.record()
+        self._issue_computed()
+        self.computed = (computed, copies)
+
+    def drain(self):
+        self._issue_computed()
+        self._wait_in_flight()
+
+    def _issue_computed(self):
+        if self.computed is None:
+            return
+        computed, copies = self.computed
+        self.computed = None
+        computed.synchronize()
+        # One batch in flight bounds the device memory its sources keep alive.
+        self._wait_in_flight()
+        accelerator = get_accelerator()
+        with accelerator.stream(self.stream):
+            for destination, source in copies:
+                destination.copy_(source, non_blocking=True)
+            copied = accelerator.Event()
+            copied.record()
+        self.in_flight = (copied, copies)
+
+    def _wait_in_flight(self):
+        if self.in_flight is not None:
+            self.in_flight[0].synchronize()
+            self.in_flight = None
