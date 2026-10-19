@@ -119,12 +119,49 @@ def _ulp_stats(actual, expected):
     }
 
 
-def _assert_ulp_close(actual, expected, *, max_ulp, min_frac_within_1, label):
+def _assert_ulp_close(actual, expected, *, max_ulp, min_frac_within_1, label, atol=0.0):
+    assert torch.isfinite(actual).all() and torch.isfinite(expected).all(), f"{label} has non-finite values"
     stats = _ulp_stats(actual, expected)
     message = (f"{label} ULP stats: max={stats['max']}, median={stats['median']}, "
-               f"frac_within_1={stats['frac_within_1']}")
-    assert stats["max"] <= max_ulp, message
+               f"frac_within_1={stats['frac_within_1']}, atol={atol}")
+    max_outside_atol = stats["max"]
+    if atol:
+        outside_atol = (actual.float() - expected.float()).abs() > atol
+        max_outside_atol = _ulp_stats(actual[outside_atol], expected[outside_atol])["max"]
+    assert max_outside_atol <= max_ulp, message
     assert stats["frac_within_1"] >= min_frac_within_1, message
+
+
+def test_dx_tolerance_accepts_ulp_or_small_absolute_error():
+    expected = torch.ones(100, dtype=torch.bfloat16)
+    expected[0] = 2**-26
+    actual = expected.clone()
+    # Near cancellation, 119 BF16 ULPs can be much smaller than 1e-7.
+    actual.view(torch.int16)[0] += 119
+    actual.view(torch.int16)[1] += 8
+
+    assert 0 < (actual[0].float() - expected[0].float()).abs() < 1e-7
+    assert (actual[1].float() - expected[1].float()).abs() > 1e-7
+    _assert_ulp_close(actual, expected, max_ulp=8, min_frac_within_1=0.95, label="dx", atol=1e-7)
+    with pytest.raises(AssertionError, match="dx"):
+        _assert_ulp_close(actual, expected, max_ulp=8, min_frac_within_1=0.95, label="dx")
+
+
+@pytest.mark.parametrize("case", ["above-both-limits", "too-many-outliers", "nan", "infinity"])
+def test_dx_tolerance_still_rejects_large_errors_and_nonfinite_values(case):
+    expected = torch.ones(100, dtype=torch.bfloat16)
+    actual = expected.clone()
+    if case == "above-both-limits":
+        actual.view(torch.int16)[0] += 9
+    elif case == "too-many-outliers":
+        expected[:6] = 2**-26
+        actual.copy_(expected)
+        actual.view(torch.int16)[:6] += 119
+    else:
+        actual[0] = float("nan") if case == "nan" else float("inf")
+
+    with pytest.raises(AssertionError, match="dx"):
+        _assert_ulp_close(actual, expected, max_ulp=8, min_frac_within_1=0.95, label="dx", atol=1e-7)
 
 
 def _check_fused_rms_norm_matches_hf_forward_and_backward(dtype, shape):
@@ -145,7 +182,14 @@ def _check_fused_rms_norm_matches_hf_forward_and_backward(dtype, shape):
     fused_out.backward(upstream)
 
     _assert_ulp_close(fused_out, eager_out, max_ulp=2, min_frac_within_1=0.99, label="forward")
-    _assert_ulp_close(fused_hidden.grad, eager_hidden.grad, max_ulp=8, min_frac_within_1=0.95, label="dx")
+    # A narrow row's two FP32 dx terms can nearly cancel, making a tiny absolute error many low-precision ULPs.
+    dx_atol = 1e-7 if shape[-1] <= 128 else 0.0
+    _assert_ulp_close(fused_hidden.grad,
+                      eager_hidden.grad,
+                      max_ulp=8,
+                      min_frac_within_1=0.95,
+                      label="dx",
+                      atol=dx_atol)
     _assert_ulp_close(fused_weight.grad, eager_weight.grad, max_ulp=8, min_frac_within_1=0.95, label="dgamma")
 
 
