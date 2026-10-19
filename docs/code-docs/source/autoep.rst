@@ -1,3 +1,7 @@
+.. Copyright (c) DeepSpeed Team.
+.. SPDX-License-Identifier: Apache-2.0
+.. DeepSpeed Team
+
 AutoEP (Automatic Expert Parallelism)
 =====================================
 
@@ -33,7 +37,7 @@ Transformers build that exposes the matching config/model classes,
        but the tested ``4.x`` builds do not match the validated AutoEP layout.
    * - ``qwen3_5_moe``
      - ``5.2.0``
-     - Requires the Qwen3.5 text-backbone ``qwen3_5_moe_text`` model type;
+     - Supports text input through the text backbone or the MoE wrapper; vision input is untested;
        for performance on Qwen3.5's Gated DeltaNet layers, install optimized
        kernels. See the `Hugging Face Transformers kernel loading docs
        <https://huggingface.co/docs/transformers/kernel_doc/loading_kernels>`__
