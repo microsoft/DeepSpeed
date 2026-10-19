@@ -60,6 +60,11 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def use_host_timers(self):
         return self.is_synchronized_device()
 
+    def get_grouped_mm(self):
+        from deepspeed.ops.npu.grouped_mm import grouped_mm
+
+        return grouped_mm
+
     def resolves_data_dependency(self):
         return self.is_synchronized_device()
 

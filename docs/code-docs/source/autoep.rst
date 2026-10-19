@@ -148,7 +148,8 @@ value other than ``False`` instead of silently changing the requested behavior.
 1. During ``deepspeed.initialize()``, AutoEP scans the model for MoE layers
    using preset-defined patterns (router name, expert name, weight shapes).
 2. Detected MoE blocks are replaced with ``AutoEPMoELayer``, which uses
-   TorchTitan's grouped GEMM kernels and AllToAll token dispatch.
+   grouped GEMM and AllToAll token dispatch. The accelerator may supply a
+   native grouped operation; otherwise the existing PyTorch/Triton paths apply.
 3. EP/EDP process groups are created automatically based on ``autoep_size``.
 4. Expert parameters are marked for expert-data-parallel gradient reduction;
    router and shared-expert parameters use standard data-parallel reduction.
