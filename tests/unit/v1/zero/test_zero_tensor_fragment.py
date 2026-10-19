@@ -14,7 +14,7 @@ from unit.simple_model import random_dataloader, SimpleModel
 from unit.util import bf16_required_version_check
 
 import deepspeed
-from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
+from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_model_grads, safe_get_full_optimizer_state
 from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_grad, safe_set_full_optimizer_state
 from deepspeed.utils import safe_get_local_fp32_param, safe_get_local_grad, safe_get_local_optimizer_state
 from deepspeed.utils import safe_set_local_fp32_param, safe_set_local_grad, safe_set_local_optimizer_state
@@ -120,7 +120,8 @@ def test_safe_get_full_model_grads_coalesces_zero_gradients(monkeypatch):
     assert torch.equal(grads["second"], torch.tensor([0.0, 3.0, 0.0]))
 
 
-def test_safe_get_full_model_grads_includes_unowned_zero_buffers(monkeypatch):
+@pytest.mark.parametrize('coalesced', [True, False])
+def test_safe_get_full_model_grads_includes_unowned_zero_buffers(monkeypatch, coalesced):
     first = torch.nn.Parameter(torch.zeros(2))
     first._hp_mapping = _GradientMapping(torch.tensor([1.0, 2.0]))
     first._index_in_param_group = 0
@@ -136,15 +137,91 @@ def test_safe_get_full_model_grads_includes_unowned_zero_buffers(monkeypatch):
         calls.append((buffers, group))
         buffers[1].add_(torch.tensor([4.0, 5.0, 6.0]))
 
-    monkeypatch.setattr(tensor_fragment_module.dist, "has_all_reduce_coalesced", lambda: True)
+    def all_reduce(buffer, group=None):
+        calls.append(([buffer], group))
+        if buffer.numel() == 3:
+            buffer.add_(torch.tensor([4.0, 5.0, 6.0]))
+
+    monkeypatch.setattr(tensor_fragment_module.dist, "has_all_reduce_coalesced", lambda: coalesced)
     monkeypatch.setattr(tensor_fragment_module.dist, "all_reduce_coalesced", all_reduce_coalesced)
+    monkeypatch.setattr(tensor_fragment_module.dist, "all_reduce", all_reduce)
 
     grads = tensor_fragment_module.safe_get_full_model_grads(
         _NamedParameterModel([("first", first), ("unowned", unowned)]))
 
-    assert len(calls) == 1
-    assert len(calls[0][0]) == 2
+    assert len(calls) == (1 if coalesced else 2)
+    assert all(group is first._dp_group for _, group in calls)
+    assert torch.equal(grads["first"], torch.tensor([1.0, 2.0]))
     assert torch.equal(grads["unowned"], torch.tensor([4.0, 5.0, 6.0]))
+
+
+def test_safe_get_full_model_grads_separates_groups(monkeypatch):
+    first = torch.nn.Parameter(torch.zeros(2))
+    second = torch.nn.Parameter(torch.zeros(2))
+    for param in (first, second):
+        param._hp_mapping = None
+        param._dp_group = object()
+
+    contributions = {first._dp_group: 2.0, second._dp_group: 3.0}
+
+    def all_reduce_coalesced(buffers, group=None):
+        for buffer in buffers:
+            buffer.add_(contributions[group])
+
+    monkeypatch.setattr(tensor_fragment_module.dist, "has_all_reduce_coalesced", lambda: True)
+    monkeypatch.setattr(tensor_fragment_module.dist, "all_reduce_coalesced", all_reduce_coalesced)
+
+    grads = safe_get_full_model_grads(_NamedParameterModel([("first", first), ("second", second)]))
+    assert torch.equal(grads["first"], torch.full((2, ), 2.0))
+    assert torch.equal(grads["second"], torch.full((2, ), 3.0))
+
+
+def test_safe_get_full_model_grads_local_gradients():
+    model = torch.nn.Linear(2, 1)
+    model.weight.grad = torch.ones_like(model.weight)
+
+    grads = safe_get_full_model_grads(model)
+    assert grads["weight"] is model.weight.grad
+    assert grads["bias"] is None
+
+
+class TestFullModelGrads(DistributedTest):
+    world_size = 2
+
+    @pytest.mark.parametrize('zero_stage', [1, 2])
+    def test_matches_unpartitioned_gradients(self, zero_stage):
+        import copy
+
+        torch.manual_seed(123)
+        model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 1))
+        model.register_parameter('frozen', torch.nn.Parameter(torch.ones(1), requires_grad=False))
+        reference = copy.deepcopy(model).to(get_accelerator().current_device_name())
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        engine, _, _, _ = deepspeed.initialize(model=model,
+                                               optimizer=optimizer,
+                                               config={
+                                                   "train_micro_batch_size_per_gpu": 2,
+                                                   "zero_optimization": {
+                                                       "stage": zero_stage
+                                                   }
+                                               })
+        inputs = torch.arange(8, device=engine.device, dtype=torch.float32).reshape(2, 4) / 8
+        all_inputs = torch.cat([inputs + rank for rank in range(dist.get_world_size())])
+        reference(all_inputs).square().mean().backward()
+        engine.backward(engine(inputs + dist.get_rank()).square().mean())
+
+        try:
+            grads = safe_get_full_model_grads(engine.module)
+            for name, param in reference.named_parameters():
+                if param.grad is None:
+                    assert grads[name] is None
+                else:
+                    torch.testing.assert_close(grads[name], param.grad)
+                    torch.testing.assert_close(grads[name],
+                                               safe_get_full_grad(dict(engine.module.named_parameters())[name]))
+            engine.step()
+        finally:
+            engine.destroy()
 
 
 def run_fragmented_model(model, config_dict, hidden_dim, dtype, validate_after_bwd, validate_after_step):

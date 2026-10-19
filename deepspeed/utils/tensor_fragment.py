@@ -233,6 +233,12 @@ def safe_get_full_grad(param):
 def safe_get_full_model_grads(model):
     """Assemble full gradients for all model parameters with coalesced communication.
 
+    Call on every data-parallel rank with the same model after ``backward`` and
+    before ``step``. ZeRO-1/2 gradients use one coalesced reduction per
+    data-parallel group when the backend supports it. ZeRO-3 uses the existing
+    per-parameter gradient accessor. Each returned gradient covers the parameter
+    on the current tensor/expert-parallel rank; AutoTP/AutoEP shards remain local.
+
     Args:
         model (``torch.nn.Module``): A model containing DeepSpeed-managed parameters.
 
@@ -249,8 +255,7 @@ def safe_get_full_model_grads(model):
             continue
 
         if hasattr(param, 'ds_id'):
-            # ZeRO-3 uses all-gather per parameter because partitions can have different sizes.
-            full_grads[name] = param._z3_optimizer.get_fp32_grad_for_param(param)
+            full_grads[name] = safe_get_full_grad(param)
             continue
 
         if not hasattr(param, '_hp_mapping'):
