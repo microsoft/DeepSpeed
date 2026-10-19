@@ -375,6 +375,27 @@ class TestAutoEPConfig:
         assert config.skip_recompute_combine is True
         validate_autoep_config(config, world_size=2, pp_size=1, tp_size=1, sp_size=1)
 
+    @pytest.mark.parametrize("preset_model", [None, "mixtral"], ids=["automatic-preset", "explicit-preset"])
+    @pytest.mark.parametrize("pattern", [r"custom\.wrapper\.moe", r"model\.layers\.\d+\.block_sparse_moe", ""],
+                             ids=["custom-parent", "preset-pattern", "empty-pattern"])
+    def test_skip_recompute_combine_rejects_pattern_overrides_even_with_supported_presets(self, preset_model, pattern):
+        settings = {
+            "enabled": True,
+            "autoep_size": 2,
+            "comm_backend": "deepep",
+            "comm_max_tokens_per_rank": 4096,
+            "preset_model": preset_model,
+            "moe_layer_pattern": pattern,
+        }
+        config = parse_autoep_config({**settings, "skip_recompute_combine": True})
+        with pytest.raises(ValueError, match="skip_recompute_combine.*moe_layer_pattern"):
+            validate_autoep_config(config, world_size=2, pp_size=1, tp_size=1, sp_size=1)
+
+        config = parse_autoep_config({**settings, "skip_recompute_combine": False})
+        validate_autoep_config(config, world_size=2, pp_size=1, tp_size=1, sp_size=1)
+        config = parse_autoep_config({**settings, "skip_recompute_combine": True, "moe_layer_pattern": None})
+        validate_autoep_config(config, world_size=2, pp_size=1, tp_size=1, sp_size=1)
+
     def test_fused_combine_rejects_folded_tensor_parallelism(self):
         config = parse_autoep_config({
             "enabled": True,

@@ -422,8 +422,12 @@ The skip relies on nothing reading the skipped output, so it is guarded:
   DeepSpeed's own checkpointing API are also rejected.
 - Only presets whose decoder layer adds the MoE output straight to the residual
   are accepted: ``deepseek_v2``, ``deepseek_v3``, ``minimax_m3``, ``mixtral``,
-  ``qwen3_5_moe`` and ``qwen3_moe``. Other presets and custom patterns are
-  rejected at conversion.
+  ``qwen3_5_moe`` and ``qwen3_moe``. Other presets are rejected at conversion.
+  Any non-null ``moe_layer_pattern`` is rejected during configuration validation,
+  even with an explicit or auto-detected supported preset: overriding the pattern
+  changes the decoder parent, so the preset name no longer establishes its
+  output-consumer contract. Leave the pattern unset or disable the skip;
+  custom patterns remain supported when this option is off.
 - The skipped combine returns NaN rather than uninitialized memory. If
   something outside the contract reads it in a value-dependent operation,
   it can produce non-finite outputs or gradients. The sentinel is not a

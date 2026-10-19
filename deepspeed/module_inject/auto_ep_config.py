@@ -244,6 +244,10 @@ def validate_autoep_config(
             raise ValueError('skip_recompute_combine skips the DeepEP combine, so it requires comm_backend="deepep" '
                              f'and autoep_size > 1, but comm_backend="{config.comm_backend}" and '
                              f"autoep_size={config.autoep_size} were set.")
+        if config.moe_layer_pattern is not None:
+            raise ValueError("skip_recompute_combine does not support a custom moe_layer_pattern, because the "
+                             "optimization requires a checked preset decoder-layer contract. Leave the pattern "
+                             "unset or disable skip_recompute_combine.")
         # The recompute is recognized as a grad-enabled forward that runs inside a backward pass.
         if not hasattr(torch._C, "_current_graph_task_id"):
             raise ValueError("skip_recompute_combine needs torch._C._current_graph_task_id, which this PyTorch "
