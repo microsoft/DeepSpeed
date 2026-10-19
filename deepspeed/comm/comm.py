@@ -140,7 +140,7 @@ def timed_op(func):
                     timers(log_name).stop()
                     # need temp var since 'elapsed' resets events
                     time_elapsed = timers(log_name).elapsed(reset=False)
-                    comms_logger.append(raw_name, log_name, time_elapsed, msg_size)
+                    comms_logger.append(raw_name, log_name, time_elapsed, msg_size, group=func_args.get('group'))
 
     return log_wrapper
 
