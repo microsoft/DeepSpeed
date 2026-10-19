@@ -682,8 +682,9 @@ plan optimizer states, and does not change the placement the layer runs with.
   a rank's packed local expert tensor ``[local_experts, ...]`` in row-major
   order. That tensor is the unpartitioned parameter: under ZeRO-3, gather the
   parameter (for example with ``deepspeed.zero.GatheredParameters``) before
-  applying the offsets. Expert-data-parallel replicas of a rank hold the same
-  tensor, so any of them can serve as the source.
+  applying the offsets. Ranks are EP-local, so expert-data-parallel replicas
+  are not candidates here; plan from ``expert_storage_affine_maps()`` to read
+  from them.
 - When several source ranks hold an element, the plan reads it from the
   lowest-ranked holder. Pass ``replica_selector``, a callable that receives a
   ``ReplicaSelectionRequest`` and returns the ``source_rank`` of one of its
@@ -703,7 +704,7 @@ stores, so a plan built from it reads directly from runtime storage:
 
     from deepspeed.checkpoint.affine_transfer import plan_transfer
 
-    # Collective: every rank in the default process group must call it.
+    # Built locally from the expert data parallel group table; no communication.
     storage_maps = layer.expert_storage_affine_maps()  # {"w1": ParamAffineMap, ...}
     plan = plan_transfer(target_map, storage_maps["w1"])
 

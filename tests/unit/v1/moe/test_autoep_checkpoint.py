@@ -678,8 +678,19 @@ class TestAutoEPExpertStorageMaps(DistributedTest):
         target_experts = [[3], [0], [2], [1]]
         target_placement = make_autoep_placement_descriptor(4, target_experts)
 
-        for _, module in _autoep_modules(engine):
+        # Building the maps needs no communication, so one rank can do it while the others wait;
+        # a collective inside would deadlock here.
+        solo_maps = None
+        if rank == 0:
+            solo_maps = [module.expert_storage_affine_maps() for _, module in _autoep_modules(engine)]
+        dist.barrier()
+
+        for index, (_, module) in enumerate(_autoep_modules(engine)):
             storage_maps = module.expert_storage_affine_maps()
+            if solo_maps is not None:
+                for name in EXPERT_WEIGHT_NAMES:
+                    assert storage_maps[name].shard_shapes == solo_maps[index][name].shard_shapes
+                    assert storage_maps[name].pieces_by_rank == solo_maps[index][name].pieces_by_rank
             for name in EXPERT_WEIGHT_NAMES:
                 param = getattr(module.experts, name)
                 affine_map = storage_maps[name]
