@@ -215,6 +215,10 @@ class DeepSpeedAccelerator(ABC):
     def prefer_triton_grouped_mm(self):
         return False
 
+    def get_hifloat8_provider(self):
+        """Return optional public HiFloat8 APIs for this accelerator."""
+        return None
+
     def get_grouped_mm(self):
         """Return a native differentiable grouped GEMM override, if available."""
         return None

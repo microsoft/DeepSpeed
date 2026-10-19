@@ -91,6 +91,54 @@ def test_npu_expert_helper_preserves_upstream_activation(monkeypatch):
 
 
 @pytest.mark.skipif(get_accelerator().device_name() != "npu", reason="requires an available NPU")
+@pytest.mark.parametrize("counts", [[64, 64], [128, 0], [0, 128], [1, 127], [0, 0], [32, 32, 32, 32], [0, 127, 0, 1],
+                                    [1, 0, 0, 127], [0, 0, 0, 128], [0, 0, 0, 0], [2] * 64])
+@pytest.mark.parametrize("dim,hidden_dim", [(128, 128), (2048, 512)])
+@pytest.mark.parametrize("backend", ["bf16", "torchao"])
+def test_npu_hifloat8_expert_forward_and_gradients(counts, dim, hidden_dim, backend):
+    # Catches unsupported native dispatch, inaccurate dX/dW, and empty-expert leakage.
+    import torch_npu
+
+    torch_npu.npu.set_device(0)
+    torch.manual_seed(42)
+    baseline = GroupedExperts(dim, hidden_dim, len(counts), use_grouped_mm=False).to(device="npu",
+                                                                                     dtype=torch.bfloat16)
+    with torch.no_grad():
+        for weight in baseline.parameters():
+            weight.normal_(std=0.02)
+    candidate = GroupedExperts(dim, hidden_dim, len(counts)).to(device="npu", dtype=torch.bfloat16)
+    candidate.load_state_dict(baseline.state_dict())
+    if backend == "torchao":
+        from torchao.quantization import quantize_
+        from torchao.hifloat8 import HiFloat8GroupedConfig
+
+        quantize_(candidate, HiFloat8GroupedConfig(), filter_fn=lambda module, name: name == "")
+    x = torch.randn(sum(counts), dim, device="npu", dtype=torch.bfloat16, requires_grad=True)
+    candidate_x = x.detach().clone().requires_grad_()
+    groups = torch.tensor(counts, device="npu", dtype=torch.int64)
+    reference = baseline(x, groups)
+    actual = candidate(candidate_x, groups)
+    grad = torch.randn_like(reference)
+    reference.backward(grad)
+    actual.backward(grad)
+    torch_npu.npu.synchronize()
+    pairs = [(actual, reference), (candidate_x.grad, x.grad)]
+    pairs.extend((actual_w.grad, ref_w.grad) for actual_w, ref_w in zip(candidate.parameters(), baseline.parameters()))
+    for actual_t, reference_t in pairs:
+        assert torch.isfinite(actual_t).all()
+        assert torch.isfinite(reference_t).all()
+        if not reference_t.numel() or reference_t.float().norm() == 0:
+            assert torch.count_nonzero(actual_t) == 0
+            continue
+        actual_flat, reference_flat = actual_t.float().flatten(), reference_t.float().flatten()
+        assert torch.nn.functional.cosine_similarity(actual_flat, reference_flat, dim=0) >= 0.99
+        assert (actual_flat - reference_flat).norm() / reference_flat.norm() <= 0.15
+    for index, count in enumerate(counts):
+        if count == 0:
+            assert all(torch.count_nonzero(weight.grad[index]) == 0 for weight in candidate.parameters())
+
+
+@pytest.mark.skipif(get_accelerator().device_name() != "npu", reason="requires an available NPU")
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.parametrize("trans_b", [False, True])
 @pytest.mark.parametrize("input_grad,weight_grad", [(True, False), (False, True), (True, True)])
@@ -136,6 +184,45 @@ def test_npu_native_grouped_mm_matches_matmul_with_partial_gradients(dtype, tran
         for index, count in enumerate(counts):
             if count == 0:
                 assert torch.count_nonzero(weight.grad[index]) == 0
+
+
+@pytest.mark.skipif(get_accelerator().device_name() != "npu", reason="requires an available NPU")
+def test_npu_provider_experts_preserve_bfloat16_residual_with_float16_compute():
+    # A working-dtype leak promotes the residual and breaks the BF16-facing module contract.
+    torch.npu.set_device(0)
+    torch.manual_seed(73)
+    experts = GroupedExperts(64, 64, 4).to(device="npu", dtype=torch.bfloat16)
+    projection = torch.nn.Linear(64, 32).to(device="npu", dtype=torch.bfloat16)
+    with torch.no_grad():
+        for weight in experts.parameters():
+            weight.normal_(std=0.02)
+    parameters = dict(experts.named_parameters())
+    state_keys = tuple(experts.state_dict())
+    from torchao.quantization import quantize_
+    from torchao.hifloat8 import HiFloat8GroupedConfig
+
+    policy = HiFloat8GroupedConfig.from_dict({"compute_dtype": "float16"})
+    quantize_(experts, policy, filter_fn=lambda module, name: name == "")
+    counts = torch.tensor([0, 8, 0, 4], device="npu", dtype=torch.int64)
+    x = torch.randn(15, 64, device="npu", dtype=torch.bfloat16, requires_grad=True)
+    branch = experts(x, counts)
+    residual = x + branch
+    output = projection(residual)
+    assert output.dtype == branch.dtype == residual.dtype == x.dtype
+    assert torch.count_nonzero(branch[12:]) == 0
+    output.float().square().mean().backward()
+    torch.npu.synchronize()
+
+    assert x.grad.dtype == torch.bfloat16 and bool(torch.isfinite(x.grad).all())
+    assert tuple(experts.state_dict()) == state_keys
+    for name, parameter in experts.named_parameters():
+        assert parameter is parameters[name]
+        assert parameter.dtype == parameter.grad.dtype == torch.bfloat16
+        assert bool(torch.isfinite(parameter.grad).all())
+        assert torch.count_nonzero(parameter.grad[0]) == torch.count_nonzero(parameter.grad[2]) == 0
+    for parameter in projection.parameters():
+        assert parameter.dtype == parameter.grad.dtype == torch.bfloat16
+        assert bool(torch.isfinite(parameter.grad).all())
 
 
 def test_grouped_override_rejects_explicit_fused_gate_up():

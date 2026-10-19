@@ -154,6 +154,25 @@ value other than ``False`` instead of silently changing the requested behavior.
 4. Expert parameters are marked for expert-data-parallel gradient reduction;
    router and shared-expert parameters use standard data-parallel reduction.
 
+**Optional HiFloat8 training:**
+
+The accelerator's ``get_hifloat8_provider()`` hook supplies public TorchAO
+policy, capability-probe and recipe APIs, or ``None`` when unavailable.
+With the existing ``hifloat8`` configuration, selected Linear and GroupedExperts
+modules are converted together by ``torchao.quantization.quantize_`` using
+``ModuleFqnToConfig`` and registered module handlers. Policy parsing belongs to
+TorchAO; selection and training lifecycle checks belong to DeepSpeed.
+The engine creates AO's ``HiFloat8GroupedConfig`` from the same numerical
+settings as Linear. Both configurations inherit the common policy. AO
+registers both module handlers; its grouped handler binds the GEMM through the
+expert container's ``grouped_mm`` slot without importing DeepSpeed. The
+accelerator supplies public configuration/probe APIs, not a GEMM callable.
+
+The separate ``get_grouped_mm()`` hook supplies high-precision grouped GEMM.
+On NPU it uses TorchNPU autograd without a TorchAO dependency. HiFloat8 requires
+BF16 parameters and currently supports ZeRO stages 0–2; quantized checkpoint
+ingestion into ZeRO-3 remains unsupported.
+
 On Ascend NPU, AutoEP generates permutation indices on device when there are
 at least 64 source/expert groups. Smaller groups use the CPU reference path
 because device launch overhead can dominate. The ordering and padding contract
