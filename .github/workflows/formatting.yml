@@ -1,0 +1,48 @@
+name: Formatting
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      '**'
+  merge_group:
+    branches: [ master ]
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # formatting and basic install on cpu-only machine
+  unit-tests:
+    name: formatting / formatting checks
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate package README without installing DeepSpeed
+        run: python scripts/check-readme.py
+
+      # Modal runs these from the base branch, so this is where a PR's own ci/ changes get tested.
+      - name: Self-test CI path gate and test selector
+        run: python ci/test_tests_fetcher.py
+
+      - name: environment
+        run: |
+          which python
+          python --version
+
+      - name: Install dependencies
+        run: |
+          # Previously we would do pip install .[dev] but this is causing out of
+          # space errors start with torch 2.1.0 release
+          grep -E "clang-format|pre-commit" requirements/requirements-dev.txt | xargs pip install
+
+      - name: Formatting checks
+        run: |
+          pip show pre-commit clang-format
+          pre-commit run --all-files

@@ -79,7 +79,7 @@ def map_to_flat_opt_states(flat_hp_tensor, lp_tensors, optim_state, opt_keys):
                 hp_fragment_address = lp._hp_mapping.get_hp_fragment_address()
                 hp_fragment = buffer.narrow(0, hp_fragment_address.start, hp_fragment_address.numel)
                 hp_fragment.data.copy_(lp._hp_mapping.get_hp_fragment(optim_state_key=key).data)
-                lp._hp_mapping.hp_fragment = hp_fragment
+                lp._hp_mapping.optim_fragment[key] = hp_fragment
 
         optim_state[hp_param][key] = buffer
 
@@ -103,20 +103,26 @@ def set_full_hp_param(self, value, optim_state_key=None):
         hp_fragment.data.copy_(value_fragment.data)
 
 
-def get_full_hp_grad(self):
-    reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
-    if self._hp_mapping is not None:
-        lp_grad_fragment = self._hp_mapping.get_lp_grad_fragment(self._index_in_param_group)
+def _get_full_hp_grad_buffer(param):
+    reduce_buffer = torch.zeros_like(param, dtype=torch.float32).flatten()
+    if param._hp_mapping is not None:
+        lp_grad_fragment = param._hp_mapping.get_lp_grad_fragment(param._index_in_param_group)
         hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
 
-        lp_frag_address = self._hp_mapping.lp_fragment_address
+        lp_frag_address = param._hp_mapping.lp_fragment_address
         reduce_fragment = torch.narrow(reduce_buffer, 0, lp_frag_address.start, lp_frag_address.numel)
 
-        if self.view(-1).shape == hp_grad_fragment.shape:
-            reduce_buffer.data.copy_(hp_grad_fragment.data)
-        else:
-            reduce_fragment.data.copy_(hp_grad_fragment.data)
+        if param.view(-1).shape == hp_grad_fragment.shape:
+            # BF16 retains a full accumulation buffer on each rank, but reconstruction must contribute
+            # only the fragment owned by this optimizer partition.
+            hp_grad_fragment = hp_grad_fragment.narrow(0, lp_frag_address.start, lp_frag_address.numel)
+        reduce_fragment.data.copy_(hp_grad_fragment.data)
 
+    return reduce_buffer
+
+
+def get_full_hp_grad(self):
+    reduce_buffer = _get_full_hp_grad_buffer(self)
     dist.all_reduce(reduce_buffer, group=self._dp_group)
     return reduce_buffer.reshape_as(self)
 
@@ -216,6 +222,10 @@ def safe_get_full_grad(param):
         Returns:
             Union[torch.Tensor, None]: A tensor on accelerator device
     """
+    # BF16_Optimizer keeps its accumulation buffer separately while retaining the low-precision staging gradient.
+    if getattr(param, '_hp_grad', None) is not None:
+        return param.get_full_hp_grad()
+
     if param.grad is not None:
         return param.grad
 
@@ -250,7 +260,7 @@ def safe_get_full_model_grads(model):
     groups = {}
 
     for name, param in model.named_parameters():
-        if param.grad is not None:
+        if getattr(param, '_hp_grad', None) is None and param.grad is not None:
             full_grads[name] = param.grad
             continue
 
@@ -262,15 +272,7 @@ def safe_get_full_model_grads(model):
             full_grads[name] = None
             continue
 
-        mapping = param._hp_mapping
-        reduce_buffer = torch.zeros_like(param, dtype=torch.float32).flatten()
-        if mapping is not None:
-            grad_fragment = mapping.get_lp_grad_fragment(param._index_in_param_group).to(torch.float32).flatten()
-            fragment_address = mapping.lp_fragment_address
-            if reduce_buffer.shape == grad_fragment.shape:
-                reduce_buffer.data.copy_(grad_fragment.data)
-            else:
-                reduce_buffer.narrow(0, fragment_address.start, fragment_address.numel).data.copy_(grad_fragment.data)
+        reduce_buffer = _get_full_hp_grad_buffer(param)
 
         group = param._dp_group
         group_id = id(group)

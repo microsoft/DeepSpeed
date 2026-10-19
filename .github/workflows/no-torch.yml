@@ -1,0 +1,61 @@
+name: no-torch
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'accelerator/**'
+      - '.github/workflows/no-torch.yml'
+      - 'op_builder/**'
+      - '!**/*.md'
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+    contents: read
+    issues: write
+
+jobs:
+  # Docs-only gate, disabled for now: the pull_request paths above already exclude
+  # Markdown and watch nothing under docs/ or blogs/, so the gate could never skip.
+  # Re-enable it, with needs/if in unit-tests, if this workflow must drop its path
+  # filters (to become a required check or run in the merge queue) or if
+  # is_docs_path() starts covering more than Markdown.
+  # check-paths:
+  #   uses: ./.github/workflows/check-paths.yml
+
+  unit-tests:
+    name: no-torch / source distribution build
+    # needs: check-paths
+    # if: ${{ !cancelled() && needs.check-paths.outputs.should_run != 'false' }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Python environment
+        run: |
+          pip uninstall torch --yes
+          pip install setuptools
+          pip install build
+          pip list
+
+      - name: Build deepspeed
+        run: |
+          DS_BUILD_STRING=" " python -m build --sdist
+
+      - name: Open GitHub issue if nightly CI fails
+        if: ${{ failure() && (github.event_name == 'schedule') }}
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filename: .github/ISSUE_TEMPLATE/ci_failure_report.md
+          update_existing: true

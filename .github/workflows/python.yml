@@ -1,0 +1,70 @@
+name: python
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      '**'
+  merge_group:
+    branches: [ master ]
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-paths:
+    name: python / check paths
+    uses: ./.github/workflows/check-paths.yml
+    with:
+      pr-ignore: version.txt
+
+  unit-tests:
+    name: python / install smoke (Python ${{ matrix.pyVersion }})
+    needs: check-paths
+    if: ${{ !cancelled() }}
+    strategy:
+      matrix:
+        pyVersion: ["3.10", "3.11", "3.12"]
+      fail-fast: false
+
+    runs-on: ubuntu-24.04
+    container:
+      image: python:${{ matrix.pyVersion }}-slim
+
+    steps:
+        - name: Fail if path filter failed
+          if: needs.check-paths.result != 'success'
+          run: exit 1
+
+        - name: Skip ignored-path install smoke
+          if: needs.check-paths.outputs.should_run != 'true'
+          run: echo "Only ignored paths changed; install smoke intentionally skipped."
+
+        - uses: actions/checkout@v7
+          if: needs.check-paths.outputs.should_run == 'true'
+
+        - name: Install build dependencies
+          if: needs.check-paths.outputs.should_run == 'true'
+          run: |
+            apt-get update && apt-get install -y build-essential ninja-build
+        - name: environment
+          if: needs.check-paths.outputs.should_run == 'true'
+          run: |
+            which python
+            python --version
+        - name: Install PyTorch (CPU)
+          if: needs.check-paths.outputs.should_run == 'true'
+          run: |
+            python -m pip install --upgrade pip
+            pip install torch --index-url https://download.pytorch.org/whl/cpu
+        - name: Install deepspeed
+          if: needs.check-paths.outputs.should_run == 'true'
+          run: |
+            pip install .
+        - name: DS Report
+          if: needs.check-paths.outputs.should_run == 'true'
+          run: |
+             ds_report

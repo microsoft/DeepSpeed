@@ -28,6 +28,22 @@ def disable_compiler_collective(func):
     return compiler.disable(func)
 
 
+def known_world_size(world_size):
+    """The world size when it can be determined, otherwise None.
+
+    ``init_distributed`` defaults its ``world_size`` argument to -1, and the value can also be
+    carried in the ``init_method`` URL (``tcp://host:port?world_size=2``), where neither the
+    argument nor ``WORLD_SIZE`` reflects it. Return None rather than a guess so that callers do
+    not act on an assumed size.
+    """
+    if world_size is not None and world_size > 0:
+        return world_size
+    env_world_size = os.environ.get('WORLD_SIZE', '')
+    if env_world_size.isdigit() and int(env_world_size) > 0:
+        return int(env_world_size)
+    return None
+
+
 def build_shm_op():
     builder = get_accelerator().create_op_builder("ShareMemCommBuilder")
     if builder is None or not deepspeed.ops.__compatible_ops__.get(builder.NAME, False):
@@ -202,6 +218,9 @@ class TorchBackend(Backend):
         self.init_process_group(backend, timeout, init_method, rank, world_size)
         if self.shm_comm_op != None:
             self.shm_comm_op.initialize(self.get_world_size(), self.get_rank())
+            # bf16/fp16 shm reduce kernels need avx512bw and fp32 needs avx2; without
+            # the ISA the kernel faults and its peers hang on the shm flags.
+            self.shm_vector_kernel_level = self.shm_comm_op.vector_kernel_level()
         # Best-effort SDMA (mori) backend acquisition.  Stays None on
         # non-AMD/ROCm or when mori is unavailable; in that case
         # all_gather_into_tensor below transparently falls through to
@@ -251,7 +270,11 @@ class TorchBackend(Backend):
             # 1. device_id arg was added in torch==2.3
             # 2. setting device_id leads to hanging in 2.6.0<torch<2.7.1 https://github.com/pytorch/pytorch/issues/153960
             # 3. device_id works and is needed for `cuda`, other accelerators may have issues at the moment. Therefore only do it for the `cuda` accelerator.
-            if ('device_id' in inspect.signature(torch.distributed.init_process_group).parameters
+            # 4. binding a device also makes torch build every later new_group() with ncclCommSplit;
+            #    a single-rank job has no peer to reach, so skip it there (#8248). Only skip when the
+            #    world size is actually known, never on an assumed one.
+            if (known_world_size(world_size) != 1
+                    and 'device_id' in inspect.signature(torch.distributed.init_process_group).parameters
                     and not (version.parse("2.6.0") < version.parse(torch.__version__) < version.parse("2.7.1"))
                     and get_accelerator().device_name() == 'cuda'):
                 local_rank = int(os.environ.get('LOCAL_RANK', 0))
@@ -271,6 +294,11 @@ class TorchBackend(Backend):
         world_size = torch.distributed.get_world_size(group=group)
         if world_size <= 1:
             return tensor
+        # The shm kernel's bf16/fp16 paths require avx512bw (level 2) and its fp32
+        # path avx2 (level 1); fall back to the process-group all_reduce otherwise.
+        if use_ds_op:
+            required_level = 1 if tensor.dtype == torch.float32 else 2
+            use_ds_op = getattr(self, 'shm_vector_kernel_level', 0) >= required_level
         if not use_ds_op:
             op = self._reduce_op(op)
             return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=False)
@@ -457,6 +485,14 @@ class TorchBackend(Backend):
     @stage_on_cpu(always_async=True, copy_to_cpu=False)
     def irecv(self, tensor, src=None, group=None, tag=0):
         return torch.distributed.irecv(tensor=tensor, src=src, group=group, tag=tag)
+
+    @disable_compiler_collective
+    def batch_isend_irecv(self, p2p_op_list):
+        ops = [
+            torch.distributed.P2POp(getattr(torch.distributed, op.op), op.tensor, op.peer, op.group, op.tag)
+            for op in p2p_op_list
+        ]
+        return torch.distributed.batch_isend_irecv(ops)
 
     @disable_compiler_collective
     @stage_on_cpu
