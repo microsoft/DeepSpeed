@@ -126,15 +126,6 @@ def get_accelerator():
         #    and run on compute node (with CUDA device) may cause mismatch
         #    between installation time and runtime.
 
-        if accelerator_name is None:
-            try:
-                # KLXPU (torch_xmlir) presents itself through torch.cuda, so this  #ignore-cuda
-                # check must come before the CUDA detection below.
-                import torch_xmlir  # noqa: F401,F811 # type: ignore
-
-                accelerator_name = "klxpu"
-            except ImportError as e:
-                pass
         try:
             import torch
 
@@ -190,6 +181,15 @@ def get_accelerator():
 
                 if hasattr(torch, 'supa') and torch.supa.is_available():
                     accelerator_name = "supa"
+            except ImportError as e:
+                pass
+        if accelerator_name is None:
+            try:
+                # KLXPU (torch_xmlir) presents itself through torch.cuda, so this  #ignore-cuda
+                # check must come before the CUDA detection below.
+                import torch_xmlir  # noqa: F401,F811 # type: ignore
+
+                accelerator_name = "klxpu"
             except ImportError as e:
                 pass
         if accelerator_name is None:
