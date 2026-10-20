@@ -28,6 +28,15 @@ entire deadlock argument, and it only holds because the digest made every rank c
 rounds. Returns only once every payload it posted has landed, so a caller can read the target buffers
 as soon as it is given control.
 
+Staging is an artifact of the current transport, not of affine transfer. Torch point-to-point
+operations move one contiguous tensor per peer per message, so a round whose regions are strided or come
+from several segments is packed through a per-peer arena, and ``StagingBudget`` bounds that arena; a
+round that is one region already contiguous in its buffer is sent or received in place.
+A zero-copy transport such as GPUDirect RDMA would instead take each round's ``(offset, length)`` pairs
+as a scatter/gather list over registered memory: that removes the arena copy, but needs a registration
+lifetime this API has no place for. Expect the wire contract -- one packed message per peer per round --
+to change when such a path lands.
+
 One device per process, with explicit transport-group rank bindings, synchronous on return. No CUDA graphs, no overlap with compute,
 no custom kernels: those all change the schedule, which is the last thing a first version of a data
 mover should be perturbing.
@@ -64,7 +73,10 @@ class TransferEndpoints:
 
 @dataclass(frozen=True)
 class StagingBudget:
-    """Bytes a rank may stage per peer, in each direction, at one time."""
+    """Bytes a rank may stage per peer, in each direction, at one time.
+
+    A property of the current torch point-to-point transport rather than of the plan; see the module
+    docstring."""
     bytes_per_peer: int = 8 << 20
 
 
@@ -307,6 +319,8 @@ def execute_transfers(requests: Sequence[TransferRequest],
     rank = dist.get_rank(group=group) if initialized else 0
     world_size = dist.get_world_size(group=group) if initialized else 1
     device = torch.device(get_accelerator().current_device_name()) if initialized else torch.device('cpu')
+    # Without a process group every buffer is on the host, whatever the accelerator is.
+    stream_ordered = initialized and not get_accelerator().is_synchronized_device()
     indexed, local_copies = [], []
     recv_rounds, send_rounds, recv_arenas, send_arenas = {}, {}, {}, {}
     recv_direct, send_direct = {}, {}
@@ -436,8 +450,8 @@ def execute_transfers(requests: Sequence[TransferRequest],
         if operations:
             for handle in dist.batch_isend_irecv(operations):
                 block_stream = getattr(handle, 'block_current_stream', None)
-                if device.type == 'cuda' and callable(block_stream):
-                    # Order arena reuse on the caller stream without a host polling delay per round.
+                if stream_ordered and callable(block_stream):
+                    # Order arena reuse on the caller stream; transport errors surface at the bounded drain below.
                     block_stream()
                     pending.append(handle)
                 else:
@@ -467,7 +481,7 @@ def execute_transfers(requests: Sequence[TransferRequest],
             _region(source, operation.source_offset, operation.chunk_shape, operation.segment.source_strides))
         copied += operation.payload_bytes
 
-    if device.type != 'cpu':
+    if stream_ordered:
         get_accelerator().current_stream().synchronize()
     return TransferStats(sum(len(request.plan.segments) for request in requests), len(indexed), rounds, copied, sent,
                          received)

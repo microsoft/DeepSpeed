@@ -63,8 +63,6 @@ def _row_to_column(world_size, tp_size=2):
     return source, target
 
 
-@pytest.mark.skipif(get_accelerator().device_name() != 'cuda' or get_accelerator().device_count() < 2,
-                    reason='requires two visible CUDA devices before distributed worker launch')
 class TestB2Transfer(DistributedTest):
     world_size = 2
 
@@ -198,7 +196,7 @@ class TestB2Transfer(DistributedTest):
                     guards.append((storage, size))
             requests.append(TransferRequest(f'mixed-{index}', plan_transfer(target_map, source_map), sources, targets))
             checks.append((targets, target_map, full))
-        if get_accelerator().device_name() == 'cuda':
+        if not get_accelerator().is_synchronized_device():
             stream = get_accelerator().Stream()
             stream.wait_stream(get_accelerator().current_stream())
             with get_accelerator().stream(stream):
@@ -229,19 +227,24 @@ class TestB2Transfer(DistributedTest):
             execute_transfers(requests, endpoints, torch.float32)
 
 
-@pytest.mark.skipif(get_accelerator().device_name() != 'cuda' or get_accelerator().device_count() < 8,
-                    reason='requires eight visible CUDA devices before distributed worker launch')
 class TestB2DisjointEndpoints(DistributedTest):
-    world_size = 8
+    """Every process is either a reader or a writer, never both.
 
-    def test_source_and_target_ranks_do_not_overlap(self):
+    A transfer that only appears to work by falling back to local copies fails here. Two ranks fit the
+    two-device pull-request runners; four fit the CPU multi-rank nightly and give each writer two readers.
+    """
+
+    @pytest.mark.parametrize('world_size', [2, 4])
+    def test_source_and_target_ranks_do_not_overlap(self, world_size):
         _join_transfer_group()
-        source, target = _row_to_column(4, tp_size=4)
+        source, target = _row_to_column(2)
         dtype = torch.float32
-        full = _full(32, 32, dtype)
-        endpoints = TransferEndpoints(source={location: location
+        full = _full(16, 16, dtype)
+        half = world_size // 2
+        # Readers are the lower half of the ranks and writers the upper half.
+        endpoints = TransferEndpoints(source={location: location % half
                                               for location in source.shard_shapes},
-                                      target={location: location + 4
+                                      target={location: half + location % half
                                               for location in target.shard_shapes})
         source_buffers = {
             location: source.extract(full, location).contiguous()
@@ -252,8 +255,10 @@ class TestB2DisjointEndpoints(DistributedTest):
         stats = execute_transfer(plan_transfer(target, source, PlanBudget()), source_buffers, target_buffers,
                                  endpoints, dtype)
 
-        assert stats.local_copy_bytes == 0, 'no process holds both ends, so nothing may be copied locally'
-        assert stats.received_bytes > 0
+        # With no process holding both ends, each element crosses the transport exactly once.
+        assert stats.local_copy_bytes == 0
+        assert stats.sent_bytes == sum(buffer.numel() for buffer in source_buffers.values()) * 4
+        assert stats.received_bytes == sum(buffer.numel() for buffer in target_buffers.values()) * 4
         _assert_matches(target_buffers, target, full)
 
 
