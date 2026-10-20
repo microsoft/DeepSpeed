@@ -1048,6 +1048,12 @@ class HybridEngineRollout(RolloutEngine):
         eos_token_id = self.tokenizer.eos_token_id
         model_dtype = next(module.parameters()).dtype
 
+        # AutoTP wraps module.config as a dict after sharding; restore the
+        # original config object so cache creation and mask logic work
+        if isinstance(getattr(module, "config", None), dict):
+            from types import SimpleNamespace
+            module.config = SimpleNamespace(**module.config)
+
         # --- Prefill with HF StaticCache (correct attention semantics) ---
         prefill_cache = self._create_static_cache(StaticCache, module.config, batch_size, max_len, device, model_dtype)
         # Hybrid models take a per-type mask dict (GDN must see None; a 2D
@@ -1071,8 +1077,14 @@ class HybridEngineRollout(RolloutEngine):
         # per-row positions: the batched step and decode-attention kernels
         # advance one entry per sequence (a shared scalar would race)
         write_pos = torch.full((batch_size, ), prompt_len, dtype=torch.long, device=device)
+        ds_tp_config = module.config
+        import deepspeed.comm as dist
+        if dist.is_initialized() and dist.get_world_size() > 1:
+            ds_tp_config = copy(module.config)
+            ds_tp_config.num_key_value_heads = max(1, module.config.num_key_value_heads // dist.get_world_size())
+            ds_tp_config.num_attention_heads = max(1, module.config.num_attention_heads // dist.get_world_size())
         ds_cache = DeepSpeedStaticCache(
-            module.config,
+            ds_tp_config,
             batch_size=batch_size,
             max_cache_len=max_len,
             device=device,
