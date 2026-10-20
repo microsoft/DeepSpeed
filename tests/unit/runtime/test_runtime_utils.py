@@ -27,6 +27,21 @@ def test_call_to_str():
     assert c2s('hello', 1138, val=3) == 'hello(1138, val=3)'
 
 
+@pytest.mark.parametrize('shape', [(), (0, ), (3, ), (2, 3)])
+@pytest.mark.parametrize('dtype', [torch.float32, torch.bfloat16, torch.float16, torch.uint8])
+def test_as_byte_view(shape, dtype):
+    tensor = torch.zeros(shape, dtype=dtype)
+    byte_view = ds_utils.as_byte_view(tensor)
+
+    assert byte_view.dtype == torch.uint8
+    assert byte_view.numel() == tensor.numel() * tensor.element_size()
+    assert byte_view.data_ptr() == tensor.data_ptr()
+
+    # Writes through the view must land in the original tensor, as broadcast is in-place.
+    byte_view.copy_(ds_utils.as_byte_view(torch.ones(shape, dtype=dtype)))
+    assert torch.equal(tensor, torch.ones(shape, dtype=dtype))
+
+
 class TestClipGradNorm(DistributedTest):
     world_size = 2
 

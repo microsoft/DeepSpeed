@@ -67,6 +67,49 @@ class TestNoOptim(DistributedTest):
         see_memory_usage('post-fwds', force=True)
 
 
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+class TestScalarParameter(DistributedTest):
+    """0-dim parameters (e.g. a learnable logit scale) must survive the uint8 parameter broadcasts."""
+    world_size = 1
+
+    def test(self, zero_stage):
+        hidden_dim = 4
+        ds_config = {
+            'train_batch_size': self.world_size,
+            'optimizer': {
+                'type': 'Adam',
+                'params': {
+                    'lr': 1e-3
+                }
+            },
+            'zero_optimization': {
+                'stage': zero_stage
+            },
+        }
+        if get_accelerator().is_bf16_supported():
+            ds_config['bf16'] = {'enabled': True}
+        elif get_accelerator().is_fp16_supported():
+            ds_config['fp16'] = {'enabled': True}
+
+        class ScalarParamModel(torch.nn.Module):
+
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+                self.scale = torch.nn.Parameter(torch.tensor(2.0))
+
+            def forward(self, x):
+                return self.linear(x) * self.scale
+
+        with deepspeed.zero.Init(enabled=zero_stage == 3, config_dict_or_path=ds_config):
+            model = ScalarParamModel()
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=ds_config)
+
+        with deepspeed.zero.GatheredParameters(model.module.scale, enabled=zero_stage == 3):
+            assert model.module.scale.dim() == 0
+            assert model.module.scale.item() == 2.0
+
+
 @pytest.mark.parametrize('optimizer_type', [None, Optimizer, Callable])
 class TestClientOptimizer(DistributedTest):
     world_size = 1
