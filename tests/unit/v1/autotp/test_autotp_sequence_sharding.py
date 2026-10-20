@@ -85,19 +85,23 @@ def tp_shared_input_ids(vocab_size, seq_len, step):
     return input_ids
 
 
+@pytest.mark.parametrize("checkpointing", [False, True])
 @pytest.mark.parametrize("mode", list(MODES))
 @pytest.mark.parametrize("zero_stage", [1, 3])
 class TestAutoTPSequenceSharding(DistributedTest):
     world_size = 2
 
-    def test_matches_single_device_training(self, zero_stage, mode):
-        """AutoTP with sequence sharding trains like the unsharded model under plain PyTorch SGD."""
+    def test_matches_single_device_training(self, zero_stage, mode, checkpointing):
+        """AutoTP with sequence sharding trains like the unsharded model under plain PyTorch SGD, also when each
+        decoder layer is recomputed in backward (the recomputation must save what the forward pass saved)."""
         skip_on_device()
         pytest.importorskip("transformers")
 
         config, model = build_qwen3_model()
         reference = copy.deepcopy(model).to(get_accelerator().current_device_name())
         reference_optimizer = torch.optim.SGD(reference.parameters(), lr=0.1)
+        if checkpointing:
+            model.gradient_checkpointing_enable()
         engine, _, _, _ = deepspeed.initialize(model=model,
                                                model_parameters=model.parameters(),
                                                config=build_config(zero_stage, mode))
@@ -120,13 +124,65 @@ class TestAutoTPSequenceSharding(DistributedTest):
 
             torch.testing.assert_close(loss.detach(), reference_loss.detach(), rtol=1e-5, atol=1e-5)
 
-        assert norm_lengths == [16 // self.world_size] * 3
+        # Recomputation calls the norm again, so with checkpointing it runs more than once per step.
+        assert len(norm_lengths) >= 3 and set(norm_lengths) == {16 // self.world_size}, norm_lengths
         if zero_stage < 3:
             # The decoder norms see half of the sequence on each rank; their summed gradient keeps them equal to
             # the reference after the updates.
             norm = engine.module.model.layers[0].input_layernorm.weight
             reference_norm = reference.model.layers[0].input_layernorm.weight
             torch.testing.assert_close(norm.detach(), reference_norm.detach(), rtol=1e-5, atol=1e-6)
+
+
+ATTENTION_ONLY_PARTITION = {
+    "use_default_specs":
+    False,
+    "layer_specs": [
+        {
+            "patterns": [r".*\.self_attn\.o_proj\.weight$"],
+            "partition_type": "row"
+        },
+        {
+            "patterns": [r".*\.self_attn\.[qkv]_proj\.weight$"],
+            "partition_type": "column"
+        },
+    ],
+}
+
+
+@pytest.mark.parametrize("zero_stage", [1, 3])
+class TestAutoTPSequenceShardingReplicatedMLP(DistributedTest):
+    """With only attention sharded, the MLP linears stay replicated inside the sequence-sharded decoder layers. Each
+    rank computes their gradients from its own tokens, so the gradients must be summed over TP, also when ZeRO-3
+    replaces F.linear and the layers are recomputed in backward."""
+    world_size = 2
+
+    def test_matches_single_device_training(self, zero_stage):
+        skip_on_device()
+        pytest.importorskip("transformers")
+        from deepspeed.module_inject.layers import TensorParallel_Layer
+
+        config, model = build_qwen3_model()
+        reference = copy.deepcopy(model).to(get_accelerator().current_device_name())
+        reference_optimizer = torch.optim.SGD(reference.parameters(), lr=0.1)
+        model.gradient_checkpointing_enable()
+        ds_config = build_config(zero_stage, "overlap")
+        ds_config["tensor_parallel"]["partition_config"] = ATTENTION_ONLY_PARTITION
+        engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=ds_config)
+        assert not isinstance(engine.module.model.layers[0].mlp.down_proj, TensorParallel_Layer)
+
+        for step in range(3):
+            input_ids = tp_shared_input_ids(config.vocab_size, 16, step)
+            loss = engine(input_ids=input_ids, labels=input_ids).loss
+            engine.backward(loss)
+            engine.step()
+
+            reference_loss = reference(input_ids=input_ids, labels=input_ids).loss
+            reference_loss.backward()
+            reference_optimizer.step()
+            reference_optimizer.zero_grad()
+
+            torch.testing.assert_close(loss.detach(), reference_loss.detach(), rtol=1e-5, atol=1e-5)
 
 
 class TestAutoTPSequenceShardingRejects(DistributedTest):

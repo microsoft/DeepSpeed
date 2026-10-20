@@ -35,6 +35,7 @@ from deepspeed.comm import pg_utils
 from deepspeed.runtime.zero.linear import autocast_custom_bwd, autocast_custom_fwd
 from deepspeed.runtime.zero.utils import is_zero_param
 from deepspeed.utils.logging import print_dist
+from deepspeed.utils.torch import register_grad_hook
 
 SEQUENCE_SHARDING_ATTR = "_ds_autotp_sequence_sharding"
 
@@ -204,12 +205,13 @@ class ColumnGroupFromSequenceShards(torch.autograd.Function):
 
 
 class _BlockState:
-    """Which column-parallel linears of a block read the block input, learned on the block's first call."""
+    """Which column-parallel linears of a block read the block input, learned in the model's first forward pass."""
 
-    def __init__(self, columns):
+    def __init__(self, columns, passes):
         self.columns = columns
         self.readers = []
-        self.calls = 0
+        self.passes = passes  # one-element list: the model's forward passes so far
+        self.learned_in = None  # the pass that recorded the readers
 
     def can_fuse(self):
         weights = [layer.weight for layer in self.readers]
@@ -221,8 +223,8 @@ class _BlockState:
 def take_precomputed_column_output(layer, input):
     """The output the block pre-hook already computed for ``layer`` from ``input``, or None.
 
-    On the block's first call nothing is precomputed; a layer that reads the gathered block input records itself
-    instead, so that later calls compute it inside ColumnGroupFromSequenceShards.
+    In the model's first forward pass nothing is precomputed; a layer that reads the gathered block input records
+    itself instead, so that later passes compute it inside ColumnGroupFromSequenceShards.
     """
     pending = getattr(layer, "_ds_sequence_sharding_pending", None)
     if pending is None:
@@ -256,10 +258,11 @@ def _layer_list_of(block_name):
     return None, None
 
 
-def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True):
+def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True, zero_stage=0):
     """Split the hidden states between AutoTP blocks along ``seq_dim`` over ``group``. Call after AutoTP has
     replaced the linears. ``overlap``: run the column-parallel linears that read a block input in one autograd node
-    and overlap their backward reduce-scatter (ColumnGroupFromSequenceShards). Returns the number of blocks."""
+    and overlap their backward reduce-scatter (ColumnGroupFromSequenceShards). ``zero_stage``: the ZeRO stage, which
+    decides how the replicated parameters' gradients are summed. Returns the number of blocks."""
     from deepspeed.module_inject.layers import (DS_TENSOR_MODEL_PARALLEL, LinearAllreduce, LinearLayer,
                                                 TensorParallel_Layer)
 
@@ -311,8 +314,9 @@ def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True):
     def make_gather_hook(state):
 
         def gather(x):
-            state.calls += 1
-            if overlap and state.calls > 1 and state.can_fuse():
+            # Fused only from the pass after the one that recorded the readers: activation checkpointing recomputes
+            # the block in backward within the same pass, and the recomputation must save what the forward saved.
+            if overlap and state.learned_in is not None and state.passes[0] > state.learned_in and state.can_fuse():
                 readers = state.readers
                 weights = [layer.weight for layer in readers]
                 x_full, *outs = ColumnGroupFromSequenceShards.apply(x, group, seq_dim, *weights)
@@ -320,7 +324,8 @@ def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True):
                     layer._ds_sequence_sharding_pending = (state, x_full, layer_out)
                 return x_full
             x_full = GatherToTensorParallelBlock.apply(x, group, seq_dim)
-            if overlap and state.calls == 1:
+            if overlap and state.learned_in is None:
+                state.learned_in = state.passes[0]
                 for layer in state.columns:
                     layer._ds_sequence_sharding_pending = (state, x_full, None)
             return x_full
@@ -330,12 +335,19 @@ def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True):
 
         return hook
 
+    passes = [0]
+
+    def count_pass(module, args):
+        passes[0] += 1
+
+    model.register_forward_pre_hook(count_pass)
+
     for block_name, block in blocks.items():
         columns = [
             m for name, m in block.named_modules(prefix=block_name)
             if isinstance(m, LinearLayer) and getattr(m, "sequence_sharding", False)
         ]
-        block.register_forward_pre_hook(make_gather_hook(_BlockState(columns)), with_kwargs=True)
+        block.register_forward_pre_hook(make_gather_hook(_BlockState(columns, passes)), with_kwargs=True)
 
     def enter(module, args, kwargs):
         return _replace_hidden_states(args, kwargs, lambda x: ScatterToSequenceShards.apply(x, group, seq_dim),
@@ -362,13 +374,28 @@ def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True):
 
         return hook
 
+    # ZeRO-3 replaces torch.nn.functional.linear with a custom autograd function that saves the weight, and under
+    # non-reentrant activation checkpointing PyTorch then skips the weight's tensor hooks (torch 2.8): a replicated
+    # linear weight (router, shared expert, unsharded MLP) would keep its partial gradient. ZeRO-3 reduces and
+    # frees every micro-step's gradient in its own post-accumulate hook, so a post-accumulate hook registered before
+    # it (the same way, with register_grad_hook) sees exactly this micro-step's gradient.
+    def make_accumulated_grad_hook(param):
+
+        def hook(*unused):
+            dist.all_reduce(param.grad, group=group)
+
+        return hook
+
     reduced = []
     for name, param in layers.named_parameters(prefix=list_name):
         if not param.requires_grad or getattr(param, DS_TENSOR_MODEL_PARALLEL, False):
             continue
         if getattr(param, "_ds_grad_allreduce_registered", False):
             continue
-        param.register_hook(make_hook())
+        if zero_stage == 3:
+            register_grad_hook(param, make_accumulated_grad_hook(param))
+        else:
+            param.register_hook(make_hook())
         param._ds_grad_allreduce_registered = True
         reduced.append(name)
 
