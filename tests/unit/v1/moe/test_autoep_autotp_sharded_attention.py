@@ -311,7 +311,7 @@ class TestTiedOutputHead(DistributedTest):
     gathers the partitioned head weight into a new parameter; if the embedding keeps the old one, the tie
     is gone and the embedding and head train as two separate copies.
     """
-    world_size = 4
+    world_size = 2
 
     @pytest.mark.parametrize("zero_init", [False, True])
     def test_row_parallel_tied_head_keeps_the_tie(self, zero_init):
