@@ -303,6 +303,7 @@ class TestShardedAttentionFolding(DistributedTest):
         _check_folded_matches_reference(tp_size=tp_size, ep_size=ep_size, zero_stage=zero_stage, zero_init=zero_init)
 
 
+@pytest.mark.sequential
 class TestTiedOutputHead(DistributedTest):
     """Building the model under ``deepspeed.zero.Init`` must not change which layers AutoTP accepts.
 
@@ -315,8 +316,6 @@ class TestTiedOutputHead(DistributedTest):
 
     @pytest.mark.parametrize("zero_init", [False, True])
     def test_row_parallel_tied_head_keeps_the_tie(self, zero_init):
-        if get_accelerator().device_name() == "cpu":
-            pytest.skip("AutoEP folding runs on an accelerator")
         config = _tiny_glm4_moe_config()
         config.tie_word_embeddings = True
         folded_config = _folded_config(tp_size=2, ep_size=2, zero_stage=3)
