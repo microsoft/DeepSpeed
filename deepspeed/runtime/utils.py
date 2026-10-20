@@ -1067,9 +1067,11 @@ def get_tensor_bytes(item):
         return 0
 
 
-def as_byte_view(tensor):
-    """View `tensor` as uint8 sharing its storage, e.g. to broadcast dtypes the comm backend does not support.
-    A dtype view needs a last dimension to reinterpret, so 0-dim tensors are viewed as 1-dim first."""
+def view_as_uint8(tensor):
+    """Return a uint8 view of `tensor` sharing its memory, so it can be broadcast as raw bytes.
+
+    `view(torch.uint8)` rescales the last dim, so 0-dim tensors are first viewed as shape (1,).
+    """
     if tensor.dim() == 0:
         tensor = tensor.view(1)
     return tensor.view(torch.uint8)
