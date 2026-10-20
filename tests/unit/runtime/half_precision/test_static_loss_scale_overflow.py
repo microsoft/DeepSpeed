@@ -75,8 +75,15 @@ class TestFixedScaleSkippedStepIsReported(DistributedTest):
     def test_skipped_step_warns(self, precision, zero_stage, optimizer_type, grad_accum_dtype, wrapper):
         if precision == "fp16" and not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported on this accelerator")
-        if optimizer_type == "Adam" and not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]:
-            pytest.skip("FusedAdam is not compatible on this accelerator")
+        if precision == "bf16" and not get_accelerator().is_bf16_supported():
+            pytest.skip("bf16 is not supported on this accelerator")
+        if optimizer_type == "Adam":
+            # FP16_Optimizer is only selected for FusedAdam, and __compatible_ops__ is true on hosts
+            # where the op still fails to build, so gate on the build itself.
+            try:
+                FusedAdamBuilder().load()
+            except Exception as e:
+                pytest.skip(f"FusedAdam cannot be built here: {type(e).__name__}")
         config = {
             "train_micro_batch_size_per_gpu": 1,
             "optimizer": {
