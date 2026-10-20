@@ -13,10 +13,6 @@ import subprocess
 import shlex
 import shutil
 import tempfile
-import distutils.ccompiler
-import distutils.log
-import distutils.sysconfig
-from distutils.errors import CompileError, LinkError
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -343,6 +339,12 @@ class OpBuilder(ABC):
         and then distutils is used to compile that program and link it with the specified libraries.
         Returns True if both the compile and link are successful, False otherwise.
         '''
+        # Imported here because distutils pulls in setuptools, which slows down import deepspeed.
+        import distutils.ccompiler
+        import distutils.log
+        import distutils.sysconfig
+        from distutils.errors import CompileError, LinkError
+
         tempdir = None  # we create a temporary directory to hold various files
         filestderr = None  # handle to open file to which we redirect stderr
         oldstderr = None  # file descriptor for stderr
@@ -445,16 +447,6 @@ class OpBuilder(ABC):
         elif cpu_info['arch'].startswith('riscv64'):
             return '-march=rv64gc'
         return '-march=native'
-
-    def get_cuda_compile_flag(self):
-        try:
-            if not self.is_rocm_pytorch():
-                assert_no_cuda_mismatch(self.name)
-                return "-D__ENABLE_CUDA__"
-        except MissingCUDAException:
-            print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
-                  "only cpu ops can be compiled!")
-        return '-D__DISABLE_CUDA__'
 
     def _backup_cpuinfo(self):
         # Construct cpu_info dict from lscpu that is similar to what py-cpuinfo provides
@@ -924,53 +916,3 @@ class CUDAOpBuilder(OpBuilder):
             return ['cublas', 'curand']
         else:
             return []
-
-
-class TorchCPUOpBuilder(CUDAOpBuilder):
-
-    def get_cuda_lib64_path(self):
-        import torch
-        if not self.is_rocm_pytorch():
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-            if not os.path.exists(CUDA_LIB64):
-                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
-        else:
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
-        return CUDA_LIB64
-
-    def extra_ldflags(self):
-        if self.build_for_cpu:
-            return ['-fopenmp']
-
-        if not self.is_rocm_pytorch():
-            ld_flags = ['-lcurand']
-            if not self.build_for_cpu:
-                ld_flags.append(f'-L{self.get_cuda_lib64_path()}')
-            return ld_flags
-
-        return []
-
-    def cxx_args(self):
-        args = []
-        if not self.build_for_cpu:
-            CUDA_LIB64 = self.get_cuda_lib64_path()
-
-            args += super().cxx_args()
-            args += [
-                f'-L{CUDA_LIB64}',
-                '-lcudart',
-                '-lcublas',
-                '-g',
-            ]
-
-        CPU_ARCH = self.cpu_arch()
-        SIMD_WIDTH = self.simd_width()
-        CUDA_ENABLE = self.get_cuda_compile_flag()
-        args += [
-            CPU_ARCH,
-            '-fopenmp',
-            SIMD_WIDTH,
-            CUDA_ENABLE,
-        ]
-
-        return args
