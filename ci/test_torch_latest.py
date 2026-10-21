@@ -166,6 +166,11 @@ class FakeAwsCli:
                 "StandardErrorUrl": "https://ignored.invalid/stderr" if stderr else "",
             }
             return _command_result(stdout=json.dumps(payload))
+        if (service, operation) == ("logs", "get-log-events"):
+            return _command_result(
+                255,
+                stderr="An error occurred (ResourceNotFoundException) when calling GetLogEvents",
+            )
         if (service, operation) == ("s3api", "get-object"):
             key = argv[argv.index("--key") + 1]
             stream = self.test_stderr if key.endswith("/stderr") else self.test_stdout
@@ -887,6 +892,12 @@ def test_aws_infrastructure_smoke_is_region_scoped_and_has_no_test_execution():
     tags = launch_calls[0][launch_calls[0].index("--tag-specifications") + 1]
     assert "Key=DeepSpeedCIRun,Value=321-2-us-east-2" in tags
     assert len(fake.sent_scripts) == 1
+    send_call = next(call for call, _ in fake.calls if call[2:4] == ("ssm", "send-command"))
+    cloudwatch_config = json.loads(send_call[send_call.index("--cloud-watch-output-config") + 1])
+    assert cloudwatch_config == {
+        "CloudWatchLogGroupName": torch_latest.AWS_SSM_LOG_GROUP,
+        "CloudWatchOutputEnabled": True,
+    }
     script = shlex.split(fake.sent_scripts[0])[2]
     assert "/var/lib/devds/runs/321-2-us-east-2" in script
     assert "nvidia-smi" in script
@@ -1180,6 +1191,239 @@ def test_ssm_diagnostic_paths_redact_known_instance_and_command_ids():
     assert f"{redacted_path}: line 5: test failed" in public_log
 
 
+def test_ssm_cloudwatch_output_is_incremental_paginated_and_not_replayed_at_terminal():
+    instance_id = "i-1234567890abcdef0"
+    command_id = "11111111-1111-1111-1111-111111111111"
+    config = torch_latest.load_aws_config(_aws_config())[0]
+    instance = torch_latest.AwsInstance(config.name, instance_id, config)
+
+    class LiveLogsAws:
+
+        def __init__(self):
+            self.statuses = iter(("InProgress", "Failed"))
+            self.calls = []
+            self.stdout_poll = 0
+            self.status_poll = 0
+
+        def __call__(self, argv, *, timeout=None):
+            self.calls.append((tuple(argv), timeout))
+            if argv[2:4] == ("ssm", "get-command-invocation"):
+                status = next(self.statuses)
+                self.status_poll += 1
+                return _command_result(stdout=json.dumps({
+                    "Status": status,
+                    "ResponseCode": -1 if status == "InProgress" else 7,
+                    "StandardOutputContent": "first page\nfinal page\n",
+                    "StandardErrorContent": "late stderr\n",
+                }))
+            if argv[2:4] == ("logs", "get-log-events"):
+                stream = argv[argv.index("--log-stream-name") + 1]
+                token = argv[argv.index("--next-token") + 1] if "--next-token" in argv else None
+                if stream.endswith("/stderr") and token is None and self.status_poll == 1:
+                    return _command_result(
+                        255,
+                        stderr="An error occurred (ResourceNotFoundException) when calling GetLogEvents",
+                    )
+                if stream.endswith("/stdout"):
+                    if token is None:
+                        self.stdout_poll += 1
+                        events = [{"message": f"first page {instance_id} {command_id}\n"}]
+                        next_token = "stdout-1"
+                    elif token == "stdout-1" and self.status_poll == 1:
+                        events = []
+                        next_token = "stdout-1"
+                    elif token == "stdout-1":
+                        self.stdout_poll += 1
+                        events = [{"message": "final page\n"}]
+                        next_token = "stdout-2"
+                    else:
+                        events = []
+                        next_token = "stdout-2"
+                elif token is None:
+                    events = [{"message": "late stderr\n"}]
+                    next_token = "stderr-1"
+                else:
+                    events = []
+                    next_token = "stderr-1"
+                return _command_result(stdout=json.dumps({"events": events, "nextForwardToken": next_token}))
+            raise AssertionError(f"unexpected AWS CLI call: {argv}")
+
+    fake = LiveLogsAws()
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        assert torch_latest.wait_for_ssm_command(
+            instance,
+            command_id,
+            "test",
+            60,
+            fake,
+            run_identity="123-1",
+            sleep=lambda _seconds: None,
+        ) == 7
+    public_log = output.getvalue()
+    assert public_log.count("first page") == 1
+    assert public_log.count("final page") == 1
+    assert public_log.count("late stderr") == 1
+    assert "[aws:test:stdout] first page <instance-id> <command-id>" in public_log
+    assert "[aws:test:stderr] late stderr" in public_log
+    assert instance_id not in public_log
+    assert command_id not in public_log
+    log_calls = [call for call, _ in fake.calls if call[2:4] == ("logs", "get-log-events")]
+    assert any("--next-token" in call and call[call.index("--next-token") + 1] == "stdout-1" for call in log_calls)
+    assert all("--start-from-head" in call and "--end-time" in call for call in log_calls)
+
+
+def test_ssm_slow_log_reads_do_not_turn_success_into_timeout():
+    instance_id = "i-1234567890abcdef0"
+    command_id = "11111111-1111-1111-1111-111111111111"
+    config = torch_latest.load_aws_config(_aws_config())[0]
+    instance = torch_latest.AwsInstance(config.name, instance_id, config)
+    clock = SimpleNamespace(now=0.0)
+
+    class SlowLogsAws:
+
+        def __init__(self):
+            self.status_polls = 0
+
+        def __call__(self, argv, *, timeout=None):
+            if argv[2:4] == ("ssm", "get-command-invocation"):
+                self.status_polls += 1
+                status = "Success" if clock.now >= 95 else "InProgress"
+                return _command_result(
+                    stdout=json.dumps({
+                        "Status": status,
+                        "ResponseCode": 0 if status == "Success" else -1,
+                        "StandardOutputContent": "finished\n" if status == "Success" else "",
+                        "StandardErrorContent": "",
+                    }))
+            if argv[2:4] == ("logs", "get-log-events"):
+                clock.now += timeout
+                raise subprocess.TimeoutExpired(argv, timeout)
+            raise AssertionError(f"unexpected AWS CLI call: {argv}")
+
+    fake = SlowLogsAws()
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        assert torch_latest.wait_for_ssm_command(
+            instance,
+            command_id,
+            "test",
+            100,
+            fake,
+            run_identity="123-1",
+            sleep=lambda seconds: setattr(clock, "now", clock.now + seconds),
+            monotonic=lambda: clock.now,
+        ) == 0
+    assert fake.status_polls >= 2
+    assert "finished" in output.getvalue()
+
+
+def test_ssm_cloudwatch_read_failure_preserves_test_result_and_cleanup():
+    root, path = _selection_file("tests/unit/v1/test_one.py\n")
+    try:
+        env = _valid_env(
+            path,
+            DS_TEST_SELECTION_MODE="subset",
+            AWS_MODAL_FALLBACK_CONFIG=_aws_config(),
+            GITHUB_RUN_ID="123",
+            GITHUB_RUN_ATTEMPT="1",
+        )
+
+        class LogFailureAws(FakeAwsCli):
+
+            def __call__(self, argv, *, timeout=None):
+                if argv[2:4] == ("logs", "get-log-events"):
+                    self.calls.append((tuple(argv), timeout))
+                    return _command_result(
+                        255,
+                        stderr="An error occurred (ServiceUnavailableException) with private detail",
+                    )
+                return super().__call__(argv, timeout=timeout)
+
+        fake = LogFailureAws(test_code=9, test_stdout="test failed\n")
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            assert torch_latest.run_aws_controller(env, fake) == torch_latest.EXIT_TEST_FAILURE
+        public_log = output.getvalue()
+        assert "live output temporarily unavailable (ServiceUnavailableException)" in public_log
+        assert "private detail" not in public_log
+        assert "DS_CI_FAILURE_CLASS=test: AWS pytest failed with exit code 9" in public_log
+        operations = [call[2:4] for call, _ in fake.calls]
+        assert operations.count(("ec2", "terminate-instances")) == 1
+        assert len([call for call, _ in fake.calls if call[2:5] == ("ec2", "wait", "instance-terminated")]) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_partial_live_output_falls_back_after_terminal_drain_failure():
+    root, path = _selection_file("tests/unit/v1/test_one.py\n")
+    try:
+        live_marker = "unique live progress marker"
+        late_failure = "FAILED unit/v1/test_late.py::test_case - AssertionError"
+        full_output = f"{live_marker}\n" + "filler output\n" * 4000 + f"{late_failure}\n"
+        env = _valid_env(
+            path,
+            DS_TEST_SELECTION_MODE="subset",
+            AWS_MODAL_FALLBACK_CONFIG=_aws_config(),
+            GITHUB_RUN_ID="123",
+            GITHUB_RUN_ATTEMPT="1",
+        )
+
+        class PartialLiveAws(FakeAwsCli):
+
+            def __init__(self):
+                super().__init__(test_code=9, test_stdout=full_output)
+                self.test_status_polls = 0
+                self.test_terminal = False
+
+            def __call__(self, argv, *, timeout=None):
+                if argv[2:4] == ("ssm", "get-command-invocation"):
+                    command_id = argv[argv.index("--command-id") + 1]
+                    if command_id.startswith("2"):
+                        self.test_status_polls += 1
+                        if self.test_status_polls == 1:
+                            self.calls.append((tuple(argv), timeout))
+                            return _command_result(stdout=json.dumps({
+                                "Status": "InProgress",
+                                "ResponseCode": -1,
+                                "StandardOutputContent": "",
+                                "StandardErrorContent": "",
+                            }))
+                        self.test_terminal = True
+                if argv[2:4] == ("logs", "get-log-events"):
+                    stream_name = argv[argv.index("--log-stream-name") + 1]
+                    if stream_name.startswith("22222222-") and stream_name.endswith("/stdout"):
+                        self.calls.append((tuple(argv), timeout))
+                        if self.test_terminal:
+                            return _command_result(
+                                255,
+                                stderr="An error occurred (ServiceUnavailableException) when calling GetLogEvents",
+                            )
+                        token = argv[argv.index("--next-token") + 1] if "--next-token" in argv else None
+                        events = [{"message": f"{live_marker}\n"}] if token is None else []
+                        return _command_result(stdout=json.dumps({
+                            "events": events,
+                            "nextForwardToken": "test-stdout-1",
+                        }))
+                return super().__call__(argv, timeout=timeout)
+
+        fake = PartialLiveAws()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            assert torch_latest.run_aws_controller(env, fake, sleep=lambda _seconds: None) == \
+                torch_latest.EXIT_TEST_FAILURE
+        public_log = output.getvalue()
+        assert public_log.count(live_marker) == 1
+        assert late_failure in public_log
+        assert "live output temporarily unavailable (ServiceUnavailableException)" in public_log
+        assert "DS_CI_FAILURE_CLASS=test: AWS pytest failed with exit code 9" in public_log
+        operations = [call[2:4] for call, _ in fake.calls]
+        assert operations.count(("ec2", "terminate-instances")) == 1
+        assert len([call for call, _ in fake.calls if call[2:5] == ("ec2", "wait", "instance-terminated")]) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_aws_test_failure_emits_bounded_s3_tail_for_nightly_triage():
     root, path = _selection_file("tests/unit/v1/test_one.py\n")
     try:
@@ -1461,6 +1705,15 @@ def test_workflow_keeps_github_execution_trusted_and_preserves_modes():
     assert "checkout-candidate" not in deploy
     assert "pull_request.head.sha || github.sha" in deploy
     assert "pull_request.head.repo.full_name || github.repository" in deploy
+    assert "MODAL_TOKEN_ID" in deploy
+    assert "MODAL_TOKEN_SECRET" in deploy
+    deploy_auth = deploy.split("- name: Configure AWS credentials for capacity fallback",
+                               1)[1].split("- name: Run tests on AWS capacity fallback", 1)[0]
+    deploy_cleanup = deploy.split("- name: Reconcile AWS capacity fallback cleanup", 1)[1]
+    assert "id: aws-auth" in deploy_auth
+    assert "if: steps.modal.outputs.fallback == 'true'" in deploy_auth
+    assert ("if: ${{ always() && steps.modal.outputs.fallback == 'true' && steps.aws-auth.outcome == 'success' }}"
+            in deploy_cleanup)
 
 
 def test_launcher_source_has_no_local_packaging_or_shell_execution():

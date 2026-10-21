@@ -60,6 +60,61 @@ import it.
 The design is a small, self-contained take on HuggingFace `transformers`'
 `utils/tests_fetcher.py`.
 
+### Documentation-only changes
+
+PRs and merge queue entries whose entire diff is under `docs/**`, under
+`blogs/**`, or matches `**/*.md` skip CPU/GPU test suites, Python install smoke,
+and native-op precompilation. This includes all documentation and blog assets
+and configuration files, plus Markdown at any directory depth. Formatting, DCO,
+and documentation checks are not disabled.
+
+The active `python`, `cpu-torch-latest`, and `nv-pre-compile-ops` workflows use
+the reusable `check-paths.yml` gate. Disabled legacy workflows are left unchanged.
+
+The shared gate also skips root `version.txt` changes on both PRs and merge queue
+entries, including diffs mixing version and documentation changes. Any other
+changed path still requires CI unless explicitly excluded for that workflow.
+The Modal selector already selects no tests for a version-only diff.
+
+The optional `mps-torch-latest` and `no-torch` workflows rely on their PR trigger
+paths instead, which exclude Markdown. A README under a watched source directory
+cannot start these workflows merely because the PR also changes unrelated code.
+Their gate job is commented out because it could never skip: every PR run they
+start includes a non-documentation change. Re-enable it if either workflow must
+drop its path filters (to become a required check or run in the merge queue) or
+if `is_docs_path()` starts covering more than Markdown.
+
+`ci/check_paths.py` is the single definition of documentation (`is_docs_path()`).
+The gate diffs the checked-out commit against the exact commit it was built on: a
+PR's merge commit against its first parent, the base-branch commit GitHub merged
+the PR into, and a merge queue entry against `merge_group.base_sha`. It does not
+use the event's `pull_request.base.sha`, which can be days older and would add the
+base branch's own changes, so docs-only PRs behind master would not skip. The gate
+runs the base branch's copy of the script, read from that same commit.
+A PR that edits the script is judged by the base copy, which runs its tests because
+the script is not documentation; the edits apply after merge. This guards against
+mistakes, not a malicious PR, which controls the workflow files on `pull_request`
+events. Renames count both the old and new paths: moving `module.py` to
+`docs/module.py` is a code deletion, not a documentation-only change. An empty
+diff runs tests, and detection failures, including a base branch without the
+script, emit a warning and fall back to running tests. If the gate job itself
+fails or exceeds its 10-minute limit, the required jobs fail instead of skipping.
+Callers may pass `pr-ignore` (files, or directories ending in `/`, such as
+`deepspeed/inference/v2/`) to skip more paths on pull requests only; merge queue
+entries use only the shared documentation and root `version.txt` exclusions.
+Preview the decision with
+`python ci/check_paths.py --base "$(git merge-base origin/master HEAD)"`.
+
+Scheduled, manual, and push runs retain their existing behavior. Required
+workflows still start and report their statuses; only their heavy jobs or steps
+skip. The Modal selector imports the same `is_docs_path()` and drops documentation
+paths before applying its run-all path globs and import graph, so documentation
+never widens a selection; explicit `[test all]` / `[no filter]` overrides still win.
+
+Root `README.md` is package metadata, so the formatting workflow always runs
+`python scripts/check-readme.py` to check that it exists and is valid UTF-8
+without installing DeepSpeed or PyTorch.
+
 
 ## Moving parts
 
@@ -67,7 +122,8 @@ The design is a small, self-contained take on HuggingFace `transformers`'
 | --- | --- |
 | `.github/workflows/modal-torch-latest.yml` | The workflow: a no-secret `collect-tests` job gating a trusted `deploy` controller job. |
 | `ci/tests_fetcher.py` | The selector. AST-parses the repo, builds an import graph, decides `all` / `subset` / `none`, writes the test-list file, emits a job summary. |
-| `ci/test_tests_fetcher.py` | Self-tests for the selector (pure stdlib; run in `collect-tests`). |
+| `ci/check_paths.py` | Defines documentation paths (`is_docs_path()`) for the selector and the `check-paths.yml` CPU/GPU workflow gate. |
+| `ci/test_tests_fetcher.py` | Self-tests for the selector and `ci/check_paths.py` (pure stdlib; run in `collect-tests` and, on the PR's own code, in the formatting workflow). |
 | `ci/torch_latest.py` | Pure-stdlib metadata/selection validation plus the trusted Modal-first, AWS-capacity-fallback controller. |
 | `ci/.test_selection/test_list.txt` | The hand-off artifact (one pytest target per line). Git-ignored. |
 
@@ -193,6 +249,26 @@ Triage checks out the SHA the nightly actually ran rather than current master,
 so the classifier and the sentinel protocol it parses come from the same
 revision.
 
+#### Multi-rank CPU nightly
+
+`cpu-torch-multi-latest.yml` covers the axis the selector does not model:
+`world_size`. `cpu-torch-latest` advertises a single device, so the per-device gate
+in `tests/unit/common.py` skips every `world_size > 1` test there. The nightly sets
+`LOCAL_SIZE=4` to admit `world_size <= 4` and selects only those tests with
+`DS_MULTIRANK_ONLY=1` (a `pytest_collection_modifyitems` hook in
+`tests/conftest.py`): one phase for the non-v1 half (120m budget) and one for the
+`sequential`-marked tests (25m), which the parallel phase deselects.
+
+It is deliberately not a pre-merge or merge-queue check: the non-v1 half needs
+70-90 minutes on a 4-vCPU runner, against 39 minutes for the longest current
+pre-merge job, and a wedged rank would hold up the queue.
+
+`cpu-multi-triage.yml` routes its outcome through the same sentinel protocol and
+reporter as the modal nightly, but with its own issue titles and its own
+`nightly-cpu-multi-last-green` tag, so `nightly-last-green` keeps meaning "the last
+revision the full GPU suite verified". Issue #8805 (bf16 `check_grad_overflow`
+semantics) is an example of a regression only this selection can see.
+
 
 ## How a decision is made
 
@@ -204,16 +280,20 @@ first that matches wins:
 3. **No merge-base** with the base (e.g. shallow clone, unrelated history) → `all`.
    A diff here would be wrong, so we never narrow on it.
 4. **Commit message tag** `[test all]` / `[no filter]` anywhere on the branch → `all`.
-5. **A changed file matches a run-all glob** (`COMMON_RUN_ALL_GLOBS` +
+5. **Only documentation paths changed** (`docs/**`, `blogs/**`, or `**/*.md`, as
+   defined by `is_docs_path()` in `ci/check_paths.py`), including deleted paths and
+   both sides of renames → `none`. Otherwise documentation paths are dropped, so
+   they cannot trigger the steps below.
+6. **A changed or deleted file matches a run-all glob** (`COMMON_RUN_ALL_GLOBS` +
    the workflow's `extra_run_all_globs`) → `all`. These are files too central or
    too dynamic to narrow safely: CI scripts, build system, `csrc/`, `op_builder/`,
    `accelerator/`, shared fixtures (`tests/unit/common.py`, `tests/conftest.py`,
    `pytest.ini`), and core runtime hubs (`deepspeed/__init__.py`,
    `deepspeed/runtime/engine.py`, `deepspeed/comm/**`, `deepspeed/accelerator/**`, …).
-6. **A deleted module is still imported** by a surviving file (a dangling import
+7. **A deleted module is still imported** by a surviving file (a dangling import
    the graph can't follow) → `all`. A *clean* deletion (importers removed/updated
    in the same PR) does **not** trigger this.
-7. Otherwise, **narrow via the import graph** (below). If nothing is impacted →
+8. Otherwise, **narrow via the import graph** (below). If nothing is impacted →
    `none`; if everything is → `all`; else → `subset`.
 
 ### The import graph
@@ -227,7 +307,7 @@ first that matches wins:
   these. Their `__init__.py` files eagerly pull in huge subtrees, so if treated as
   normal nodes *any* `deepspeed/**` change would fan out to the whole suite. We
   therefore don't expand their `__init__` imports; instead, changes to the hubs
-  themselves are caught by the run-all globs in step 5.
+  themselves are caught by the run-all globs in step 6.
 - **`conftest.py`** changes select every test under that conftest's directory.
 - **New test files** are selected directly (they have no importers yet).
 
@@ -237,7 +317,7 @@ Some dependencies are wired at runtime (monkey-patching, plugin/registry lookup,
 JIT-loaded ops, `deepspeed.initialize()`-time `replace_module` injection), so a
 test can depend on code it never `import`s. `DYNAMIC_EDGES` is a curated map of
 `changed-file glob → extra test-path globs` that patches these blind spots. It is
-additive on top of the static graph (and is only consulted if step 5 didn't
+additive on top of the static graph (and is only consulted if step 6 didn't
 already short-circuit to `all`).
 
 
@@ -268,7 +348,8 @@ deepspeed/shared.py impacts:
 
 - **Force the full suite for a push:** include `[test all]` (or `[no filter]`)
   anywhere in a commit message on the branch.
-- **Touch an infra file:** any change to a run-all glob runs everything.
+- **Touch an infra file:** changing a non-documentation file that matches a run-all
+  glob runs everything.
 - **Found a missed test?** It's likely a runtime/dynamic dependency the static
   graph can't see — add a `DYNAMIC_EDGES` entry (see below) and/or report it.
 
@@ -352,7 +433,7 @@ capacity fallback, assume its AWS role. The trust boundary is:
   git/AST data; it never imports, installs, builds, or executes candidate code.
 - The selector logic and its self-tests always come from the trusted checkout.
   A PR's `ci/` changes still appear in the diff, so the base selector's `ci/**`
-  run-all rule widens them to the full suite.
+  run-all rule widens them to the full suite unless they are documentation.
 - The handoff is a fixed `all` / `subset` / `none` mode plus one bounded,
   validated regular file. Test paths must stay under `tests/unit/v1`, cannot be
   options or traversal paths, and are passed after pytest's `--` separator.
@@ -379,8 +460,11 @@ capacity fallback, assume its AWS role. The trust boundary is:
   uses only `g7.12xlarge` Spot, tries configured subnets in fixed `us-east-1`,
   `us-east-2`, `us-west-2` order, exposes exactly GPUs 0 and 1 to the container,
   and controls it through SSM. The instance has no inbound rules and a
-  60-minute termination guard. Every subprocess uses structural arguments,
-  and every nonzero clone/install/test status fails the check.
+  60-minute termination guard. SSM sends prepare and test output to a scoped,
+  expiring CloudWatch Logs group; the controller forwards new stdout/stderr
+  events through the same public-output masking path while each command is
+  running. Every subprocess uses structural arguments, and every nonzero
+  clone/install/test status fails the check.
 - The selected backend retains outbound network access because it must reach public
   GitHub, package indexes, PyTorch wheels, and optionally Transformers. Those
   services do not have stable CIDRs suitable for the SDK's CIDR allowlist, so
