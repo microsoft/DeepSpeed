@@ -590,14 +590,20 @@ def install_decode_attention(model: torch.nn.Module,
     patched = 0
     for module in model.modules():
         projections = [getattr(module, name, None) for name in ("q_proj", "k_proj", "v_proj", "o_proj")]
-        if not all(isinstance(p, torch.nn.Linear) for p in projections):
+        # duck-typed projection check: AutoTP replaces nn.Linear with a
+        # LinearLayer wrapper that still exposes .weight
+        if not all(hasattr(p, "weight") and p.weight is not None for p in projections):
             continue
         if not all(isinstance(getattr(module, name, None), torch.nn.Module) for name in ("q_norm", "k_norm")):
             continue
         head_dim = module.head_dim
-        num_q_heads = projections[0].out_features // (2 * head_dim)
-        num_kv_heads = projections[1].out_features // head_dim
-        if num_q_heads * head_dim * 2 != projections[0].out_features:
+        # per-rank head counts from the actual weight shapes (AutoTP-sharded
+        # weights carry the per-rank output dimension in weight.shape[0])
+        q_out = projections[0].weight.shape[0]
+        kv_out = projections[1].weight.shape[0]
+        num_q_heads = q_out // (2 * head_dim)
+        num_kv_heads = kv_out // head_dim
+        if num_q_heads * head_dim * 2 != q_out:
             continue  # not the 2x-wide query|gate layout this forward replays
         layer_types = getattr(getattr(module, "config", None), "layer_types", None)
         if layer_types is not None and layer_types[module.layer_idx] != "full_attention":
