@@ -40,17 +40,8 @@ _CHUNK_NUMEL = 1 << 24
 def _use_triton(*logits):
     # Eager row chunks run about a dozen separate memory-bound kernels per chunk; the Triton
     # kernels read each logit once per pass.
-    device_type = logits[0].device.type
-    if device_type == "cuda":
-        # Below compute capability 8 Triton is unsupported, though a Triton driver may still load.
-        supported = get_accelerator().is_triton_supported()
-    elif device_type == "xpu":
-        # The XPU accelerator reports no Triton support to keep DeepSpeed's other Triton ops off; these
-        # kernels are validated on XPU.
-        supported = True
-    else:
-        return False
-    return supported and deepspeed.HAS_TRITON
+    accelerator = get_accelerator()
+    return deepspeed.HAS_TRITON and accelerator.is_triton_supported() and accelerator.on_accelerator(logits[0])
 
 
 def _triton_rows(logits):
