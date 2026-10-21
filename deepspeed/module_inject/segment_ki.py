@@ -397,10 +397,17 @@ def _install_gdn_segment(seg: GDNSegment) -> bool:
         # Route through the block's own instance-bound kernels: transformers
         # binds the FLA fused implementations onto the module when available
         # (recurrent_gated_delta_rule/chunk_gated_delta_rule) and only falls
-        # back to the pure-torch references otherwise. Calling the module-level
-        # torch_* functions directly forces the slow fallback on every layer.
+        # back to the pure-torch references otherwise. Newer transformers
+        # (5.19+) no longer bind them per-layer; fall back to the module-level
+        # torch_* implementations there.
         single = kw.get("initial_state") is not None and query.shape[1] == 1
-        fn = parent.recurrent_gated_delta_rule if single else parent.chunk_gated_delta_rule
+        fn_name = "recurrent_gated_delta_rule" if single else "chunk_gated_delta_rule"
+        fn = getattr(parent, fn_name, None)
+        if fn is None:
+            import sys
+            fn = getattr(sys.modules[type(parent).__module__], f"torch_{fn_name}", None)
+        if fn is None:
+            raise AttributeError(f"GDN scan unavailable: neither {fn_name} nor torch_{fn_name}")
         return fn(query, key, value, **kw)
 
     parent._ki_gdn_op = _load_native_op()
@@ -543,7 +550,9 @@ def _decode_attn_forward(self,
     out = torch.empty(batch, num_q_heads, head_dim, dtype=hidden_states.dtype, device=hidden_states.device)
     fuse_q = getattr(self, "_ki_q_norm_w", None) is not None
     if fuse_q:
-        query_states = query_states.reshape(batch, num_q_heads, head_dim)
+        # chunk() leaves query strided ([q|gate] interleaved layout); the
+        # kernel indexes packed memory, so materialize it explicitly
+        query_states = query_states.reshape(batch, num_q_heads, head_dim).contiguous()
         gate = gate.reshape(batch, num_q_heads * head_dim).contiguous()
         self._ki_attn_op.decode_attn(query_states,
                                      key_states,
@@ -561,8 +570,9 @@ def _decode_attn_forward(self,
                                      eps=self.q_norm.eps,
                                      rope_dim=self._ki_cos_t.shape[-1])
     else:
-        self._ki_attn_op.decode_attn(query_states.reshape(batch, num_q_heads, head_dim), key_states, value_states,
-                                     self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
+        self._ki_attn_op.decode_attn(
+            query_states.reshape(batch, num_q_heads, head_dim).contiguous(), key_states, value_states,
+            self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
 
     attn_output = out.view(*input_shape, -1)
     return self.o_proj(attn_output), None
