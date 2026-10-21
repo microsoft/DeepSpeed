@@ -133,7 +133,7 @@ class DualWeightGluGEMV(torch.autograd.Function):
                 out = torch.empty(gate_w.shape[0], dtype=hidden.dtype, device=hidden.device)
                 kernel_op.dual_gemv_silu_mul(hidden, gate_w, up_w, out)
                 return out
-            if hidden.dim() == 2 and 1 < hidden.shape[0] <= 32:
+            if hidden.dim() == 2 and 16 <= hidden.shape[0] <= 32:
                 return kernel_op.dual_gemm_silu_mul(hidden, gate_w, up_w)
         from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul
         return dual_gemv_silu_mul(hidden, gate_w, up_w)
@@ -181,7 +181,7 @@ class GDNInputProj(torch.autograd.Function):
                 out = torch.empty(total, dtype=hidden.dtype, device=hidden.device)
                 kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
                 return out
-            if hidden.dim() == 2 and 1 < hidden.shape[0] <= 32:
+            if hidden.dim() == 2 and 16 <= hidden.shape[0] <= 32:
                 return kernel_op.quad_gemm(hidden, w_qkv, w_z, w_b, w_a)
         from deepspeed.module_inject.kernel_reference import gdn_input_proj
         return gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a)
@@ -527,7 +527,7 @@ def _decode_attn_forward(self,
     # grouped kernel (same weights, one launch); larger batches use the
     # projections as-is.
     batch = hidden_states.shape[0]
-    qkv_op = getattr(self, "_ki_qkv_op", None) if batch <= 32 else None
+    qkv_op = getattr(self, "_ki_qkv_op", None) if (batch == 1 or 16 <= batch <= 32) else None
     if qkv_op is not None and batch == 1:
         # One GEMV launch over q/k/v weights directly — replaces the
         # three separate F.linear launches. q_proj keeps its 2x-wide
