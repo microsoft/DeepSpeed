@@ -137,8 +137,6 @@ def _release_process_group_references(group=None):
             if cached_group is group:
                 del group_map[group_name]
                 rank_map.pop(group_name, None)
-                if group_map is _EXPERT_DATA_PARALLEL_GROUP:
-                    _EXPERT_DATA_PARALLEL_GROUP_TABLE.pop(group_name, None)
 
     for group_name, cached_group in list(_ALL_TO_ALL_GROUP.items()):
         if cached_group is group:
