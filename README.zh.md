@@ -144,6 +144,7 @@ DeepSpeed 已无缝集成至众多主流开源深度学习框架与生态：
 | 英特尔 (Intel)       | Intel(R) 至强(R) 处理器 (Xeon Processors)         | cpu              | 是 (Yes) | 是 (Yes)                |
 | 英特尔 (Intel)       | Intel(R) 数据中心 GPU Max 系列 (Data Center GPU Max) | xpu              | 是 (Yes) | 是 (Yes)                |
 | 太初元碁 (Tecorigin)        | SDAA                                | sdaa             | 是 (Yes) | 否 (No)                 |
+| 昆仑芯 (KUNLUNXIN)        | 昆仑芯 XPU                          | klxpu            | 是 (Yes) | 否 (No)                 |
 
 ## PyPI 安装
 我们定期向 [PyPI](https://pypi.org/project/deepspeed/) 发布最新版本，在绝大多数场景下推荐直接从 PyPI 安装：
