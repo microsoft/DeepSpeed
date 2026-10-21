@@ -482,3 +482,19 @@ class TestClientLrSchedulerInit(DistributedTest):
         else:
             # callable
             assert isinstance(ds_lr_scheduler, OneCycleLR)
+
+
+def test_check_for_duplicates():
+    from types import SimpleNamespace
+    from deepspeed.runtime.engine import DeepSpeedEngine
+
+    model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 4))
+    params = list(model.parameters())
+    dummy_engine = SimpleNamespace(module=model)
+
+    valid_optimizer = SimpleNamespace(param_groups=[{'params': params[:2]}, {'params': params[2:]}])
+    DeepSpeedEngine._check_for_duplicates(dummy_engine, valid_optimizer)
+
+    duplicate_optimizer = SimpleNamespace(param_groups=[{'params': params}, {'params': [params[1]]}])
+    with pytest.raises(AssertionError, match="occurs multiple times in optimizer.param_groups"):
+        DeepSpeedEngine._check_for_duplicates(dummy_engine, duplicate_optimizer)
