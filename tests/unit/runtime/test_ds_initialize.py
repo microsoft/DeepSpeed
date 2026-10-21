@@ -484,17 +484,25 @@ class TestClientLrSchedulerInit(DistributedTest):
             assert isinstance(ds_lr_scheduler, OneCycleLR)
 
 
-def test_check_for_duplicates():
-    from types import SimpleNamespace
-    from deepspeed.runtime.engine import DeepSpeedEngine
+class TestDuplicateOptimizerParams(DistributedTest):
+    world_size = 1
 
-    model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 4))
-    params = list(model.parameters())
-    dummy_engine = SimpleNamespace(module=model)
+    def test_check_for_duplicates(self):
+        config_dict = {'train_batch_size': 1}
+        model = SimpleModel(10, nlayers=2)
+        params = list(model.parameters())
 
-    valid_optimizer = SimpleNamespace(param_groups=[{'params': params[:2]}, {'params': params[2:]}])
-    DeepSpeedEngine._check_for_duplicates(dummy_engine, valid_optimizer)
+        valid_optimizer = torch.optim.Adam([{'params': params[:2]}, {'params': params[2:]}], lr=0.01)
+        _, ds_optimizer, _, _ = deepspeed.initialize(config=config_dict,
+                                                     model=model,
+                                                     model_parameters=params,
+                                                     optimizer=valid_optimizer)
+        assert ds_optimizer == valid_optimizer
 
-    duplicate_optimizer = SimpleNamespace(param_groups=[{'params': params}, {'params': [params[1]]}])
-    with pytest.raises(AssertionError, match="occurs multiple times in optimizer.param_groups"):
-        DeepSpeedEngine._check_for_duplicates(dummy_engine, duplicate_optimizer)
+        duplicate_optimizer = torch.optim.Adam([{'params': params[:2]}, {'params': params[2:]}], lr=0.01)
+        duplicate_optimizer.param_groups[1]['params'].append(params[0])
+        with pytest.raises(AssertionError):
+            deepspeed.initialize(config=config_dict,
+                                 model=model,
+                                 model_parameters=params,
+                                 optimizer=duplicate_optimizer)
