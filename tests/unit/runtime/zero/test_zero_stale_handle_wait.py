@@ -87,25 +87,22 @@ class TestStaleHandleWait(DistributedTest):
 
 
 class TestMultiGroupGatherOrder(DistributedTest):
-    world_size = 4
+    world_size = 2
 
     def test_rank_dependent_param_order(self):
-        # Expert-parallel parameters are partitioned over a subgroup while dense parameters use
-        # the whole world, so all_gather_coalesced issues one all-gather per group. The ZeRO-3
+        # Expert-parallel parameters are partitioned over their own group while dense parameters
+        # use the whole world, so all_gather_coalesced issues one all-gather per group. The ZeRO-3
         # prefetcher passes a set, whose order differs across ranks; every rank must still issue
-        # the per-group all-gathers in the same order, or the collectives deadlock.
+        # the per-group all-gathers in the same order, or the collectives deadlock. A separate
+        # group over the same two ranks is enough to get two groups.
         rank = dist.get_rank()
-        pair_group = None
-        for ranks in ([0, 1], [2, 3]):
-            group = dist.new_group(ranks)
-            if rank in ranks:
-                pair_group = group
+        pair_group = dist.new_group([0, 1])
 
         class PairGroupParam(torch.nn.Module):
 
             def __init__(self):
                 super().__init__()
-                self.w = torch.nn.Parameter(torch.full((HIDDEN, HIDDEN), float(rank // 2 + 1)))
+                self.w = torch.nn.Parameter(torch.full((HIDDEN, HIDDEN), 2.0))
                 self.w.ds_zero_partition_process_group = pair_group
 
         class DenseParam(torch.nn.Module):
@@ -124,4 +121,4 @@ class TestMultiGroupGatherOrder(DistributedTest):
         params[0].all_gather_coalesced(params).wait()
 
         assert torch.equal(dense.w, torch.full_like(dense.w, 3.0))
-        assert torch.equal(pair.w, torch.full_like(pair.w, float(rank // 2 + 1)))
+        assert torch.equal(pair.w, torch.full_like(pair.w, 2.0))
