@@ -441,3 +441,34 @@ class TestRolloutTrainRollout:
 
         # still exercise the post-training generate path end-to-end
         rollout.generate(req, greedy)
+
+    def test_grouped_gemm_small_batch(self):
+        """Grouped GEMM vs reference: the multi-matrix single-launch kernels
+        for decode batches 2..32 (concat and GLU-paired variants)."""
+        import torch.nn.functional as F
+        for M in (2, 8, 32):
+            K, fq, fk, fv = 128, 64, 32, 32
+            x = _rand_bf16(M, K)
+            qw, kw, vw = _rand_bf16(fq, K), _rand_bf16(fk, K), _rand_bf16(fv, K)
+            q_out, k_out, v_out = _op().triple_gemm(x, qw, kw, vw)
+            torch.testing.assert_close(q_out.float(), F.linear(x.float(), qw.float()), atol=5e-2, rtol=5e-2)
+            torch.testing.assert_close(k_out.float(), F.linear(x.float(), kw.float()), atol=5e-2, rtol=5e-2)
+            torch.testing.assert_close(v_out.float(), F.linear(x.float(), vw.float()), atol=5e-2, rtol=5e-2)
+
+            gz_w, b_w, a_w = _rand_bf16(48, K), _rand_bf16(16, K), _rand_bf16(16, K)
+            cat = _op().quad_gemm(x, qw, gz_w, b_w, a_w)
+            ref = torch.cat([F.linear(x.float(), w.float()) for w in (qw, gz_w, b_w, a_w)], dim=-1)
+            torch.testing.assert_close(cat.float(), ref, atol=5e-2, rtol=5e-2)
+
+            gw, uw = _rand_bf16(fq, K), _rand_bf16(fq, K)
+            glu = _op().dual_gemm_silu_mul(x, gw, uw)
+            ref_glu = torch.sigmoid(F.linear(x.float(), gw.float())) * F.linear(x.float(), uw.float()) \
+                * F.linear(x.float(), gw.float())
+            torch.testing.assert_close(glu.float(), ref_glu, atol=5e-2, rtol=5e-2)
+
+    def test_grouped_gemm_rejects_out_of_range(self):
+        import pytest as _pytest
+        x = _rand_bf16(33, 64)
+        w = _rand_bf16(32, 64)
+        with _pytest.raises(RuntimeError):
+            _op().dual_gemm_silu_mul(x, w, w)

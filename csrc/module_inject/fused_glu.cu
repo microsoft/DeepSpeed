@@ -912,6 +912,261 @@ std::vector<at::Tensor> triple_gemv(at::Tensor hidden,
     return {q_out, k_out, v_out};
 }
 
+
+
+// Grouped linear for small batches (2..32): one launch covers up to four
+// weight matrices, each weight element streamed exactly once (the
+// activation tile rides in shared memory). Replaces the separate cuBLAS
+// GEMMs the composite fallback issues per matrix; no weight copies.
+static constexpr int GRP_MT = 32;   // max batch rows
+static constexpr int GRP_NT = 64;   // output columns per block
+static constexpr int GRP_KT = 64;   // k-chunk staged through smem
+static constexpr int GRP_TPB = 128; // threads per block
+
+struct GrpSeg {
+    int mat;  // which weight matrix
+    int lrow; // row within that matrix
+};
+
+__device__ __forceinline__ GrpSeg grp_map_row(int row, int f0, int f1, int f2, int f3, int n_mat)
+{
+    GrpSeg s{0, row};
+    int fs[4] = {f0, f1, f2, f3};
+    for (int i = 0; i < n_mat && i < 4; i++) {
+        if (s.lrow < fs[i]) { s.mat = i; return s; }
+        s.lrow -= fs[i];
+    }
+    s.mat = 0;  // unreachable for well-formed launches
+    return s;
+}
+
+__global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
+                                      const __nv_bfloat16* __restrict__ w0,
+                                      const __nv_bfloat16* __restrict__ w1,
+                                      const __nv_bfloat16* __restrict__ w2,
+                                      const __nv_bfloat16* __restrict__ w3,
+                                      __nv_bfloat16* __restrict__ o0,
+                                      __nv_bfloat16* __restrict__ o1,
+                                      __nv_bfloat16* __restrict__ o2,
+                                      __nv_bfloat16* __restrict__ o3,
+                                      int f0,
+                                      int f1,
+                                      int f2,
+                                      int f3,
+                                      int M,
+                                      int K,
+                                      int total_out,
+                                      int concat_mode)
+{
+    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 1];
+    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 1];
+    __shared__ GrpSeg seg_tab[GRP_NT];
+
+    int tid = threadIdx.x;
+    int n0 = blockIdx.x * GRP_NT;
+    if (n0 >= total_out) return;
+
+    // per-tile-column segment map (a tile may straddle matrix boundaries)
+    for (int c = tid; c < GRP_NT; c += GRP_TPB) {
+        seg_tab[c] = (n0 + c < total_out) ? grp_map_row(n0 + c, f0, f1, f2, f3, 4) : GrpSeg{0, 0};
+    }
+    __syncthreads();
+
+    int col = tid % GRP_NT;
+    int mhalf = tid / GRP_NT;  // 0 or 1
+    int m_lo = mhalf * (GRP_MT / 2);
+    int m_hi = (m_lo < M) ? min(m_lo + GRP_MT / 2, M) : m_lo;
+
+    GrpSeg my = seg_tab[col];
+    const __nv_bfloat16* wgs[4] = {w0, w1, w2, w3};
+    __nv_bfloat16* ogs[4] = {o0, o1, o2, o3};
+    int fs[4] = {f0, f1, f2, f3};
+
+    float acc[GRP_MT / 2];
+    for (int j = 0; j < GRP_MT / 2; j++) acc[j] = 0.f;
+
+    for (int k0 = 0; k0 < K; k0 += GRP_KT) {
+        int kn = min(GRP_KT, K - k0);
+        for (int idx = tid; idx < M * kn; idx += GRP_TPB) {
+            int m = idx / kn, c = idx % kn;
+            xs[m][c] = x[(long)m * K + k0 + c];
+        }
+        // stage the weight tile row-major (coalesced: consecutive threads read consecutive k)
+        for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
+            int r = idx / kn, c = idx % kn;
+            GrpSeg g = seg_tab[r];
+            if (n0 + r < total_out) ws[r][c] = wgs[g.mat][(long)g.lrow * K + k0 + c];
+        }
+        __syncthreads();
+        for (int kk = 0; kk < kn; kk++) {
+            float wv = __bfloat162float(ws[col][kk]);
+            for (int j = m_lo; j < m_hi; j++) acc[j - m_lo] += __bfloat162float(xs[j][kk]) * wv;
+        }
+        __syncthreads();
+    }
+
+    if (n0 + col < total_out) {
+        __nv_bfloat16* o = ogs[my.mat];
+        int fs2[4] = {f0, f1, f2, f3};
+        if (concat_mode) {
+            int base = 0;
+            for (int i = 0; i < my.mat; i++) base += fs2[i];
+            for (int j = m_lo; j < m_hi; j++) o[(long)j * total_out + base + my.lrow] = __float2bfloat16_rn(acc[j - m_lo]);
+        } else {
+            for (int j = m_lo; j < m_hi; j++) o[(long)j * fs[my.mat] + my.lrow] = __float2bfloat16_rn(acc[j - m_lo]);
+        }
+    }
+}
+
+// Paired-matrix GLU GEMM: out = silu(x@g^T) * (x@u^T); both weight tiles
+// streamed per block so each element is read exactly once overall.
+__global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
+                                const __nv_bfloat16* __restrict__ g_w,
+                                const __nv_bfloat16* __restrict__ u_w,
+                                __nv_bfloat16* __restrict__ out,
+                                int M,
+                                int N,
+                                int K)
+{
+    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 1];
+    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 1];
+
+    int tid = threadIdx.x;
+    int n0 = blockIdx.x * GRP_NT;
+    if (n0 >= N) return;
+    int col = tid % GRP_NT;
+    int mhalf = tid / GRP_NT;
+    int m_lo = mhalf * (GRP_MT / 2);
+    int m_hi = (m_lo < M) ? min(m_lo + GRP_MT / 2, M) : m_lo;
+
+    float accg[GRP_MT / 2], accu[GRP_MT / 2];
+    for (int j = 0; j < GRP_MT / 2; j++) {
+        accg[j] = 0.f;
+        accu[j] = 0.f;
+    }
+
+    for (int k0 = 0; k0 < K; k0 += GRP_KT) {
+        int kn = min(GRP_KT, K - k0);
+        for (int idx = tid; idx < M * kn; idx += GRP_TPB) {
+            int m = idx / kn, c = idx % kn;
+            xs[m][c] = x[(long)m * K + k0 + c];
+        }
+        __syncthreads();
+        // gate tile: accumulate
+        for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
+            int r = idx / kn, c = idx % kn;
+            if (n0 + r < N) ws[r][c] = g_w[(long)(n0 + r) * K + k0 + c];
+        }
+        __syncthreads();
+        for (int kk = 0; kk < kn; kk++) {
+            float wv = __bfloat162float(ws[col][kk]);
+            for (int j = m_lo; j < m_hi; j++) accg[j - m_lo] += __bfloat162float(xs[j][kk]) * wv;
+        }
+        __syncthreads();
+        // up tile: reuse the same smem buffer
+        for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
+            int r = idx / kn, c = idx % kn;
+            if (n0 + r < N) ws[r][c] = u_w[(long)(n0 + r) * K + k0 + c];
+        }
+        __syncthreads();
+        for (int kk = 0; kk < kn; kk++) {
+            float wv = __bfloat162float(ws[col][kk]);
+            for (int j = m_lo; j < m_hi; j++) accu[j - m_lo] += __bfloat162float(xs[j][kk]) * wv;
+        }
+        __syncthreads();
+    }
+
+    if (n0 + col < N) {
+        for (int j = m_lo; j < m_hi; j++) {
+            float v = silu_f(accg[j - m_lo]) * accu[j - m_lo];
+            out[(long)j * N + n0 + col] = __float2bfloat16_rn(v);
+        }
+    }
+}
+
+std::vector<at::Tensor> grouped_gemm_impl(at::Tensor x,
+                                          at::Tensor w0,
+                                          at::Tensor w1,
+                                          at::Tensor w2,
+                                          at::Tensor w3,
+                                          int64_t n_mat,
+                                          bool want_separate)
+{
+    TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::ScalarType::BFloat16, "x must be CUDA bf16");
+    TORCH_CHECK(x.is_contiguous(), "x must be contiguous");
+    TORCH_CHECK(x.dim() == 2 && x.size(0) > 1 && x.size(0) <= GRP_MT, "batch must be 2..32");
+    int M = (int)x.size(0), K = (int)x.size(1);
+    at::Tensor ws[4] = {w0, w1, w2, w3};
+    for (int i = 0; i < n_mat; i++) {
+        TORCH_CHECK(ws[i].is_cuda() && ws[i].scalar_type() == at::ScalarType::BFloat16, "weights must be CUDA bf16");
+        TORCH_CHECK(ws[i].is_contiguous(), "weights must be contiguous");
+        TORCH_CHECK(ws[i].size(1) == K, "weight K mismatch");
+    }
+    int fs[4] = {0, 0, 0, 0};
+    int total = 0;
+    for (int i = 0; i < n_mat; i++) {
+        fs[i] = (int)ws[i].size(0);
+        total += fs[i];
+    }
+    auto stream = at::cuda::getCurrentCUDAStream();
+    int blocks = (total + GRP_NT - 1) / GRP_NT;
+    auto opts = x.options();
+    std::vector<at::Tensor> outs;
+    at::Tensor o0, o1, o2, o3;
+    if (want_separate) {
+        for (int i = 0; i < n_mat; i++) outs.push_back(at::empty({M, fs[i]}, opts));
+        o0 = n_mat > 0 ? outs[0] : at::Tensor();
+        o1 = n_mat > 1 ? outs[1] : at::Tensor();
+        o2 = n_mat > 2 ? outs[2] : at::Tensor();
+        o3 = n_mat > 3 ? outs[3] : at::Tensor();
+    } else {
+        o0 = at::empty({M, total}, opts);
+        outs.push_back(o0);
+    }
+    at::Tensor dummy = o0.defined() ? o0 : x;  // unused slots point at a live buffer
+    grouped_linear_kernel<<<blocks, GRP_TPB, 0, stream.stream()>>>(
+        (const __nv_bfloat16*)x.data_ptr(),
+        (const __nv_bfloat16*)(n_mat > 0 ? w0 : dummy).data_ptr(),
+        (const __nv_bfloat16*)(n_mat > 1 ? w1 : dummy).data_ptr(),
+        (const __nv_bfloat16*)(n_mat > 2 ? w2 : dummy).data_ptr(),
+        (const __nv_bfloat16*)(n_mat > 3 ? w3 : dummy).data_ptr(),
+        (__nv_bfloat16*)(want_separate && o0.defined() ? o0 : o0).data_ptr(),
+        (__nv_bfloat16*)(want_separate && o1.defined() ? o1 : o0).data_ptr(),
+        (__nv_bfloat16*)(want_separate && o2.defined() ? o2 : o0).data_ptr(),
+        (__nv_bfloat16*)(want_separate && o3.defined() ? o3 : o0).data_ptr(),
+        fs[0], fs[1], fs[2], fs[3], M, K, total, want_separate ? 0 : 1);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return outs;
+}
+
+std::vector<at::Tensor> triple_gemm(at::Tensor x, at::Tensor qw, at::Tensor kw, at::Tensor vw)
+{
+    return grouped_gemm_impl(x, qw, kw, vw, qw, 3, true);
+}
+
+at::Tensor quad_gemm(at::Tensor x, at::Tensor w_qkv, at::Tensor w_z, at::Tensor w_b, at::Tensor w_a)
+{
+    return grouped_gemm_impl(x, w_qkv, w_z, w_b, w_a, 4, false)[0];
+}
+
+at::Tensor dual_gemm_silu_mul(at::Tensor x, at::Tensor gate_w, at::Tensor up_w)
+{
+    TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::ScalarType::BFloat16, "x must be CUDA bf16");
+    TORCH_CHECK(x.is_contiguous() && gate_w.is_contiguous() && up_w.is_contiguous(), "inputs must be contiguous");
+    TORCH_CHECK(x.dim() == 2 && x.size(0) > 1 && x.size(0) <= GRP_MT, "batch must be 2..32");
+    int M = (int)x.size(0), K = (int)x.size(1), N = (int)gate_w.size(0);
+    TORCH_CHECK(up_w.size(0) == N && gate_w.size(1) == K && up_w.size(1) == K, "shape mismatch");
+    auto out = at::empty({M, N}, x.options());
+    auto stream = at::cuda::getCurrentCUDAStream();
+    int blocks = (N + GRP_NT - 1) / GRP_NT;
+    glu_gemm_kernel<<<blocks, GRP_TPB, 0, stream.stream()>>>((const __nv_bfloat16*)x.data_ptr(),
+                                                             (const __nv_bfloat16*)gate_w.data_ptr(),
+                                                             (const __nv_bfloat16*)up_w.data_ptr(),
+                                                             (__nv_bfloat16*)out.data_ptr(), M, N, K);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return out;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     // two explicit overloads: at::Tensor() pybind defaults proved fragile
@@ -953,6 +1208,27 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         py::arg("num_kv_heads"),
         py::arg("head_dim"),
         py::arg("max_len"));
+    m.def("triple_gemm",
+          &triple_gemm,
+          "grouped q/k/v GEMM for small batches (2..32), no weight copies",
+          py::arg("x"),
+          py::arg("q_w"),
+          py::arg("k_w"),
+          py::arg("v_w"));
+    m.def("quad_gemm",
+          &quad_gemm,
+          "grouped GDN input-projection GEMM (qkv|z|b|a) -> concat, small batches",
+          py::arg("x"),
+          py::arg("w_qkv"),
+          py::arg("w_z"),
+          py::arg("w_b"),
+          py::arg("w_a"));
+    m.def("dual_gemm_silu_mul",
+          &dual_gemm_silu_mul,
+          "grouped gate/up GEMM with silu(g)*u epilogue, small batches",
+          py::arg("x"),
+          py::arg("gate_w"),
+          py::arg("up_w"));
     m.def("decode_attn",
           &decode_attn,
           "batched decode attention (GQA, valid-length, fused q-norm/rope/gate)",

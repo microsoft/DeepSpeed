@@ -128,10 +128,13 @@ class DualWeightGluGEMV(torch.autograd.Function):
     @staticmethod
     def forward(ctx, hidden, gate_w, up_w, kernel_op):
         ctx.save_for_backward(hidden, gate_w, up_w)
-        if hidden.dim() == 1 and _native_kernel_ready(kernel_op, hidden, gate_w, up_w):
-            out = torch.empty(gate_w.shape[0], dtype=hidden.dtype, device=hidden.device)
-            kernel_op.dual_gemv_silu_mul(hidden, gate_w, up_w, out)
-            return out
+        if _native_kernel_ready(kernel_op, hidden, gate_w, up_w):
+            if hidden.dim() == 1:
+                out = torch.empty(gate_w.shape[0], dtype=hidden.dtype, device=hidden.device)
+                kernel_op.dual_gemv_silu_mul(hidden, gate_w, up_w, out)
+                return out
+            if hidden.dim() == 2 and 1 < hidden.shape[0] <= 32:
+                return kernel_op.dual_gemm_silu_mul(hidden, gate_w, up_w)
         from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul
         return dual_gemv_silu_mul(hidden, gate_w, up_w)
 
@@ -172,11 +175,14 @@ class GDNInputProj(torch.autograd.Function):
     @staticmethod
     def forward(ctx, hidden, w_qkv, w_z, w_b, w_a, kernel_op):
         ctx.save_for_backward(hidden, w_qkv, w_z, w_b, w_a)
-        if hidden.dim() == 1 and _native_kernel_ready(kernel_op, hidden, w_qkv, w_z, w_b, w_a):
-            total = w_qkv.shape[0] + w_z.shape[0] + w_b.shape[0] + w_a.shape[0]
-            out = torch.empty(total, dtype=hidden.dtype, device=hidden.device)
-            kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
-            return out
+        if _native_kernel_ready(kernel_op, hidden, w_qkv, w_z, w_b, w_a):
+            if hidden.dim() == 1:
+                total = w_qkv.shape[0] + w_z.shape[0] + w_b.shape[0] + w_a.shape[0]
+                out = torch.empty(total, dtype=hidden.dtype, device=hidden.device)
+                kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
+                return out
+            if hidden.dim() == 2 and 1 < hidden.shape[0] <= 32:
+                return kernel_op.quad_gemm(hidden, w_qkv, w_z, w_b, w_a)
         from deepspeed.module_inject.kernel_reference import gdn_input_proj
         return gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a)
 
@@ -517,14 +523,20 @@ def _decode_attn_forward(self,
     input_shape = hidden_states.shape[:-1]
     hidden_shape = (*input_shape, -1, self.head_dim)
 
-    # triple_gemv is a single-vector kernel; batched rows use the projections
-    qkv_op = getattr(self, "_ki_qkv_op", None) if hidden_states.shape[0] == 1 else None
-    if qkv_op is not None:
+    # b=1: triple_gemv single-vector kernel; 1 < b <= 32: triple_gemm
+    # grouped kernel (same weights, one launch); larger batches use the
+    # projections as-is.
+    batch = hidden_states.shape[0]
+    qkv_op = getattr(self, "_ki_qkv_op", None) if batch <= 32 else None
+    if qkv_op is not None and batch == 1:
         # One GEMV launch over q/k/v weights directly — replaces the
         # three separate F.linear launches. q_proj keeps its 2x-wide
         # query|gate layout, so the gate split below is unchanged from HF.
         q_out, k_out, v_out = qkv_op.triple_gemv(hidden_states.view(-1), self.q_proj.weight, self.k_proj.weight,
                                                  self.v_proj.weight)
+    elif qkv_op is not None:
+        q_out, k_out, v_out = qkv_op.triple_gemm(hidden_states.reshape(-1, hidden_states.shape[-1]),
+                                                 self.q_proj.weight, self.k_proj.weight, self.v_proj.weight)
         query_states, gate = torch.chunk(q_out.view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
         key_states = self.k_norm(k_out.view(hidden_shape)).transpose(1, 2)
         value_states = v_out.view(hidden_shape).transpose(1, 2)
