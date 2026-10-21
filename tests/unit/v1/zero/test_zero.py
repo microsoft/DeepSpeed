@@ -1965,6 +1965,56 @@ class TestZero3AutocastSharesMasterWeights(DistributedTest):
             model.step()
 
 
+class TestZero3Fp32SharesMasterWeights(DistributedTest):
+    """A float32 model with no bf16 / fp16 section is in the master dtype too, so ZeRO-3 without optimizer offload
+    uses each partition as its own master copy, and training must match torch.optim.Adam on an unsharded copy."""
+    world_size = 2
+
+    def test(self):
+        hidden_dim = 64
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 2,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-2
+                }
+            },
+            "zero_optimization": {
+                "stage": 3
+            },
+            # The reference does not clip; DeepSpeed clips the global gradient norm to 1.0 by default.
+            "gradient_clipping": 0.0,
+        }
+        torch.manual_seed(0)
+        model = SimpleModel(hidden_dim, nlayers=2)
+        device = get_accelerator().current_device_name()
+        reference = deepcopy(model).to(device)
+        reference_optimizer = torch.optim.Adam(reference.parameters(), lr=1e-2)
+        engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        optimizer = engine.optimizer
+        for model_partition, master in zip(optimizer.fp16_partitioned_groups_flat,
+                                           optimizer.fp32_partitioned_groups_flat):
+            assert master is model_partition
+
+        for step in range(3):
+            # The same batch on every rank, so the averaged gradient is the reference's.
+            generator = torch.Generator().manual_seed(100 + step)
+            x = torch.randn(2, hidden_dim, generator=generator).to(device)
+            y = torch.randint(0, hidden_dim, (2, ), generator=generator).to(device)
+            loss = engine(x, y)
+            engine.backward(loss)
+            engine.step()
+            reference_loss = reference(x, y)
+            reference_loss.backward()
+            reference_optimizer.step()
+            reference_optimizer.zero_grad()
+            torch.testing.assert_close(loss, reference_loss, rtol=1e-5, atol=1e-6)
+
+        for param, reference_param in zip(engine.module.parameters(), reference.parameters()):
+            torch.testing.assert_close(safe_get_full_fp32_param(param), reference_param, rtol=1e-5, atol=1e-6)
+
+
 @pytest.mark.parametrize("training", [True, False])
 class TestZeroPartitionCache(DistributedTest):
     world_size = 1
