@@ -28,6 +28,7 @@ from torch.autograd.function import once_differentiable
 
 import deepspeed
 import deepspeed.comm as dist
+from deepspeed.accelerator import get_accelerator
 from deepspeed.comm import pg_utils
 from deepspeed.sequence.cross_entropy import _resolve_vocab_metadata
 
@@ -39,9 +40,17 @@ _CHUNK_NUMEL = 1 << 24
 def _use_triton(*logits):
     # Eager row chunks run about a dozen separate memory-bound kernels per chunk; the Triton
     # kernels read each logit once per pass.
-    if logits[0].device.type not in ("cuda", "xpu"):
+    device_type = logits[0].device.type
+    if device_type == "cuda":
+        # Below compute capability 8 Triton is unsupported, though a Triton driver may still load.
+        supported = get_accelerator().is_triton_supported()
+    elif device_type == "xpu":
+        # The XPU accelerator reports no Triton support to keep DeepSpeed's other Triton ops off; these
+        # kernels are validated on XPU.
+        supported = True
+    else:
         return False
-    return deepspeed.HAS_TRITON
+    return supported and deepspeed.HAS_TRITON
 
 
 def _triton_rows(logits):
@@ -129,8 +138,9 @@ def _triton_entropy(logits, tp_group):
     global_max = local_max.clone()
     if pg_utils.is_parallel(tp_group):
         dist.all_reduce(global_max, op=dist.ReduceOp.MAX, group=tp_group)
-    seen, rescale = _rescale_to_global_max(local_max, global_max)
-    weighted = torch.where(seen, rescale * (stats[2] - (global_max - local_max) * stats[1]), 0.0)
+    _, rescale = _rescale_to_global_max(local_max, global_max)
+    # A rescale that underflows to 0 may come with an infinite shift, and 0 * inf is NaN.
+    weighted = torch.where(rescale > 0, rescale * (stats[2] - (global_max - local_max) * stats[1]), 0.0)
     sums = torch.stack([stats[1] * rescale, weighted])
     if pg_utils.is_parallel(tp_group):
         dist.all_reduce(sums, op=dist.ReduceOp.SUM, group=tp_group)
@@ -148,11 +158,11 @@ def _triton_kl_div(a_logits, b_logits, tp_group):
     if pg_utils.is_parallel(tp_group):
         dist.all_reduce(maxima, op=dist.ReduceOp.MAX, group=tp_group)
     a_max, b_max, mismatch = maxima
-    a_seen, a_rescale = _rescale_to_global_max(local_a_max, a_max)
+    _, a_rescale = _rescale_to_global_max(local_a_max, a_max)
     b_seen, b_rescale = _rescale_to_global_max(local_b_max, b_max)
     shift = (a_max - local_a_max) - (b_max - local_b_max)
     # A shard with A but no finite B holds only mismatched terms, which +inf replaces below.
-    weighted = torch.where(a_seen & b_seen, a_rescale * (stats[5] - shift * stats[3]), 0.0)
+    weighted = torch.where(b_seen & (a_rescale > 0), a_rescale * (stats[5] - shift * stats[3]), 0.0)
     sums = torch.stack([stats[3] * a_rescale, stats[4] * b_rescale, weighted])
     if pg_utils.is_parallel(tp_group):
         dist.all_reduce(sums, op=dist.ReduceOp.SUM, group=tp_group)

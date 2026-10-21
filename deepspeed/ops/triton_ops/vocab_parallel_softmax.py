@@ -75,21 +75,22 @@ if _TRITON_AVAILABLE:
             cols = start + tl.arange(0, BLOCK)
             z = tl.load(x_ptr + cols, mask=cols < vocab, other=float("-inf")).to(tl.float32)
             new_max = tl.maximum(run_max, z)
-            # Sums that have only seen -inf are still 0 and must stay finite.
+            # Sums that have only seen -inf are still 0 and must stay finite. A scale that underflows to 0
+            # may come with an infinite shift when the maxima are finite extremes, so 0 * inf is skipped.
             seen = run_max != float("-inf")
             scale = tl.where(seen, tl.exp(run_max - new_max), 0.0)
-            run_weighted = tl.where(seen, scale * (run_weighted - (new_max - run_max) * run_sum), 0.0)
+            run_weighted = tl.where(scale > 0, scale * (run_weighted - (new_max - run_max) * run_sum), 0.0)
             run_sum = run_sum * scale
             live = z != float("-inf")
             e = tl.where(live, tl.exp(z - new_max), 0.0)
             run_sum += e
-            run_weighted += tl.where(live, e * (z - new_max), 0.0)
+            run_weighted += tl.where(e > 0, e * (z - new_max), 0.0)
             run_max = new_max
         # Re-centre every lane on the row max before summing the lanes.
         row_max = tl.max(run_max, axis=0)
         seen = run_max != float("-inf")
         scale = tl.where(seen, tl.exp(run_max - row_max), 0.0)
-        run_weighted = tl.where(seen, scale * (run_weighted - (row_max - run_max) * run_sum), 0.0)
+        run_weighted = tl.where(scale > 0, scale * (run_weighted - (row_max - run_max) * run_sum), 0.0)
         run_sum = run_sum * scale
         tl.store(out_ptr + row, row_max)
         tl.store(out_ptr + num_rows + row, tl.sum(run_sum, axis=0))
@@ -169,7 +170,7 @@ if _TRITON_AVAILABLE:
             # A sum that has seen A but no finite B holds only mismatched terms, which the final
             # +inf replaces, so dropping it keeps the -inf shift from producing NaN.
             shift = (new_a_max - a_max) - (new_b_max - b_max)
-            weighted = tl.where(a_seen & b_seen, a_scale * (weighted - shift * a_sum), 0.0)
+            weighted = tl.where(b_seen & (a_scale > 0), a_scale * (weighted - shift * a_sum), 0.0)
             a_sum = a_sum * a_scale
             b_sum = b_sum * b_scale
             a_live = za != float("-inf")
@@ -179,7 +180,7 @@ if _TRITON_AVAILABLE:
             b_sum += tl.where(b_live, tl.exp(zb - new_b_max), 0.0)
             # Tokens A masks out contribute nothing; where B masks out a token A supports, KL(A || B) is
             # infinite even if p_A underflows to 0, so this is decided on the logits.
-            weighted += tl.where(a_live & b_live, ea * ((za - new_a_max) - (zb - new_b_max)), 0.0)
+            weighted += tl.where(b_live & (ea > 0), ea * ((za - new_a_max) - (zb - new_b_max)), 0.0)
             mismatch |= (a_live & ~b_live).to(tl.int32)
             a_max = new_a_max
             b_max = new_b_max
@@ -191,7 +192,7 @@ if _TRITON_AVAILABLE:
         a_scale = tl.where(a_seen, tl.exp(a_max - row_a_max), 0.0)
         b_scale = tl.where(b_seen, tl.exp(b_max - row_b_max), 0.0)
         shift = (row_a_max - a_max) - (row_b_max - b_max)
-        weighted = tl.where(a_seen & b_seen, a_scale * (weighted - shift * a_sum), 0.0)
+        weighted = tl.where(b_seen & (a_scale > 0), a_scale * (weighted - shift * a_sum), 0.0)
         a_sum = a_sum * a_scale
         b_sum = b_sum * b_scale
         tl.store(out_ptr + row, row_a_max)

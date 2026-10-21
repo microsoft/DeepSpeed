@@ -418,6 +418,28 @@ def test_triton_kernels_match_eager_path(op, dtype):
         torch.testing.assert_close(actual_tensor, expected_tensor, rtol=rtol, atol=atol, equal_nan=True)
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("op", ["entropy", "forward_kl", "reverse_kl"])
+def test_triton_kernels_handle_finite_extreme_logits(op, dtype):
+    # The gap between -3e38 and 3e38 overflows fp32, so rescaling between the two maxima pairs a zero
+    # scale with an infinite shift. Each row is still one-hot: entropy and KL(p || p) are 0 with zero
+    # gradient. The peak sits in the first block in one row and in the last block in the other, so the
+    # maximum is reached before and after the other lanes' running maxima.
+    device = _triton_device()
+    logits = torch.full((2, 5000), -3e38)
+    logits[0, 0] = 3e38
+    logits[1, -1] = 3e38
+    logits = logits.to(dtype)
+    index = torch.zeros(2, 1, dtype=torch.long)
+
+    out, student_grad, teacher_grad = _run_on(device, op, logits, logits.clone(), index)
+
+    assert torch.equal(out, torch.zeros_like(out))
+    assert torch.equal(student_grad, torch.zeros_like(student_grad))
+    if teacher_grad is not None:
+        assert torch.equal(teacher_grad, torch.zeros_like(teacher_grad))
+
+
 @pytest.mark.parametrize("layout", ["sequence_slice", "strided_vocab"])
 @pytest.mark.parametrize("op", ["logprobs", "entropy", "forward_kl", "reverse_kl"])
 def test_triton_kernels_match_eager_path_on_non_contiguous_logits(op, layout):
@@ -509,6 +531,26 @@ class TestVocabParallelOpsTP(DistributedTest):
         (expected * weight).sum().backward()
         torch.testing.assert_close(local_student.grad, full_student.grad[..., start:end])
         torch.testing.assert_close(local_teacher.grad, full_teacher.grad[..., start:end])
+
+    def test_finite_extreme_logits_across_shards(self):
+        # Only rank 1 holds the peak, so rank 0's maximum is rescaled by exp(-6e38) = 0 with an
+        # infinite shift when the shards are combined. The distribution is one-hot: entropy and KL(p || p)
+        # are 0 with zero gradient.
+        device = torch.device(get_accelerator().current_device_name())
+        tp_group = dist.get_world_group()
+        local = torch.full((2, 3), -3e38, device=device)
+        if dist.get_rank() == 1:
+            local[:, 1] = 3e38
+        student, teacher = leaf(local), leaf(local.clone())
+
+        actual = (vocab_parallel_entropy(student, tp_group=tp_group) +
+                  vocab_parallel_kl_div(student, teacher, tp_group=tp_group) +
+                  vocab_parallel_kl_div(student, teacher, reverse=True, tp_group=tp_group))
+        actual.sum().backward()
+
+        assert torch.equal(actual, torch.zeros_like(actual))
+        assert torch.equal(student.grad, torch.zeros_like(student.grad))
+        assert torch.equal(teacher.grad, torch.zeros_like(teacher.grad))
 
     def test_empty_shard_does_not_desynchronize_ranks(self):
         # Rank 0 owns no vocabulary. Entropy and KL need no shard bounds, so they must still match
