@@ -1631,16 +1631,17 @@ class Yuan_LinearAllreduce(LinearAllreduce):
                                 affine_map=weight_map,
                                 unsupported_reason=None if weight_map else self._unsupported_uc_reason)
         if self.bias is not None:
-            bias_shape = tuple(self.bias.shape)
-            # The weight is describable but this bias is not. Its partition pre-divides by the
-            # world size and replicates, which would need a scaled piece -- and that path does
-            # not currently produce a usable bias, so there is no layout to describe yet.
+            # Only the weight follows the shared-QK head selection. The bias is added once after
+            # the all-reduce, so every rank holds it whole, exactly as for any LinearAllreduce.
+            bias_shape = self._shape_before_zero3_partition(self.bias)
             self._set_param_uc_meta(self.bias,
                                     partition_type='row',
+                                    partition_dim=None,
                                     logical_shape=bias_shape,
+                                    output_shape=bias_shape,
                                     original_shape=bias_shape,
                                     is_bias=True,
-                                    unsupported_reason=self._unsupported_uc_reason)
+                                    replicated=True)
 
 
 class Yuan_LinearLayer(LinearLayer):
