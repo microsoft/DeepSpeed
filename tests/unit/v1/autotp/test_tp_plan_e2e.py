@@ -305,6 +305,25 @@ class TestTPPlanEndToEnd(DistributedTest):
         engine.step()
 
 
+def test_layer_without_tp_meta_follows_set_autotp_mode():
+    # Direct callers build layers without tp_meta and switch modes later with set_autotp_mode. A layer
+    # stuck in the inference mode it was built in adds its bias in place on the RowParallel output,
+    # which autograd rejects once training starts.
+    from deepspeed.module_inject.layers import LinearAllreduce, is_autotp_training_mode, set_autotp_mode
+
+    previous_mode = is_autotp_training_mode()
+    set_autotp_mode(training=False)
+    try:
+        device = get_accelerator().current_device_name()
+        layer = LinearAllreduce(torch.nn.Linear(8, 4, bias=True), mp_group=None, name="proj").to(device)
+        layer.requires_grad_(True)
+        set_autotp_mode(training=True)
+        layer(torch.randn(2, 8, device=device)).sum().backward()
+    finally:
+        set_autotp_mode(training=previous_mode)
+    assert layer.bias.grad is not None
+
+
 class TestReplicatedGradAllreduce(DistributedTest):
     """Replicated parameters marked replicated_with_grad_allreduce must not drift across TP ranks.
 
@@ -507,9 +526,6 @@ class TestInferenceTeacherAfterTrainingStudent(DistributedTest):
     world_size = 4
 
     def test_teacher_uses_its_own_tp_size_and_stays_frozen(self):
-        if get_accelerator().device_name() == "cpu":
-            import pytest
-            pytest.skip("CPU does not support this test yet")
         import pytest
         transformers = pytest.importorskip("transformers")
 

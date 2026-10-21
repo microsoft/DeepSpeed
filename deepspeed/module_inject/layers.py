@@ -420,12 +420,6 @@ class TensorParallel_Layer(nn.Module, ABC):
         # (e.g. the from_weights back-compat constructor).
         self.tp_meta: AutoTPMeta = kwargs.get('tp_meta') or AutoTPMeta()
 
-        # A model keeps the mode it was sharded in, so a frozen inference teacher and a training
-        # student can live in one process without sharing the process-wide AutoTP mode.
-        self.autotp_training = self.tp_meta.training
-        if self.autotp_training is None:
-            self.autotp_training = is_autotp_training_mode()
-
     def _assert_compiled_if_deferred(self):
         """Fail loudly if a deferred layer is executed outside a compiled region.
 
@@ -573,7 +567,12 @@ class TensorParallel_Layer(nn.Module, ABC):
         return self.mp_group is not None
 
     def is_training_mode(self):
-        return self.autotp_training
+        # A model keeps the mode it was sharded in, so a frozen inference teacher and a training
+        # student can live in one process without sharing the process-wide AutoTP mode. Layers
+        # built without an explicit mode keep following set_autotp_mode.
+        if self.tp_meta.training is None:
+            return is_autotp_training_mode()
+        return self.tp_meta.training
 
     def _freeze_partition_sizes(self, total_size):
         """Resolve the tensor parallel split of this layer once, while the layer is built.
