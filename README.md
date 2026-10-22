@@ -14,6 +14,10 @@
  <img src="docs/assets/images/DeepSpeed_dark_transparent.svg#gh-dark-mode-only" width="400px">
 </div>
 
+<p align="center">
+  <b>English</b> · <a href="README.zh.md">简体中文</a>
+</p>
+
 
 ## Office Hours
 
@@ -144,6 +148,7 @@ dynamically link them at runtime.
 | Intel       | Intel(R) Xeon(R) Processors         | cpu              | Yes | Yes                |
 | Intel       | Intel(R) Data Center GPU Max series | xpu              | Yes | Yes                |
 | Tecorigin   | Scalable Data Analytics Accelerator | sdaa             | Yes | No                 |
+| KUNLUNXIN   | KUNLUNXIN XPU                      | klxpu            | Yes | No                 |
 
 ## PyPI
 We regularly push releases to [PyPI](https://pypi.org/project/deepspeed/) and encourage users to install from there in most cases.
