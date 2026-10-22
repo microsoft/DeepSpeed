@@ -329,7 +329,10 @@ class ZeROOptimizer(DeepSpeedOptimizer):
     def _grad_acc_post_hooks(self, value):
         self._backward_hook_state._grad_acc_post_hooks = value
 
-    def load_hp_checkpoint_state_from_checkpoint_dir(self, lp_groups_name: str, checkpoint_dir: str) -> None:
+    def load_hp_checkpoint_state_from_checkpoint_dir(self,
+                                                     lp_groups_name: str,
+                                                     checkpoint_dir: str,
+                                                     load_optimizer_states: bool = True) -> None:
         checkpoint_dir = os.path.join(checkpoint_dir, "zero")
         optim_state_path = os.path.join(checkpoint_dir, "optimizer_state.pt")
         assert os.path.isfile(
@@ -362,10 +365,15 @@ class ZeROOptimizer(DeepSpeedOptimizer):
                                                        tp_rank,
                                                        tp_world_size,
                                                        ep_rank=ep_rank,
-                                                       ep_size=ep_size)
-                    for key in lp._hp_mapping.get_optim_state_keys():
-                        opt_keys.add(key)
-                    steps.append(step)
+                                                       ep_size=ep_size,
+                                                       load_optimizer_states=load_optimizer_states)
+                    if load_optimizer_states:
+                        for key in lp._hp_mapping.get_optim_state_keys():
+                            opt_keys.add(key)
+                        steps.append(step)
+
+            if not load_optimizer_states:
+                continue
 
             hp_param = param_group['params'][0]
             assert all(step == steps[0] for step in steps), f"Steps {steps} are not equal"

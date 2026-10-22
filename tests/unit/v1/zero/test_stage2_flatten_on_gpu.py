@@ -49,7 +49,7 @@ class _FallbackLayoutModel(torch.nn.Module):
         return (x @ self.first).sum() + (x @ self.second).sum() + self.offset.sum()
 
 
-def _init_alignment_engine(zero_stage, parameter_alignment=True, offload_optimizer=False):
+def _init_alignment_engine(zero_stage, parameter_alignment=True, offload_optimizer=False, load_from_fp32_weights=True):
     if not get_accelerator().is_available():
         pytest.skip("Accelerator not available")
     if not get_accelerator().is_bf16_supported():
@@ -61,6 +61,8 @@ def _init_alignment_engine(zero_stage, parameter_alignment=True, offload_optimiz
         zero_config["parameter_alignment"] = parameter_alignment
     if offload_optimizer:
         zero_config["offload_optimizer"] = {"device": "cpu", "pin_memory": False}
+    if not load_from_fp32_weights:
+        zero_config["load_from_fp32_weights"] = False
     config = {
         "train_micro_batch_size_per_gpu": 1,
         "bf16": {
@@ -133,7 +135,9 @@ class TestStage12ParamAlignment(DistributedTest):
         checkpoint_dir = str(tmpdir)
         engine.save_checkpoint(checkpoint_dir, tag="alignment")
         for load_kwargs in ({"load_module_only": True}, {"load_optimizer_states": False}):
-            loaded = _init_alignment_engine(zero_stage)
+            # Fresh-optimizer warm starts that must keep the rounded bf16 weights opt out of
+            # restoring the saved fp32 masters.
+            loaded = _init_alignment_engine(zero_stage, load_from_fp32_weights=False)
             loaded.load_checkpoint(checkpoint_dir, tag="alignment", **load_kwargs)
             loaded_flat_weight, _ = _flat_weight(loaded)
             assert loaded.module.weight.data_ptr() % 16 == 0
@@ -167,7 +171,7 @@ class TestStage12ParamAlignment(DistributedTest):
         expected = {name: param.detach().clone() for name, param in engine.module.named_parameters()}
 
         for load_kwargs in ({"load_module_only": True}, {"load_optimizer_states": False}):
-            loaded = _init_alignment_engine(zero_stage, parameter_alignment=False)
+            loaded = _init_alignment_engine(zero_stage, parameter_alignment=False, load_from_fp32_weights=False)
             loaded.load_checkpoint(checkpoint_dir, tag="padded-layout", **load_kwargs)
             for name, param in loaded.module.named_parameters():
                 assert torch.equal(param, expected[name])

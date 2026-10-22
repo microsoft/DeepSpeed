@@ -4399,7 +4399,8 @@ class DeepSpeedEngine(Module):
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
                         load_module_only=False,
-                        custom_load_fn=None):
+                        custom_load_fn=None,
+                        load_fp32_weights=None):
         """
         Load training checkpoint
 
@@ -4411,6 +4412,11 @@ class DeepSpeedEngine(Module):
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
             load_module_only: Optional. Boolean to load only the model weights from the checkpoint. Ex. warmstarting.
             custom_load_fn: Optional. Custom model load function.
+            load_fp32_weights: Optional. Boolean to restore the fp32 master weights from the checkpoint.
+                ``None`` uses ``zero_optimization.load_from_fp32_weights``. ``False`` rebuilds the masters
+                from the loaded bf16/fp16 weights. ``load_module_only=True`` rebuilds them either way.
+                This is currently honored for ZeRO stage 1 and 2. ZeRO stage 3 and the ZeRO stage 1
+                BF16 optimizer still use the config value.
 
         Returns:
             A tuple of ``load_path`` and ``client_state``.
@@ -4452,15 +4458,30 @@ class DeepSpeedEngine(Module):
                                                          load_module_only=load_module_only,
                                                          custom_load_fn=custom_load_fn)
 
+        # None inherits the ZeRO config. The same value must not be passed as
+        # load_optimizer_states, or a masters-only load would restore Adam's moments.
+        # load_module_only restores the model and rebuilds the masters from it.
+        # ZeRO-3 and the dedicated ZeRO-1 BF16 optimizer keep the previous config-only path.
+        if load_fp32_weights is None:
+            load_fp32_weights = self.zero_load_from_fp32_weights()
+        stage12_master_load = (not self.zero_optimization_partition_weights()
+                               and not isinstance(self.optimizer, BF16_Optimizer))
+        load_saved_fp32_masters = load_fp32_weights and not load_module_only and stage12_master_load
+        if stage12_master_load:
+            zero_load_from_fp32_weights = load_saved_fp32_masters
+        else:
+            zero_load_from_fp32_weights = self.zero_load_from_fp32_weights()
+
         load_zero_checkpoint = load_path is not None and self.zero_optimization()
         if load_zero_checkpoint and not self.zero_nvme_offload_optimizer():
             autoep_zero3_partition_native_load = self.has_moe_layers and self.zero_optimization_partition_weights()
-            if ((load_optimizer_states and not load_module_only) or self.load_universal_checkpoint()
+            load_zero_optimizer_states = load_optimizer_states and not load_module_only
+            if (load_zero_optimizer_states or load_saved_fp32_masters or self.load_universal_checkpoint()
                     or autoep_zero3_partition_native_load):
                 success = self._load_zero_checkpoint(load_dir,
                                                      tag,
-                                                     load_optimizer_states=load_optimizer_states
-                                                     and not load_module_only)
+                                                     load_optimizer_states=load_zero_optimizer_states,
+                                                     load_from_fp32_weights=zero_load_from_fp32_weights)
             else:
                 success = False
             if not success:
@@ -4486,6 +4507,11 @@ class DeepSpeedEngine(Module):
 
         if self.load_universal_checkpoint() and not self.zero_optimization_partition_weights():
             self.optimizer.update_lp_params()
+            # fp32.pt is the only copy of the weights, so the universal loader reads it into the
+            # masters before update_lp_params writes the model. Snap the masters back onto the
+            # bit16 grid when the caller did not ask to keep them.
+            if stage12_master_load and not load_saved_fp32_masters and self.optimizer is not None:
+                self.optimizer._restore_from_bit16_weights()
 
         return load_path, client_states
 
@@ -4730,7 +4756,7 @@ class DeepSpeedEngine(Module):
 
         return load_path, client_state
 
-    def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
+    def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True, load_from_fp32_weights=True):
 
         load_serial = None
         # When use loading checkpoint serial, checkpoint loading start from local rank 0,
@@ -4745,12 +4771,23 @@ class DeepSpeedEngine(Module):
             zero_sd_list = None
             checkpoint_folder = f'{os.path.join(load_dir, tag)}'
         else:
-            if load_optimizer_states and self.seq_dp_world_size != self.loaded_checkpoint_dp_world_size:
-                raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
-                    f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
-                    f"current world size is {self.seq_dp_world_size}. Automatic adjustment " \
-                    "of ZeRO's optimizer state partitioning with a new world size is not " \
-                    "currently supported.")
+            if self.seq_dp_world_size != self.loaded_checkpoint_dp_world_size:
+                if load_optimizer_states:
+                    raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
+                        f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
+                        f"current world size is {self.seq_dp_world_size}. Automatic adjustment " \
+                        "of ZeRO's optimizer state partitioning with a new world size is not " \
+                        "currently supported.")
+                # Stage 1/2 partitions cannot be resized. ZeRO-3 keeps the previous behavior
+                # and continues into the shard load.
+                if not self.zero_optimization_partition_weights():
+                    logger.warning(
+                        f"The checkpoint being loaded used a DP world size of {self.loaded_checkpoint_dp_world_size} "
+                        f"but the current world size is {self.seq_dp_world_size}, so the saved fp32 master weights "
+                        "cannot be restored and are being rebuilt from the bit16 weights, losing precision. "
+                        "Convert the checkpoint with ds_to_universal.py and load it with "
+                        "checkpoint.load_universal=true to keep them.")
+                    return False
             checkpoint_folder = None
             zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
             if zero_sd_list is None:
@@ -4759,7 +4796,7 @@ class DeepSpeedEngine(Module):
         param_shapes = self._get_zero_param_shapes()
         self.optimizer.load_state_dict(state_dict_list=zero_sd_list,
                                        load_optimizer_states=load_optimizer_states,
-                                       load_from_fp32_weights=self.zero_load_from_fp32_weights(),
+                                       load_from_fp32_weights=load_from_fp32_weights,
                                        checkpoint_folder=checkpoint_folder,
                                        load_serial=load_serial,
                                        param_shapes=param_shapes)
