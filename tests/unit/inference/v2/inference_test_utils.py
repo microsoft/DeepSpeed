@@ -28,13 +28,17 @@ DTYPES = None
 def get_dtypes(include_float=True):
     global DTYPES
     if DTYPES is None:
-        DTYPES = [torch.float16, torch.float32] if include_float else [torch.float16]
+        DTYPES = [torch.float16, torch.float32]
         try:
             if get_accelerator().is_bf16_supported():
                 DTYPES.append(torch.bfloat16)
         except (AssertionError, AttributeError):
             pass
-    return DTYPES
+    # Filter per call rather than caching the filtered list: the first caller in a session must not decide
+    # whether every later caller sees float32.
+    if include_float:
+        return DTYPES
+    return [dtype for dtype in DTYPES if dtype != torch.float32]
 
 
 def allclose(x, y, tolerances: Tuple[int, int] = None):
@@ -44,3 +48,44 @@ def allclose(x, y, tolerances: Tuple[int, int] = None):
     else:
         rtol, atol = tolerances
     return torch.allclose(x, y, rtol=rtol, atol=atol)
+
+
+CANARY_VALUE = 1000.0
+
+# The generic bf16 tolerance (rtol 0.48) is loose enough to accept a row normalized with its neighbour's
+# statistics. A row norm's bf16 output is accurate to well under this, so the norm tests use it instead.
+NORM_BF16_TOLERANCES = (3e-2, 1e-2)
+
+
+def norm_tolerances(dtype: torch.dtype):
+    if dtype == torch.bfloat16:
+        return NORM_BF16_TOLERANCES
+    return None
+
+
+def allocate_output_with_canary(rows: int, channels: int, dtype: torch.dtype, canary_rows: int = 256):
+    """Allocate a ``[rows, channels]`` output that is directly followed in memory by ``canary_rows`` rows
+    filled with ``CANARY_VALUE``. A kernel that writes past the last row overwrites the canary, which plain
+    pytest can then detect (the value is finite, so NaN written past the end is detected as well). The default
+    covers the largest sub-block schedule (256 rows per block), so even a full block of overrun stays inside
+    the canary instead of spilling into neighbouring allocations.
+    Returns (output, canary)."""
+    buffer = torch.full((rows + canary_rows, channels),
+                        CANARY_VALUE,
+                        dtype=dtype,
+                        device=get_accelerator().current_device_name())
+    return buffer[:rows], buffer[rows:]
+
+
+def assert_rows_independent(run_rows, batched_outputs: Tuple[torch.Tensor, ...]):
+    """Every row of a batched launch must come out bitwise equal to the same row run on its own. This holds
+    for the current kernels because a row's reduction order does not depend on how many rows share its block,
+    and it catches one row's reduction leaking into a neighbour regardless of tolerances. It pins that
+    schedule property rather than the norm contract: a kernel whose reduction order depends on the batch
+    (autotuned block sizes, Welford for large batches) would need this check relaxed to ``allclose``.
+    ``run_rows(start, end)`` runs the kernel on input rows ``[start, end)`` and returns its outputs in the
+    same order as ``batched_outputs``."""
+    rows = batched_outputs[0].size(0)
+    for row in range(rows):
+        for single, batched in zip(run_rows(row, row + 1), batched_outputs):
+            assert torch.equal(single, batched[row:row + 1]), f"row {row} differs when run on its own"
