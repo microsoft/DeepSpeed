@@ -117,7 +117,7 @@ Only a few lines of code changes are needed to enable a PyTorch model to use Dee
 
 ## Features
 
-Below we provide a brief feature list, see our detailed [feature overview](https://www.deepspeed.ai/training/) for descriptions and usage.
+Below we provide a brief feature list, with links to descriptions and usage.
 
 * [Distributed Training with Mixed Precision](https://www.deepspeed.ai/training/#distributed-training-with-mixed-precision)
   * 16-bit mixed precision
