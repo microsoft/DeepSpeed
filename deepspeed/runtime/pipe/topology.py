@@ -121,10 +121,12 @@ class ProcessTopology:
             >>> coord.y
             1
         """
-        if rank in self.rank_to_coord:
-            return self.rank_to_coord[rank]
+        coord = self.rank_to_coord.get(rank)
+        if coord is not None and self.mapping.get(coord) == rank:
+            return coord
         for coord, idx in self.mapping.items():
             if idx == rank:
+                self.rank_to_coord[rank] = coord
                 return coord
         raise ValueError(f'rank {rank} not found in topology.')
 
@@ -379,9 +381,7 @@ class PipelineParallelGrid:
         """Groups for sending and receiving activations and gradients across model
         parallel stages.
         """
-        comm_lists = getattr(self, 'pipe_groups', None)
-        if comm_lists is None:
-            comm_lists = self._topo.get_axis_comm_lists('pipe')
+        comm_lists = self.pipe_groups
         p2p_lists = [None] * self.world_size
         for l in comm_lists:
             assert len(l) == self.pipe_parallel_size

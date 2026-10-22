@@ -174,6 +174,22 @@ class TestDistributedTopology(DistributedTest):
 
         assert grid.is_first_stage == (grid.get_stage_id() == 0)
         assert grid.is_last_stage == (grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
+        assert grid.pipe_groups == [[0, 2], [1, 3]]
+        assert grid.p2p_groups == [[0, 2], [1, 3], [2, 0], [3, 1]]
+
+        stage4_grid = Grid(topology=Topo(axes=['pipe', 'data'], dims=[4, 1]))
+        assert stage4_grid.pipe_groups == [[0, 1, 2, 3]]
+        assert stage4_grid.p2p_groups == [[0, 1], [1, 2], [2, 3], [3, 0]]
+
+        remapped_topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
+        c01 = remapped_topo.ProcessCoord(pipe=0, data=1)
+        c10 = remapped_topo.ProcessCoord(pipe=1, data=0)
+        remapped_topo.mapping[c01], remapped_topo.mapping[c10] = 2, 1
+        remapped_grid = Grid(topology=remapped_topo)
+        assert remapped_grid.pipe_groups == [[0, 1], [2, 3]]
+        assert remapped_grid.p2p_groups == [[0, 1], [1, 0], [2, 3], [3, 2]]
+        assert remapped_grid.pp_group[remapped_grid.stage_id] == rank
+        assert remapped_grid.dp_group[remapped_grid.data_parallel_id] == rank
 
         # Test collectives along the pipeline parallel process groups
         rank_tensor = torch.LongTensor(data=[rank]).to(get_accelerator().device_name())
@@ -226,23 +242,16 @@ def test_primes():
             assert _prime_factors(p) == [p]
 
 
-def test_topology_invalid_rank_and_p2p_groups():
-    topo = Topo(axes=['pipe', 'data', 'model'], dims=[4, 2, 2])
-    with pytest.raises(ValueError, match="rank 16 not found"):
-        topo.get_coord(16)
+def test_topology_remapped_mapping():
+    topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
+    with pytest.raises(ValueError):
+        topo.get_coord(4)
 
-    grid = object.__new__(Grid)
-    grid._topo = topo
-    grid.world_size = topo.world_size()
-    grid.pipe_parallel_size = topo.get_dim('pipe')
-    p2p_groups = grid._build_p2p_groups()
+    c01 = topo.ProcessCoord(pipe=0, data=1)
+    c10 = topo.ProcessCoord(pipe=1, data=0)
+    topo.mapping[c01], topo.mapping[c10] = 2, 1
 
-    comm_lists = topo.get_axis_comm_lists('pipe')
-    expected = []
-    for rank in range(grid.world_size):
-        for l in comm_lists:
-            if rank in l:
-                idx = l.index(rank)
-                expected.append([rank, l[(idx + 1) % grid.pipe_parallel_size]])
-                break
-    assert p2p_groups == expected
+    assert topo.get_coord(1) == c10
+    assert topo.get_coord(2) == c01
+    assert topo.get_rank_repr(rank=1, omit_axes=[]) == 'pipe_01-data_00'
+    assert topo.get_rank_repr(rank=2, omit_axes=[]) == 'pipe_00-data_01'
