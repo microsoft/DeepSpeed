@@ -620,8 +620,8 @@ flattened parameter, so each shard is a process's flat storage. EDP replicas und
 ZeRO-0/1/2 all appear in a piece's `locations` and are chosen among only by the planner's
 replica selection. Under ZeRO-3, holder `d` stores elements `[d * n, (d + 1) * n)` of the
 packed tensor, clipped to exclude padding, so ranks with only padding or without experts
-have empty shards. The flat logical shape is needed because a ZeRO-3 fragment can split an
-expert row, which no box of the N-D tensor can express. Optimizer states and expert tensor
+have empty shards. The flat logical shape keeps each ZeRO-3 fragment one interval; in the
+N-D tensor a fragment that splits rows needs up to 2(N-1)+1 boxes. Optimizer states and expert tensor
 parallelism are not yet described. The user-facing contract is documented in
 `docs/code-docs/source/autoep.rst`.
 
