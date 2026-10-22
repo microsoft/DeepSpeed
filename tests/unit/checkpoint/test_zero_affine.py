@@ -9,7 +9,7 @@ import torch
 import deepspeed
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.checkpoint.affine import contiguous_split_map
+from deepspeed.checkpoint.affine import contiguous_split_map, nest_affine_maps, replicated_map, sub_param_map
 from deepspeed.checkpoint.affine_transfer import PlanBudget, plan_transfer
 from deepspeed.checkpoint.zero_affine import (zero_optimizer_storage_affine_maps, zero_optimizer_storage_shard,
                                               zero_param_storage_affine_map, zero_param_storage_shard,
@@ -67,6 +67,113 @@ def test_rejects_quantized_zero3_parameter_storage(accessor):
 
     with pytest.raises(NotImplementedError, match='Quantized ZeRO-3 parameter storage'):
         accessor(param)
+
+
+def _stored_by_rank(layout_shards, holders_by_layout_rank, partition_by_layout_rank=None):
+    """What each process stores, by slicing each flattened layout shard with ZeRO's rule."""
+    stored = {}
+    for layout_rank, shard in layout_shards.items():
+        flat = shard.reshape(-1)
+        for index, rank in enumerate(holders_by_layout_rank[layout_rank]):
+            if partition_by_layout_rank is None:
+                stored[rank] = flat.clone()
+                continue
+            partition = partition_by_layout_rank[layout_rank]
+            stored[rank] = flat[index * partition:(index + 1) * partition].clone()
+    return stored
+
+
+def _nested(layout, holders_by_layout_rank, partition_by_layout_rank=None):
+    inner = {}
+    for layout_rank, holders in holders_by_layout_rank.items():
+        numel = torch.Size(layout.shard_shapes[layout_rank]).numel()
+        partition = None if partition_by_layout_rank is None else partition_by_layout_rank[layout_rank]
+        inner[layout_rank] = zero_storage_affine_map(numel, holders, partition)
+    return nest_affine_maps(layout, inner)
+
+
+def _check_storage(affine_map, full, stored):
+    # validate_coverage also proves every piece names exactly the processes that store its elements.
+    affine_map.validate_coverage()
+    assert affine_map.logical_shape == (full.numel(), )
+    assert affine_map.shard_shapes == {rank: tuple(shard.shape) for rank, shard in stored.items()}
+    for rank, shard in stored.items():
+        torch.testing.assert_close(affine_map.extract(full.reshape(-1), rank), shard, rtol=0, atol=0)
+    torch.testing.assert_close(affine_map.rebuild(stored), full.reshape(-1), rtol=0, atol=0)
+
+
+# Uneven column split of a 4 x 8 weight over two tensor-parallel ranks, the layout of a row-parallel
+# linear layer. Its pieces are strided in the flattened weight.
+_FULL = torch.arange(32, dtype=torch.float32).reshape(4, 8)
+_COLUMNS = {0: _FULL[:, :3], 1: _FULL[:, 3:]}
+_HOLDERS = {0: [0, 2], 1: [1, 3]}
+
+
+@pytest.mark.parametrize('partition', [None, {0: 6, 1: 10}, {0: 7, 1: 11}], ids=['replicas', 'even', 'mid_row'])
+def test_nest_describes_zero_storage_of_a_column_split(partition):
+    layout = contiguous_split_map(_FULL.shape, [3, 5], partition_dim=1)
+
+    affine_map = _nested(layout, _HOLDERS, partition)
+
+    _check_storage(affine_map, _FULL, _stored_by_rank(_COLUMNS, _HOLDERS, partition))
+
+
+def test_nest_merges_holders_of_replicated_layout_shards_split_at_different_places():
+    # Two layout ranks hold the whole tensor but partition it over groups of different sizes, so an
+    # element's holders are the union of one process from each group, cut at both groups' boundaries.
+    layout = replicated_map(_FULL.shape, 2)
+    holders = {0: [0, 1], 1: [2, 3, 4]}
+    partition = {0: 16, 1: 11}
+
+    affine_map = _nested(layout, holders, partition)
+
+    _check_storage(affine_map, _FULL, _stored_by_rank({0: _FULL, 1: _FULL}, holders, partition))
+    for offset, ranks in affine_map.holders().items():
+        assert ranks == {offset // 16, 2 + offset // 11}
+
+
+def test_nest_keeps_fused_sub_parameters_apart():
+    full = torch.arange(6 * 4, dtype=torch.float32).reshape(6, 4)
+    # Fused QKV: rows [0, 2), [2, 4) and [4, 6) are each split between two ranks.
+    layout = sub_param_map(full.shape, [2, 2, 2], [[1, 1], [1, 1], [1, 1]], partition_dim=0)
+    shards = {rank: full[[rank, 2 + rank, 4 + rank]] for rank in range(2)}
+    holders = {0: [0, 1], 1: [2, 3]}
+    partition = {0: 7, 1: 6}
+
+    _check_storage(_nested(layout, holders, partition), full, _stored_by_rank(shards, holders, partition))
+
+
+def test_nested_storage_plans_into_another_layout():
+    source = _nested(contiguous_split_map(_FULL.shape, [3, 5], partition_dim=1), _HOLDERS, {0: 7, 1: 11})
+    target_holders = {0: [4], 1: [5, 6], 2: [7]}
+    target = _nested(contiguous_split_map(_FULL.shape, [1, 2, 1], partition_dim=0), target_holders, {0: 8, 1: 9, 2: 8})
+    source_storage = _stored_by_rank(_COLUMNS, _HOLDERS, {0: 7, 1: 11})
+    expected = _stored_by_rank({0: _FULL[:1], 1: _FULL[1:3], 2: _FULL[3:]}, target_holders, {0: 8, 1: 9, 2: 8})
+
+    plan = plan_transfer(target, source)
+
+    target_storage = {rank: torch.full(shape, float('nan')) for rank, shape in target.shard_shapes.items()}
+    writes = {rank: torch.zeros(shape, dtype=torch.int64) for rank, shape in target.shard_shapes.items()}
+    for segment in plan.segments:
+        source_view = torch.as_strided(source_storage[segment.source_rank], segment.shape, segment.source_strides,
+                                       segment.source_offset)
+        torch.as_strided(target_storage[segment.target_rank], segment.shape, segment.target_strides,
+                         segment.target_offset).copy_(source_view)
+        torch.as_strided(writes[segment.target_rank], segment.shape, segment.target_strides,
+                         segment.target_offset).add_(1)
+    for rank, shard in expected.items():
+        torch.testing.assert_close(target_storage[rank], shard, rtol=0, atol=0)
+        assert torch.all(writes[rank] == 1)
+
+
+def test_nest_rejects_storage_that_does_not_match_the_layout():
+    layout = contiguous_split_map(_FULL.shape, [3, 5], partition_dim=1)
+    with pytest.raises(ValueError, match='layout ranks'):
+        nest_affine_maps(layout, {0: zero_storage_affine_map(12, [0])})
+    with pytest.raises(ValueError, match='holds 12 elements'):
+        nest_affine_maps(layout, {0: zero_storage_affine_map(32, [0]), 1: zero_storage_affine_map(20, [1])})
+    with pytest.raises(ValueError, match='more than one layout shard'):
+        nest_affine_maps(layout, {0: zero_storage_affine_map(12, [0]), 1: zero_storage_affine_map(20, [0])})
 
 
 class StraddlingModel(torch.nn.Module):
