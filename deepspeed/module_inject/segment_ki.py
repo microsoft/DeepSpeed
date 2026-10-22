@@ -181,6 +181,10 @@ class GDNInputProj(torch.autograd.Function):
                 out = torch.empty(total, dtype=hidden.dtype, device=hidden.device)
                 kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
                 return out
+            if hidden.dim() == 3 and hidden.shape[1] == 1 and 16 <= hidden.shape[0] <= 32:
+                # decode activations arrive [B,1,H]; flatten for the grouped kernel
+                out = kernel_op.quad_gemm(hidden.reshape(hidden.shape[0], -1), w_qkv, w_z, w_b, w_a)
+                return out.view(hidden.shape[0], 1, -1)
             if hidden.dim() == 2 and 16 <= hidden.shape[0] <= 32:
                 return kernel_op.quad_gemm(hidden, w_qkv, w_z, w_b, w_a)
         from deepspeed.module_inject.kernel_reference import gdn_input_proj
@@ -220,13 +224,16 @@ def _dual_weight_glu_forward(self, input):
     # shape — HF decode activations arrive as [1, 1, hidden], so keying on
     # dim()==2 would exclude the exact greedy-decode case this fusion
     # targets. The kernel op handles a flat vector; reshape on the way out.
+    m = input.numel() // input.shape[-1]
     if input.numel() == input.shape[-1] and getattr(self, "_ki_dual_op", None) is not None:
         out = DualWeightGluGEMV.apply(input.reshape(-1), self.gate_proj.weight, self.up_proj.weight, self._ki_dual_op)
         return self.down_proj(out.reshape(*input.shape[:-1], -1))
-    # b>1 or no kernel: the composite reference (gradients also correct
-    # there). Batched GEMV kernels measured slower than cuBLAS GEMM at b=8
-    # (weight traffic dominates; fused vs eager launch structure is noise
-    # inside the captured graph), so batched rows stay on the GEMMs.
+    if 16 <= m <= 32 and getattr(self, "_ki_dual_op", None) is not None:
+        out = DualWeightGluGEMV.apply(input.reshape(m, -1), self.gate_proj.weight, self.up_proj.weight,
+                                      self._ki_dual_op)
+        return self.down_proj(out.reshape(*input.shape[:-1], -1))
+    # other batches or no kernel: the composite reference (gradients also
+    # correct there); measured faster than the batched GEMV kernels
     from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul
     return self.down_proj(dual_gemv_silu_mul(input, self.gate_proj.weight, self.up_proj.weight))
 
@@ -564,8 +571,8 @@ def _decode_attn_forward(self,
     if fuse_q:
         # chunk() leaves query strided ([q|gate] interleaved layout); the
         # kernel indexes packed memory, so materialize it explicitly
-        query_states = query_states.reshape(batch, num_q_heads, head_dim).contiguous()
-        gate = gate.reshape(batch, num_q_heads * head_dim).contiguous()
+        query_states = query_states.reshape(batch, num_q_heads, head_dim)
+        gate = gate.reshape(batch, num_q_heads, head_dim)
         self._ki_attn_op.decode_attn(query_states,
                                      key_states,
                                      value_states,
@@ -582,9 +589,8 @@ def _decode_attn_forward(self,
                                      eps=self.q_norm.eps,
                                      rope_dim=self._ki_cos_t.shape[-1])
     else:
-        self._ki_attn_op.decode_attn(
-            query_states.reshape(batch, num_q_heads, head_dim).contiguous(), key_states, value_states,
-            self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
+        self._ki_attn_op.decode_attn(query_states.reshape(batch, num_q_heads, head_dim), key_states, value_states,
+                                     self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
 
     attn_output = out.view(*input_shape, -1)
     return self.o_proj(attn_output), None

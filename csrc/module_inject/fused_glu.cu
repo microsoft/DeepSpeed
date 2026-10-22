@@ -11,6 +11,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <cooperative_groups.h>
 #include <cuda_bf16.h>
+#include <mma.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 #include <algorithm>
@@ -416,6 +417,7 @@ __global__ void __launch_bounds__(512)
                        __nv_bfloat16* __restrict__ out,
                        int num_q_heads,
                        int num_kv_heads,
+                       long q_hs,
                        int max_len,
                        float scale,
                        int pos_stride,
@@ -446,8 +448,8 @@ __global__ void __launch_bounds__(512)
 
     const __nv_bfloat16* Kg = K + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
     const __nv_bfloat16* Vg = V + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
-    const __nv_bfloat16* q_row = q + ((long)(row * num_q_heads + q_head)) * HEAD_DIM;
-    const __nv_bfloat16* g_row = gate + ((long)(row * num_q_heads + q_head)) * HEAD_DIM;
+    const __nv_bfloat16* q_row = q + (long)row * num_q_heads * q_hs + (long)q_head * q_hs;
+    const __nv_bfloat16* g_row = gate + (long)row * num_q_heads * q_hs + (long)q_head * q_hs;
 
     float q_reg[EPL];
 #pragma unroll
@@ -588,7 +590,12 @@ void decode_attn(at::Tensor q,
                  int64_t rope_dim)
 {
     TORCH_CHECK(q.is_cuda() && q.scalar_type() == at::ScalarType::BFloat16, "q must be CUDA bf16");
-    TORCH_CHECK(q.is_contiguous(), "q must be contiguous (chunked [q|gate] views are strided)");
+    // accept packed or chunked-[q|gate] layouts: last dim dense, uniform
+    // head stride (the kernel indexes through q_hs)
+    TORCH_CHECK(q.stride(-1) == 1, "q last dim must be dense");
+    const long q_hs = q.stride(-2);
+    TORCH_CHECK(gate.defined() ? (gate.stride(-1) == 1 && gate.stride(-2) == q_hs) : true,
+                "gate layout must match q");
     TORCH_CHECK(K.is_contiguous() && V.is_contiguous(), "K/V must be contiguous");
     TORCH_CHECK(write_pos.is_cuda() && write_pos.scalar_type() == at::ScalarType::Long,
                 "write_pos must be a CUDA int64 tensor");
@@ -621,7 +628,7 @@ void decode_attn(at::Tensor q,
     // q's layout. Nullptr tensors disable each piece.
     const bool fuse_q = q_norm_w.defined() && q_norm_w.numel() == head_dim;
     const bool use_gate = gate.defined() && gate.numel() == q.numel();
-    TORCH_CHECK(!use_gate || gate.is_contiguous(), "gate must be contiguous");
+    // gate rides the same strided [b,H,hd] layout as q (checked above)
     TORCH_CHECK(
         !fuse_q || (cos_t.defined() && sin_t.defined() &&
                     cos_t.numel() == (int64_t)max_len * rope_dim && sin_t.numel() == cos_t.numel()),
@@ -651,6 +658,7 @@ void decode_attn(at::Tensor q,
                 o_ptr,
                 (int)num_q_heads,
                 (int)num_kv_heads,
+                q_hs,
                 (int)max_len,
                 scale,
                 pos_stride,
@@ -671,6 +679,7 @@ void decode_attn(at::Tensor q,
                     o_ptr,
                     (int)num_q_heads,
                     (int)num_kv_heads,
+                    q_hs,
                     (int)max_len,
                     scale,
                     pos_stride,
@@ -691,6 +700,7 @@ void decode_attn(at::Tensor q,
                     o_ptr,
                     (int)num_q_heads,
                     (int)num_kv_heads,
+                    q_hs,
                     (int)max_len,
                     scale,
                     pos_stride,
@@ -919,14 +929,23 @@ std::vector<at::Tensor> triple_gemv(at::Tensor hidden,
 // activation tile rides in shared memory). Replaces the separate cuBLAS
 // GEMMs the composite fallback issues per matrix; no weight copies.
 static constexpr int GRP_MT = 32;   // max batch rows
-static constexpr int GRP_NT = 64;   // output columns per block
-static constexpr int GRP_KT = 64;   // k-chunk staged through smem
-static constexpr int GRP_TPB = 128; // threads per block
+static constexpr int GRP_NT = 32;   // output columns per block (WMMA 2x2 warps)
+static constexpr int GRP_KT = 32;   // k-chunk staged through smem
+static constexpr int GRP_TPB = 128; // threads per block (4 warps, 16x16 tiles)
 
 struct GrpSeg {
     int mat;  // which weight matrix
     int lrow; // row within that matrix
 };
+
+__device__ __forceinline__ const __nv_bfloat16* wgs_ptr(int mat,
+                                                        const __nv_bfloat16* w0,
+                                                        const __nv_bfloat16* w1,
+                                                        const __nv_bfloat16* w2,
+                                                        const __nv_bfloat16* w3)
+{
+    return mat == 0 ? w0 : mat == 1 ? w1 : mat == 2 ? w2 : w3;
+}
 
 __device__ __forceinline__ GrpSeg grp_map_row(int row, int f0, int f1, int f2, int f3, int n_mat)
 {
@@ -958,32 +977,32 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
                                       int total_out,
                                       int concat_mode)
 {
-    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 1];
-    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 1];
+    using namespace nvcuda;
+    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 8];
+    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 8];
     __shared__ GrpSeg seg_tab[GRP_NT];
 
     int tid = threadIdx.x;
+    int warp = tid >> 5;
+    int lane = tid & 31;
     int n0 = blockIdx.x * GRP_NT;
     if (n0 >= total_out) return;
 
-    // per-tile-column segment map (a tile may straddle matrix boundaries)
     for (int c = tid; c < GRP_NT; c += GRP_TPB) {
         seg_tab[c] = (n0 + c < total_out) ? grp_map_row(n0 + c, f0, f1, f2, f3, 4) : GrpSeg{0, 0};
     }
     __syncthreads();
 
-    int col = tid % GRP_NT;
-    int mhalf = tid / GRP_NT;  // 0 or 1
-    int m_lo = mhalf * (GRP_MT / 2);
-    int m_hi = (m_lo < M) ? min(m_lo + GRP_MT / 2, M) : m_lo;
+    // warp tile: rows [16*(warp&1), +16), cols [16*(warp>>1), +16)
+    int mtile = GRP_MT / 2, ntile = GRP_NT / 2;  // 16, 16
+    int m0w = (warp & 1) * mtile;
+    int n0w = (warp >> 1) * ntile;
 
-    GrpSeg my = seg_tab[col];
-    const __nv_bfloat16* wgs[4] = {w0, w1, w2, w3};
-    __nv_bfloat16* ogs[4] = {o0, o1, o2, o3};
-    int fs[4] = {f0, f1, f2, f3};
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc;
+    wmma::fill_fragment(acc, 0.f);
 
-    float acc[GRP_MT / 2];
-    for (int j = 0; j < GRP_MT / 2; j++) acc[j] = 0.f;
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
     for (int k0 = 0; k0 < K; k0 += GRP_KT) {
         int kn = min(GRP_KT, K - k0);
@@ -991,29 +1010,44 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
             int m = idx / kn, c = idx % kn;
             xs[m][c] = x[(long)m * K + k0 + c];
         }
-        // stage the weight tile row-major (coalesced: consecutive threads read consecutive k)
         for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
             int r = idx / kn, c = idx % kn;
-            GrpSeg g = seg_tab[r];
-            if (n0 + r < total_out) ws[r][c] = wgs[g.mat][(long)g.lrow * K + k0 + c];
+            if (n0 + r < total_out) {
+                GrpSeg g = seg_tab[r];
+                ws[r][c] = wgs_ptr(g.mat, w0, w1, w2, w3)[(long)g.lrow * K + k0 + c];
+            }
         }
         __syncthreads();
-        for (int kk = 0; kk < kn; kk++) {
-            float wv = __bfloat162float(ws[col][kk]);
-            for (int j = m_lo; j < m_hi; j++) acc[j - m_lo] += __bfloat162float(xs[j][kk]) * wv;
+        for (int kk = 0; kk < kn; kk += 16) {
+            wmma::load_matrix_sync(fa, &xs[m0w][kk], GRP_KT + 8);
+            wmma::load_matrix_sync(fb, &ws[n0w][kk], GRP_KT + 8);  // col_major: B[k][n] = ws[n][k]
+            wmma::mma_sync(acc, fa, fb, acc);
         }
         __syncthreads();
     }
 
-    if (n0 + col < total_out) {
-        __nv_bfloat16* o = ogs[my.mat];
-        int fs2[4] = {f0, f1, f2, f3};
+    // stage acc to smem then scatter (segmented outputs, bounds-checked)
+    __shared__ float out_s[GRP_MT][GRP_NT + 8];
+    wmma::store_matrix_sync(&out_s[m0w][n0w], acc, GRP_NT + 8, wmma::mem_row_major);
+    __syncthreads();
+
+    GrpSeg my = seg_tab[n0w];  // warp-uniform anchor; per-thread col below
+    const __nv_bfloat16* wgs[4] = {w0, w1, w2, w3};
+    (void)wgs;
+    __nv_bfloat16* ogs[4] = {o0, o1, o2, o3};
+    int fs2[4] = {f0, f1, f2, f3};
+    for (int idx = tid; idx < M * GRP_NT; idx += GRP_TPB) {
+        int m = idx / GRP_NT, c = idx % GRP_NT;
+        if (n0 + c >= total_out) continue;
+        GrpSeg g = seg_tab[c];
+        float v = out_s[m][c];
+        __nv_bfloat16* o = ogs[g.mat];
         if (concat_mode) {
             int base = 0;
-            for (int i = 0; i < my.mat; i++) base += fs2[i];
-            for (int j = m_lo; j < m_hi; j++) o[(long)j * total_out + base + my.lrow] = __float2bfloat16_rn(acc[j - m_lo]);
+            for (int i = 0; i < g.mat; i++) base += fs2[i];
+            o[(long)m * total_out + base + g.lrow] = __float2bfloat16_rn(v);
         } else {
-            for (int j = m_lo; j < m_hi; j++) o[(long)j * fs[my.mat] + my.lrow] = __float2bfloat16_rn(acc[j - m_lo]);
+            o[(long)m * fs2[g.mat] + g.lrow] = __float2bfloat16_rn(v);
         }
     }
 }
@@ -1028,22 +1062,24 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
                                 int N,
                                 int K)
 {
-    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 1];
-    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 1];
+    using namespace nvcuda;
+    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 8];
+    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 8];
+    __shared__ float out_s[GRP_MT][GRP_NT + 8];
 
     int tid = threadIdx.x;
+    int warp = tid >> 5;
     int n0 = blockIdx.x * GRP_NT;
     if (n0 >= N) return;
-    int col = tid % GRP_NT;
-    int mhalf = tid / GRP_NT;
-    int m_lo = mhalf * (GRP_MT / 2);
-    int m_hi = (m_lo < M) ? min(m_lo + GRP_MT / 2, M) : m_lo;
+    int mtile = GRP_MT / 2, ntile = GRP_NT / 2;
+    int m0w = (warp & 1) * mtile;
+    int n0w = (warp >> 1) * ntile;
 
-    float accg[GRP_MT / 2], accu[GRP_MT / 2];
-    for (int j = 0; j < GRP_MT / 2; j++) {
-        accg[j] = 0.f;
-        accu[j] = 0.f;
-    }
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> accg, accu;
+    wmma::fill_fragment(accg, 0.f);
+    wmma::fill_fragment(accu, 0.f);
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
     for (int k0 = 0; k0 < K; k0 += GRP_KT) {
         int kn = min(GRP_KT, K - k0);
@@ -1052,34 +1088,42 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
             xs[m][c] = x[(long)m * K + k0 + c];
         }
         __syncthreads();
-        // gate tile: accumulate
+        // gate tile
         for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
             int r = idx / kn, c = idx % kn;
             if (n0 + r < N) ws[r][c] = g_w[(long)(n0 + r) * K + k0 + c];
         }
         __syncthreads();
-        for (int kk = 0; kk < kn; kk++) {
-            float wv = __bfloat162float(ws[col][kk]);
-            for (int j = m_lo; j < m_hi; j++) accg[j - m_lo] += __bfloat162float(xs[j][kk]) * wv;
+        for (int kk = 0; kk < kn; kk += 16) {
+            wmma::load_matrix_sync(fa, &xs[m0w][kk], GRP_KT + 8);
+            wmma::load_matrix_sync(fb, &ws[n0w][kk], GRP_KT + 8);
+            wmma::mma_sync(accg, fa, fb, accg);
         }
         __syncthreads();
-        // up tile: reuse the same smem buffer
+        // up tile reuses the smem buffer
         for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
             int r = idx / kn, c = idx % kn;
             if (n0 + r < N) ws[r][c] = u_w[(long)(n0 + r) * K + k0 + c];
         }
         __syncthreads();
-        for (int kk = 0; kk < kn; kk++) {
-            float wv = __bfloat162float(ws[col][kk]);
-            for (int j = m_lo; j < m_hi; j++) accu[j - m_lo] += __bfloat162float(xs[j][kk]) * wv;
+        for (int kk = 0; kk < kn; kk += 16) {
+            wmma::load_matrix_sync(fa, &xs[m0w][kk], GRP_KT + 8);
+            wmma::load_matrix_sync(fb, &ws[n0w][kk], GRP_KT + 8);
+            wmma::mma_sync(accu, fa, fb, accu);
         }
         __syncthreads();
     }
 
-    if (n0 + col < N) {
-        for (int j = m_lo; j < m_hi; j++) {
-            float v = silu_f(accg[j - m_lo]) * accu[j - m_lo];
-            out[(long)j * N + n0 + col] = __float2bfloat16_rn(v);
+    wmma::store_matrix_sync(&out_s[m0w][n0w], accg, GRP_NT + 8, wmma::mem_row_major);
+    __shared__ float out_u[GRP_MT][GRP_NT + 8];
+    wmma::store_matrix_sync(&out_u[m0w][n0w], accu, GRP_NT + 8, wmma::mem_row_major);
+    __syncthreads();
+
+    for (int idx = tid; idx < M * GRP_NT; idx += GRP_TPB) {
+        int m = idx / GRP_NT, c = idx % GRP_NT;
+        if (n0 + c < N) {
+            float v = silu_f(out_s[m][c]) * out_u[m][c];
+            out[(long)m * N + n0 + c] = __float2bfloat16_rn(v);
         }
     }
 }
