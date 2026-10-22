@@ -635,3 +635,53 @@ parameter elements.
 
 Steps 1–3 change no behaviour: they add a representation and prove it agrees with the
 current one. Only step 4 changes what a checkpoint contains, and only by adding a key.
+
+---
+
+## 10. Phase 2 — live storage maps
+
+Phase 2 plans `M_t ∘ M_s⁻¹` between two live topologies. A live topology is what each process
+actually holds, so its map must describe storage, not only the parallel layout.
+
+**10.1 Two kinds of map.**
+- *Layout map*: the parameter's N-D logical shape, keyed by ranks of the parallel group that
+  defines the layout (TP, EP). The layer builds it from its own semantics, checkpoints persist
+  it, and it remains the only geometry contract.
+- *Storage map*: the flattened parameter `(numel,)`, keyed by global rank; each shard is a
+  process's flat buffer (`param.data`, ZeRO-3 `ds_tensor`, an fp32 or optimizer-state
+  fragment). It exists at runtime only and is never persisted.
+
+Both satisfy P1–P5. A plan's endpoints must be the same kind. `plan_transfer` rejects
+different logical shapes, which separates the two kinds for every parameter of more than one
+axis; for a 1-D parameter, and for rank namespaces, matching them is the caller's job.
+
+**10.2 Why storage maps are flat.** `plan_transfer` addresses every shard as a row-major box
+of the same rank as the logical parameter. A ZeRO partition of an N-D layout shard is a
+contiguous interval of its flattened buffer, which is generally not a box of the N-D
+parameter. Flattening the logical shape makes every stored interval a 1-D box. The cost is
+that a layout piece is cut into its contiguous runs: a column of a row-major weight, such as
+a row-parallel shard, becomes one piece per row and counts against `PlanBudget`.
+
+**10.3 Derivation.** A storage map is derived, never hand-built:
+`storage = nest_affine_maps(layout, {layout rank: inner})`, where `inner` describes how one
+flattened layout shard is stored over its data-parallel group (`zero_storage_affine_map`:
+replicas, or ZeRO-3 partitions `[d*n, (d+1)*n)` without padding). Nesting keeps P5: layout
+pieces that describe the same block on several layout ranks are one block whose holders are
+the union of every rank's holders, and the block is cut wherever any of those holders'
+storage begins or ends. Callers:
+- `zero_param_storage_affine_map` and `zero_optimizer_storage_affine_maps` describe a dense
+  parameter (no layout, so they are already the storage map).
+- `autotp_storage_affine_maps(model)` nests each parameter's published AutoTP layout map
+  with the storage of every TP shard.
+- AutoEP expert storage nests the placement's layout map with each EP rank's EDP storage.
+
+**10.4 Replica choice** stays with the planner (§2.4): every holder appears in `locations`,
+and the planner's default or a `replica_selector` picks one.
+
+**10.5 Plan lifetime.** Maps and plans depend only on layout and partitioning, not on values.
+A caller builds them once and executes the plan for every sync, until either side's
+placement, parallel sizes or ZeRO partitioning changes. A parameter whose buffer is
+reallocated keeps its plan; only the shard views must be fetched again.
+
+**10.6 Not described.** Offload tiers, MiCS / hpZ, expert tensor parallelism, quantized
+ZeRO-3 storage, non-elementwise transforms.
