@@ -184,9 +184,10 @@ def zero_optimizer_storage_affine_maps(params):
                 address = mapping.lp_fragment_address
                 local[row] = torch.tensor([address.start, address.numel, int(mapping.use_offload)])
         world_size = dist.get_world_size(group=group)
-        gathered = torch.empty(world_size, len(positions), 3, dtype=torch.int64, device=device)
+        # Gloo wants the output stacked along the input's first axis, not along a new one.
+        gathered = torch.empty(world_size * len(positions), 3, dtype=torch.int64, device=device)
         dist.all_gather_into_tensor(gathered, local, group=group)
-        gathered = gathered.cpu()
+        gathered = gathered.view(world_size, len(positions), 3).cpu()
         if bool(gathered[:, :, 2].any()):
             raise NotImplementedError('Offloaded ZeRO optimizer states have no affine storage map.')
         ranks = _global_ranks(group)
