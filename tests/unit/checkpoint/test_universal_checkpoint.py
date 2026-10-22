@@ -318,8 +318,10 @@ def test_zero_optimizer_normalize_step_tensor(fused, capturable):
             assert normalized.dtype == torch.float32
             assert normalized.item() == 5.0
         else:
-            assert normalized.device == torch.device("cpu")
-            assert normalized.item() == 5.0
+            if isinstance(raw_step, int):
+                assert normalized == 5 and not torch.is_tensor(normalized)
+            else:
+                assert normalized.item() == 5 and normalized.device == torch.device("cpu")
 
 
 @pytest.mark.parametrize("fused,capturable", [(True, False), (False, True), (False, False)])
@@ -330,6 +332,11 @@ def test_universal_checkpoint_load_hp_step_device_policy(tmp_path, fused, captur
     acc = get_accelerator()
     if (fused or capturable) and not acc.is_available():
         pytest.skip("Accelerator required for fused/capturable optimizer test")
+
+    # Guard against capturable=True on CPU device
+    if capturable and (not torch.cuda.is_available()  #ignore-cuda
+                       or acc.is_available() and acc.device_name() == "cpu"):
+        pytest.skip("PyTorch capturable optimizers require a CUDA/GPU accelerator device")
 
     device = torch.device(acc.device_name(0) if acc.is_available() else "cpu")
 
@@ -392,6 +399,11 @@ def test_universal_checkpoint_stage3_load_hp_step_device_policy(tmp_path, fused,
     acc = get_accelerator()
     if (fused or capturable) and not acc.is_available():
         pytest.skip("Accelerator required for fused/capturable optimizer test")
+
+    # Guard against capturable=True on CPU device
+    if capturable and (not torch.cuda.is_available()  #ignore-cuda
+                       or acc.is_available() and acc.device_name() == "cpu"):
+        pytest.skip("PyTorch capturable optimizers require a CUDA/GPU accelerator device")
 
     device = torch.device(acc.device_name(0) if acc.is_available() else "cpu")
 
