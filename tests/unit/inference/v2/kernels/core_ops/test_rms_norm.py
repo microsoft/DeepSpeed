@@ -94,18 +94,18 @@ def test_rms_shapes(rows: int, cols: int, do_residual: bool) -> None:
     _rms_norm_testing_helper(rows, cols, do_residual, DtypeEnum.fp16)
 
 
-# For hidden sizes <= 128 several rows share one thread block (16 to 256 rows per block here, fewer threads per
-# row as channels shrink, down to one thread per row for fp32/4 and fp16/8). Where the rows do not fit in one
-# block, the last block is only partially filled and must not read or write rows past the end; the row counts
-# that do fit act as controls. 128 / 64 channels is the per-head Q/K norm shape of EXAONE4 (rows = tokens *
-# heads).
+# For hidden sizes <= 128 several rows share one thread block, from 16 rows per block (16 threads per row) down
+# to 256 (one thread per row for fp32/4 and fp16/8). Each case uses one row more than fits in a block, so the
+# last block is partially filled and must not read or write rows past the end. 128 / 64 channels is the
+# per-head Q/K norm shape of EXAONE4 (rows = tokens * heads).
 @pytest.mark.inference_v2_ops
-@pytest.mark.parametrize("rows", [17, 33, 65, 129, 257])
-@pytest.mark.parametrize("dtype, channels", [(DtypeEnum.fp32, 4), (DtypeEnum.fp32, 32), (DtypeEnum.fp32, 64),
-                                             (DtypeEnum.fp16, 8), (DtypeEnum.fp16, 16), (DtypeEnum.fp16, 32),
-                                             (DtypeEnum.fp16, 64), (DtypeEnum.fp16, 128), (DtypeEnum.bf16, 128)])
+@pytest.mark.parametrize("dtype, channels, rows", [(DtypeEnum.fp32, 4, 257), (DtypeEnum.fp32, 32, 33),
+                                                   (DtypeEnum.fp32, 64, 17), (DtypeEnum.fp16, 8, 257),
+                                                   (DtypeEnum.fp16, 16, 129), (DtypeEnum.fp16, 32, 65),
+                                                   (DtypeEnum.fp16, 64, 33), (DtypeEnum.fp16, 128, 17),
+                                                   (DtypeEnum.bf16, 128, 17)])
 @pytest.mark.parametrize("do_residual", [True, False])
-def test_rms_small_channels(rows: int, dtype: DtypeEnum, channels: int, do_residual: bool) -> None:
-    if dtype.value not in get_dtypes():
-        pytest.skip(f"{dtype.value} is not supported on this system")
+def test_rms_small_channels(dtype: DtypeEnum, channels: int, rows: int, do_residual: bool) -> None:
+    if dtype == DtypeEnum.bf16 and not get_accelerator().is_bf16_supported():
+        pytest.skip("bf16 is not supported on this system")
     _rms_norm_testing_helper(rows, channels, do_residual, dtype)

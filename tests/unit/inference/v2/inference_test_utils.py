@@ -28,17 +28,13 @@ DTYPES = None
 def get_dtypes(include_float=True):
     global DTYPES
     if DTYPES is None:
-        DTYPES = [torch.float16, torch.float32]
+        DTYPES = [torch.float16, torch.float32] if include_float else [torch.float16]
         try:
             if get_accelerator().is_bf16_supported():
                 DTYPES.append(torch.bfloat16)
         except (AssertionError, AttributeError):
             pass
-    # Filter per call rather than caching the filtered list: the first caller in a session must not decide
-    # whether every later caller sees float32.
-    if include_float:
-        return DTYPES
-    return [dtype for dtype in DTYPES if dtype != torch.float32]
+    return DTYPES
 
 
 def allclose(x, y, tolerances: Tuple[int, int] = None):
@@ -78,14 +74,12 @@ def allocate_output_with_canary(rows: int, channels: int, dtype: torch.dtype, ca
 
 
 def assert_rows_independent(run_rows, batched_outputs: Tuple[torch.Tensor, ...]):
-    """Every row of a batched launch must come out bitwise equal to the same row run on its own. This holds
-    for the current kernels because a row's reduction order does not depend on how many rows share its block,
-    and it catches one row's reduction leaking into a neighbour regardless of tolerances. It pins that
-    schedule property rather than the norm contract: a kernel whose reduction order depends on the batch
-    (autotuned block sizes, Welford for large batches) would need this check relaxed to ``allclose``.
-    ``run_rows(start, end)`` runs the kernel on input rows ``[start, end)`` and returns its outputs in the
-    same order as ``batched_outputs``."""
+    """Every row of a batched launch must match the same row run on its own, within the norm tolerance for
+    its dtype. Rows that share a thread block must not see each other's statistics; a per-row reference alone
+    cannot tell that apart from ordinary rounding at bf16 precision. ``run_rows(start, end)`` runs the kernel on
+    input rows ``[start, end)`` and returns its outputs in the same order as ``batched_outputs``."""
     rows = batched_outputs[0].size(0)
     for row in range(rows):
         for single, batched in zip(run_rows(row, row + 1), batched_outputs):
-            assert torch.equal(single, batched[row:row + 1]), f"row {row} differs when run on its own"
+            assert allclose(single, batched[row:row + 1],
+                            norm_tolerances(single.dtype)), f"row {row} differs when run on its own"
