@@ -181,6 +181,7 @@ jobs:
           # The nightly pytest prints failures as "FAILED unit/..." (its working
           # directory is tests/), so re-prefix each unique file with tests/.
           gh run view "$NIGHTLY_RUN_ID" --log \
+            | sed 's/\x1b\[[0-9;]*m//g' \
             | grep -oE 'FAILED unit/[^[:space:]]*\.py' | sort -u \
             | sed 's|^FAILED |tests/|' > failing-tests.txt
           if [ ! -s failing-tests.txt ]; then
