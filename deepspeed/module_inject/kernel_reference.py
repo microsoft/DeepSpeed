@@ -49,11 +49,34 @@ def gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a):
 
 
 def triple_gemv(hidden, q_w, k_w, v_w):
-    """QKV projection: (hidden @ q_w.T, hidden @ k_w.T, hidden @ v_w.T)."""
+    """QKV projection: (hidden @ q_w.T, hidden @ k_w.T, hidden @ v_w.T).
+
+    Shape-agnostic: the spec for both the b=1 triple_gemv kernel and the
+    batched triple_gemm grouped kernel (same math, any input shape)."""
     q = torch.matmul(hidden, q_w.t())
     k = torch.matmul(hidden, k_w.t())
     v = torch.matmul(hidden, v_w.t())
     return q, k, v
+
+
+# Batched aliases — explicit specs for the grouped-GEMM kernels so the
+# kernel-to-reference mapping is nameable. They delegate to the
+# shape-agnostic originals above (identical math).
+
+
+def triple_gemm(x, q_w, k_w, v_w):
+    """Spec for the triple_gemm kernel (decode batches 16..32)."""
+    return triple_gemv(x, q_w, k_w, v_w)
+
+
+def quad_gemm(x, w_qkv, w_z, w_b, w_a):
+    """Spec for the quad_gemm kernel: concatenated GDN input projections."""
+    return gdn_input_proj(x, w_qkv, w_z, w_b, w_a)
+
+
+def dual_gemm_silu_mul(x, gate_w, up_w):
+    """Spec for the dual_gemm_silu_mul kernel: silu(x@g.T) * (x@u.T)."""
+    return dual_gemv_silu_mul(x, gate_w, up_w)
 
 
 def decode_attn(q, K, V, pos):
