@@ -736,7 +736,8 @@ def _nest_replicated_block(copies, intervals_by_outer_rank, pieces_by_rank):
                                  'stores it on no rank.')
             stored.extend((piece, address, interval) for interval in covering)
         locations = {interval[2] for _, _, interval in stored}
-        dense_rows = min(_dense_rows(piece) for piece, _, _ in stored)
+        # A box must be one run of addresses in every copy, so the most fragmented copy decides.
+        dense_rows = max(_dense_rows(piece) for piece, _, _ in stored)
         for origin, extent in _row_major_range_boxes(block.shape, low, high, dense_rows):
             source_offset = block.source_offset + _dot(origin, block.source_strides)
             for piece, _, (start, _, storage_rank, storage_offset, storage_scale) in stored:
@@ -776,6 +777,8 @@ def _row_major_range_boxes(shape, low, high, dense_rows=0):
     """
     if low >= high:
         return []
+    if not shape:
+        return [((), ())]
     if len(shape) == 1:
         return [((low, ), (high - low, ))]
     inner = _product(shape[1:])

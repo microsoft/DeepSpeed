@@ -9,7 +9,8 @@ import torch
 import deepspeed
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.checkpoint.affine import contiguous_split_map, nest_affine_maps, replicated_map, sub_param_map
+from deepspeed.checkpoint.affine import (contiguous_split_map, nest_affine_maps, replicated_map, segmented_map,
+                                         sub_param_map)
 from deepspeed.checkpoint.affine_transfer import PlanBudget, plan_transfer
 from deepspeed.checkpoint.zero_affine import (autotp_storage_affine_maps, zero_optimizer_storage_affine_maps,
                                               zero_optimizer_storage_shard, zero_param_storage_affine_map,
@@ -157,6 +158,33 @@ def test_nest_keeps_fused_sub_parameters_apart():
     partition = {0: 7, 1: 6}
 
     _check_storage(_nested(layout, holders, partition), full, _stored_by_rank(shards, holders, partition))
+
+
+def test_nest_keeps_boxes_dense_in_every_replica():
+    # The last column is a strided column of rank 0's whole-weight shard but all of rank 1's shard,
+    # so a box spanning both rows would be one run of addresses on rank 1 only.
+    full = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+    layout = segmented_map(full.shape, [(2, False), (1, True)], 1, 2, [[2, 0]])
+    holders = {0: [0], 1: [1]}
+
+    _check_storage(_nested(layout, holders), full, _stored_by_rank({0: full, 1: full[:, 2:]}, holders))
+
+
+def test_nest_and_plan_a_scalar_parameter():
+    full = torch.tensor(5.0)
+    holders = {0: [0, 1], 1: [2]}
+    source = _nested(replicated_map((), 2), holders)
+    stored = _stored_by_rank({0: full, 1: full}, holders)
+    _check_storage(source, full, stored)
+
+    plan = plan_transfer(replicated_map((), 1), source)
+
+    target = torch.full((), float('nan'))
+    for segment in plan.segments:
+        source_view = torch.as_strided(stored[segment.source_rank], segment.shape, segment.source_strides,
+                                       segment.source_offset)
+        torch.as_strided(target, segment.shape, segment.target_strides, segment.target_offset).copy_(source_view)
+    assert target.item() == 5.0
 
 
 def test_nested_storage_plans_into_another_layout():

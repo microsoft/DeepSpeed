@@ -272,7 +272,7 @@ def _frame_of(piece: AffinePiece, rank: int, side: str, logical_shape: Tuple[int
     for axis, (got, want, size) in enumerate(zip(piece.source_strides, logical_strides, piece.shape)):
         if size > 1 and got != want:
             raise UnsupportedLayoutError(f'{where}: source axis {axis} strides {got}, expected {want}')
-    flat_storage = len(shard_shape) == 1 and len(piece.shape) > 1
+    flat_storage = len(shard_shape) == 1 and len(piece.shape) != 1
     if flat_storage:
         # A flat shard, as ZeRO stores one, holds a box of a multi-axis parameter as one run of
         # addresses: the box's own row-major strides. Its place in the shard is that run.
