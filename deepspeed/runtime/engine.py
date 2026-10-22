@@ -4415,8 +4415,6 @@ class DeepSpeedEngine(Module):
             load_fp32_weights: Optional. Boolean to restore the fp32 master weights from the checkpoint.
                 ``None`` uses ``zero_optimization.load_from_fp32_weights``. ``False`` rebuilds the masters
                 from the loaded bf16/fp16 weights. ``load_module_only=True`` rebuilds them either way.
-                This is currently honored for ZeRO stage 1 and 2. ZeRO stage 3 and the ZeRO stage 1
-                BF16 optimizer still use the config value.
 
         Returns:
             A tuple of ``load_path`` and ``client_state``.
@@ -4461,16 +4459,9 @@ class DeepSpeedEngine(Module):
         # None inherits the ZeRO config. The same value must not be passed as
         # load_optimizer_states, or a masters-only load would restore Adam's moments.
         # load_module_only restores the model and rebuilds the masters from it.
-        # ZeRO-3 and the dedicated ZeRO-1 BF16 optimizer keep the previous config-only path.
         if load_fp32_weights is None:
             load_fp32_weights = self.zero_load_from_fp32_weights()
-        stage12_master_load = (not self.zero_optimization_partition_weights()
-                               and not isinstance(self.optimizer, BF16_Optimizer))
-        load_saved_fp32_masters = load_fp32_weights and not load_module_only and stage12_master_load
-        if stage12_master_load:
-            zero_load_from_fp32_weights = load_saved_fp32_masters
-        else:
-            zero_load_from_fp32_weights = self.zero_load_from_fp32_weights()
+        load_saved_fp32_masters = load_fp32_weights and not load_module_only
 
         load_zero_checkpoint = load_path is not None and self.zero_optimization()
         if load_zero_checkpoint and not self.zero_nvme_offload_optimizer():
@@ -4481,7 +4472,7 @@ class DeepSpeedEngine(Module):
                 success = self._load_zero_checkpoint(load_dir,
                                                      tag,
                                                      load_optimizer_states=load_zero_optimizer_states,
-                                                     load_from_fp32_weights=zero_load_from_fp32_weights)
+                                                     load_from_fp32_weights=load_saved_fp32_masters)
             else:
                 success = False
             if not success:
@@ -4510,7 +4501,7 @@ class DeepSpeedEngine(Module):
             # fp32.pt is the only copy of the weights, so the universal loader reads it into the
             # masters before update_lp_params writes the model. Snap the masters back onto the
             # bit16 grid when the caller did not ask to keep them.
-            if stage12_master_load and not load_saved_fp32_masters and self.optimizer is not None:
+            if not load_saved_fp32_masters and self.optimizer is not None:
                 self.optimizer._restore_from_bit16_weights()
 
         return load_path, client_states
@@ -4778,9 +4769,9 @@ class DeepSpeedEngine(Module):
                         f"current world size is {self.seq_dp_world_size}. Automatic adjustment " \
                         "of ZeRO's optimizer state partitioning with a new world size is not " \
                         "currently supported.")
-                # Stage 1/2 partitions cannot be resized. ZeRO-3 keeps the previous behavior
-                # and continues into the shard load.
-                if not self.zero_optimization_partition_weights():
+                # ZeRO-3 MoE keeps expert weights in this shard, so a DP change still has to
+                # load it. A non-MoE resume already restored the model and can rebuild masters.
+                if not (self.has_moe_layers and self.zero_optimization_partition_weights()):
                     logger.warning(
                         f"The checkpoint being loaded used a DP world size of {self.loaded_checkpoint_dp_world_size} "
                         f"but the current world size is {self.seq_dp_world_size}, so the saved fp32 master weights "
