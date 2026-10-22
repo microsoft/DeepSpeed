@@ -596,8 +596,8 @@ including uneven, non-contiguous, replicated, and empty placements, so it remain
 for placement provenance and validation rather than scheduling policy. Rank entries are
 identified by their explicit rank IDs, not their list positions. When a checkpoint carries
 both forms, lowering the descriptor must reproduce the persisted map exactly; a conflict
-invalidates the checkpoint. The persisted map describes one logical packed expert tensor
-per EP rank; ZeRO and EDP fragments are normalized to it before conversion.
+invalidates the checkpoint. ZeRO and EDP fragments remain outside the map: callers first
+normalize storage to one logical packed expert tensor per EP rank.
 
 This phase does not change the current runtime's uniform contiguous scheduling, choose an
 arbitrary future expert schedule, or implement direct phase-2 shard-to-shard transfer.
@@ -613,17 +613,6 @@ expert parameters, and `AutoEPMoELayer.plan_expert_transfer(target_placement)` c
 them with a target descriptor through `plan_transfer` into shard-to-shard copies. Plan
 ranks are EP-local ranks of the respective placements; the plan is not executed, and ZeRO
 and EDP storage must still be normalized before its offsets apply.
-
-`AutoEPMoELayer.expert_storage_affine_maps()` removes that normalization step. It lowers
-the placement through `autoep_storage_affine_map` to a map keyed by global rank over the
-flattened parameter, so each shard is a process's flat storage. EDP replicas under
-ZeRO-0/1/2 all appear in a piece's `locations` and are chosen among only by the planner's
-replica selection. Under ZeRO-3, holder `d` stores elements `[d * n, (d + 1) * n)` of the
-packed tensor, clipped to exclude padding, so ranks with only padding or without experts
-have empty shards. The flat logical shape keeps each ZeRO-3 fragment one interval; in the
-N-D tensor a fragment that splits rows needs up to 2(N-1)+1 boxes. Optimizer states and expert tensor
-parallelism are not yet described. The user-facing contract is documented in
-`docs/code-docs/source/autoep.rst`.
 
 ---
 
