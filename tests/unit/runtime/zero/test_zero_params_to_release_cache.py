@@ -7,117 +7,13 @@ import gc
 import weakref
 
 import torch
+import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 import deepspeed
 import deepspeed.runtime.zero.parameter_offload as po_mod
-import deepspeed.runtime.zero.partitioned_param_coordinator as ppc_mod
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.runtime.zero.partitioned_param_coordinator import (
-    InflightParamRegistry,
-    PartitionedParameterCoordinator,
-    ZeRoTraceMode,
-)
 from unit.common import DistributedTest, preferred_dtype
-
-PREFIX = "_PartitionedParameterCoordinator__"
-
-
-def _make_module(ds_id, numel=4):
-    module = torch.nn.Linear(numel, 1, bias=False)
-    module.ds_id = ds_id
-    module.ds_external_parameters = lambda: []
-    module.ds_recompute_parameters = set()
-    param = module.weight
-    param.ds_id = ds_id
-    param.ds_persist = False
-    param.ds_numel = numel
-    param.ds_status = ZeroParamStatus.AVAILABLE
-    param.ds_active_sub_modules = {ds_id}
-    param.is_external_param = False
-
-    def _partition(free_data=True):
-        param.ds_status = ZeroParamStatus.NOT_AVAILABLE
-
-    param.partition = _partition
-    return module, param
-
-
-def _make_coordinator():
-    return PartitionedParameterCoordinator(
-        prefetch_bucket_sz=0,
-        max_reuse_distance_in_numel=100,
-        max_available_parameters_in_numel=10**9,
-        allgather_stream=None,
-        inflight_param_registry=InflightParamRegistry(),
-    )
-
-
-def _set_complete_trace(coordinator, order, step_id=1):
-    # Set completed trace state directly to isolate release_sub_module without distributed comm.
-    setattr(coordinator, PREFIX + "trace_mode", ZeRoTraceMode.COMPLETE)
-    setattr(coordinator, PREFIX + "submodule_order", tuple(order))
-    setattr(coordinator, PREFIX + "step_id", step_id)
-
-
-def test_release_sub_module_follows_retraced_order(monkeypatch):
-    monkeypatch.setattr(ppc_mod, "print_rank_0", lambda *args, **kwargs: None)
-    a, param_a = _make_module(1)
-    b, _ = _make_module(2)
-    c, _ = _make_module(3)
-    coordinator = _make_coordinator()
-
-    # In trace [a, b, a], module `a` is reused at step 2 within max_reuse_distance_in_numel,
-    # so releasing `a` at step 1 must keep `param_a` AVAILABLE.
-    _set_complete_trace(coordinator, [a, b, a], step_id=1)
-    coordinator.release_sub_module(a, forward=True)
-    assert param_a.ds_status == ZeroParamStatus.AVAILABLE
-
-    # After trace invalidation and re-recording [a, b, c], `a` is no longer reused after step 1,
-    # so releasing `a` at step 1 must partition `param_a`.
-    coordinator._clear_trace_structures()
-    param_a.ds_active_sub_modules = {a.ds_id}
-    _set_complete_trace(coordinator, [a, b, c], step_id=1)
-    coordinator.release_sub_module(a, forward=True)
-    assert param_a.ds_status == ZeroParamStatus.NOT_AVAILABLE
-
-
-def test_backward_recompute_release_does_not_mutate_cached_forward_release(monkeypatch):
-    monkeypatch.setattr(ppc_mod, "print_rank_0", lambda *args, **kwargs: None)
-    a, param_a = _make_module(10)
-    b, _ = _make_module(20)
-    coordinator = _make_coordinator()
-
-    # At step 1 in trace [a, b, a], `param_a` is reused at step 2 so normal release keeps it AVAILABLE.
-    # During backward with activation checkpointing, `ds_recompute_parameters` forces `param_a` to release.
-    _set_complete_trace(coordinator, [a, b, a], step_id=1)
-    setattr(coordinator, PREFIX + "active_backward_submodules", {a.ds_id: a})
-    a.ds_recompute_parameters.add(param_a)
-    coordinator.release_sub_module(a, forward=False)
-    assert param_a.ds_status == ZeroParamStatus.NOT_AVAILABLE
-
-    # Subsequent forward release at the same (module, step_id) without recompute parameters must not
-    # inherit the backward recompute release decision from the cache.
-    param_a.ds_status = ZeroParamStatus.AVAILABLE
-    param_a.ds_active_sub_modules = {a.ds_id}
-    _set_complete_trace(coordinator, [a, b, a], step_id=1)
-    coordinator.release_sub_module(a, forward=True)
-    assert param_a.ds_status == ZeroParamStatus.AVAILABLE
-
-
-def test_coordinator_and_modules_are_garbage_collected(monkeypatch):
-    monkeypatch.setattr(ppc_mod, "print_rank_0", lambda *args, **kwargs: None)
-    a, param_a = _make_module(1)
-    coordinator = _make_coordinator()
-    _set_complete_trace(coordinator, [a], step_id=0)
-    coordinator.release_sub_module(a, forward=True)
-
-    coordinator_ref = weakref.ref(coordinator)
-    module_ref = weakref.ref(a)
-    del coordinator, a, param_a
-    gc.collect()
-
-    assert coordinator_ref() is None
-    assert module_ref() is None
 
 
 class _TwoLayerModel(torch.nn.Module):
@@ -131,28 +27,212 @@ class _TwoLayerModel(torch.nn.Module):
         return self.fc2(self.fc1(x))
 
 
+class _DynamicReuseModel(torch.nn.Module):
+
+    def __init__(self, hidden_dim=8):
+        super().__init__()
+        self.a = torch.nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.b = torch.nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.c = torch.nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.reuse_a = True
+        self.a_param_holder = []
+        self.a_status_at_b = []
+
+    def forward(self, x):
+        x = self.a(x)
+        self.a_status_at_b.append(self.a_param_holder[0].ds_status)
+        x = self.b(x)
+        if self.reuse_a:
+            return self.a(x)
+        return self.c(x)
+
+
+class _RecordStatusAfterOuterBackward(torch.autograd.Function):
+    """Record a parameter's ZeRO status right after the downstream module's backward completes."""
+
+    @staticmethod
+    def forward(ctx, x, param_holder, observations):
+        ctx.param_holder = param_holder
+        ctx.observations = observations
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        ctx.observations.append(ctx.param_holder[0].ds_status)
+        return grad_output, None, None
+
+
+class _SharedLinear(torch.nn.Module):
+
+    def __init__(self, hidden_dim, shared_weight):
+        super().__init__()
+        self.shared_weight = shared_weight
+        self.own_weight = torch.nn.Parameter(torch.randn(hidden_dim, hidden_dim) * 0.1)
+
+    def forward(self, x):
+        return F.linear(F.linear(x, self.own_weight), self.shared_weight)
+
+
+class _CheckpointedOuter(torch.nn.Module):
+
+    def __init__(self, hidden_dim, shared_weight):
+        super().__init__()
+        self.shared_weight = shared_weight
+        self.outer_weight = torch.nn.Parameter(torch.randn(hidden_dim, hidden_dim) * 0.1)
+        self.inner = _SharedLinear(hidden_dim, shared_weight)
+
+    def _ckpt_body(self, x):
+        return torch.tanh(self.inner(x))
+
+    def forward(self, x):
+        x = checkpoint(self._ckpt_body, x, use_reentrant=False)
+        return F.linear(x, self.outer_weight)
+
+
+class _CheckpointRecomputeModel(torch.nn.Module):
+
+    def __init__(self, hidden_dim=8):
+        super().__init__()
+        shared_weight = torch.nn.Parameter(torch.randn(hidden_dim, hidden_dim) * 0.1, requires_grad=False)
+        self.early = _SharedLinear(hidden_dim, shared_weight)
+        self.outer = _CheckpointedOuter(hidden_dim, shared_weight)
+        self.shared_holder = []
+        self.status_after_outer_bwd = []
+
+    def forward(self, x):
+        x = self.early(x)
+        x = _RecordStatusAfterOuterBackward.apply(x, self.shared_holder, self.status_after_outer_bwd)
+        return self.outer(x)
+
+
+def _zero3_config(*, max_reuse_distance=10**9, use_preferred_dtype=False):
+    dtype = preferred_dtype() if use_preferred_dtype else torch.float32
+    return {
+        "train_batch_size": 1,
+        "fp16": {
+            "enabled": dtype is torch.float16
+        },
+        "bf16": {
+            "enabled": dtype is torch.bfloat16
+        },
+        "zero_allow_untested_optimizer": True,
+        "zero_optimization": {
+            "stage": 3,
+            "stage3_param_persistence_threshold": 0,
+            "stage3_prefetch_bucket_size": 0,
+            "stage3_max_reuse_distance": max_reuse_distance,
+        },
+    }
+
+
 class TestZero3CoordinatorCacheLifecycle(DistributedTest):
     world_size = 1
+    reuse_dist_env = True
+
+    def test_release_sub_module_follows_retraced_order(self):
+        hidden = 8
+        numel = hidden * hidden
+        model = _DynamicReuseModel(hidden)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+        # Allow reuse across one intermediate module (`b`), but not two (`b` + `c`).
+        engine, *_ = deepspeed.initialize(
+            model=model,
+            optimizer=optimizer,
+            config=_zero3_config(max_reuse_distance=numel + 1),
+        )
+        coordinator = engine.optimizer.parameter_offload.get_param_coordinator()
+        model.a_param_holder.append(engine.module.a.weight)
+
+        try:
+            # First step records `[root, a, b, a, ...]`; second step runs under COMPLETE trace.
+            for _ in range(2):
+                x = torch.randn(2, hidden, device=engine.device, requires_grad=True)
+                engine.backward(engine(x).sum())
+                assert x.grad is not None and torch.isfinite(x.grad).all()
+                engine.step()
+
+            assert coordinator.is_complete_trace()
+            assert model.a_status_at_b[-1] == ZeroParamStatus.AVAILABLE
+
+            # Switch control flow to `a -> b -> c`: step 0 invalidates the trace via trace_prologue(c),
+            # step 1 records the new trace, and step 2 runs under the new COMPLETE trace where `a` is
+            # no longer reused within `stage3_max_reuse_distance`.
+            model.reuse_a = False
+            for step_idx in range(3):
+                x = torch.randn(2, hidden, device=engine.device, requires_grad=True)
+                loss = engine(x).sum()
+                if step_idx == 0:
+                    assert coordinator.is_invalid_trace()
+                engine.backward(loss)
+                assert x.grad is not None and torch.isfinite(x.grad).all()
+                engine.step()
+
+            assert coordinator.is_complete_trace()
+            assert model.a_status_at_b[-1] == ZeroParamStatus.NOT_AVAILABLE
+
+            # Switch back to `a -> b -> a` and verify retracing restores reuse retention.
+            model.reuse_a = True
+            for _ in range(3):
+                x = torch.randn(2, hidden, device=engine.device, requires_grad=True)
+                engine.backward(engine(x).sum())
+                assert x.grad is not None and torch.isfinite(x.grad).all()
+                engine.step()
+
+            assert coordinator.is_complete_trace()
+            assert model.a_status_at_b[-1] == ZeroParamStatus.AVAILABLE
+        finally:
+            engine.destroy()
+            po_mod.FWD_MODULE_STACK.clear()
+
+    def test_backward_recompute_release_does_not_mutate_cached_forward_release(self):
+        hidden = 8
+        numel = hidden * hidden
+        model = _CheckpointRecomputeModel(hidden)
+        optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=1e-3)
+        engine, *_ = deepspeed.initialize(
+            model=model,
+            optimizer=optimizer,
+            config=_zero3_config(max_reuse_distance=4 * numel),
+        )
+        coordinator = engine.optimizer.parameter_offload.get_param_coordinator()
+        model.shared_holder.append(engine.module.outer.shared_weight)
+
+        try:
+            # Step 0 records the trace and Step 1 runs under COMPLETE trace while `shared_weight` is frozen.
+            # During `outer` backward, checkpoint recompute of `inner` attributes `shared_weight` to
+            # `outer.ds_recompute_parameters`, so `outer` releases `shared_weight` at the backward boundary.
+            for _ in range(2):
+                x = torch.randn(2, hidden, device=engine.device, requires_grad=True)
+                engine.backward(engine(x).sum())
+                assert x.grad is not None and torch.isfinite(x.grad).all()
+                engine.step()
+
+            assert coordinator.is_complete_trace()
+            assert model.status_after_outer_bwd[-1] == ZeroParamStatus.NOT_AVAILABLE
+
+            # Unfreeze `shared_weight` so checkpoint recompute in Step 2 no longer populates
+            # `outer.ds_recompute_parameters`, while keeping the same submodule trace. Because `early`
+            # uses `shared_weight` next in backward within `stage3_max_reuse_distance`, `shared_weight`
+            # must remain AVAILABLE after `outer` backward instead of inheriting a mutated cached release set.
+            model.shared_holder[0].requires_grad_(True)
+            x = torch.randn(2, hidden, device=engine.device, requires_grad=True)
+            engine.backward(engine(x).sum())
+            assert x.grad is not None and torch.isfinite(x.grad).all()
+            engine.step()
+
+            assert coordinator.is_complete_trace()
+            assert model.status_after_outer_bwd[-1] == ZeroParamStatus.AVAILABLE
+        finally:
+            engine.destroy()
+            po_mod.FWD_MODULE_STACK.clear()
 
     def test_engine_coordinator_released_after_complete_trace(self):
         hidden = 16
         dtype = preferred_dtype()
-        config = {
-            "train_batch_size": 1,
-            "fp16": {
-                "enabled": dtype is torch.float16
-            },
-            "bf16": {
-                "enabled": dtype is torch.bfloat16
-            },
-            "zero_optimization": {
-                "stage": 3
-            },
-        }
         model = _TwoLayerModel(hidden)
         engine, optimizer, _, _ = deepspeed.initialize(
             model=model,
-            config=config,
+            config=_zero3_config(use_preferred_dtype=True),
             model_parameters=list(model.parameters()),
         )
 
