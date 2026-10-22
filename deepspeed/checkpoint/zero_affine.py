@@ -9,17 +9,20 @@ parameter keyed by global rank, both for the low-precision parameter the model c
 for the fp32 master copy and optimizer states that ZeRO partitions across the data-parallel group.
 Each map comes with an accessor for the matching local shard, which is a view of ZeRO's storage,
 so it can be read as a transfer source or written as a transfer target.
+
+Under AutoTP these maps describe one tensor-parallel shard; ``autotp_storage_affine_maps`` nests
+them in each parameter's AutoTP layout to describe the whole parameter.
 """
 
 import torch
 
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.checkpoint.affine import AffinePiece, ParamAffineMap
+from deepspeed.checkpoint.affine import AffinePiece, ParamAffineMap, nest_affine_maps, replicated_map
 
 __all__ = [
     'zero_storage_affine_map', 'zero_param_storage_affine_map', 'zero_param_storage_shard',
-    'zero_optimizer_storage_affine_maps', 'zero_optimizer_storage_shard'
+    'zero_optimizer_storage_affine_maps', 'zero_optimizer_storage_shard', 'autotp_storage_affine_maps'
 ]
 
 
@@ -220,3 +223,68 @@ def zero_optimizer_storage_shard(param, optim_state_key=None):
         raise RuntimeError('ZeRO links optimizer states to parameters at the first optimizer step; '
                            f'call this after it to read {optim_state_key!r}.')
     return mapping.get_hp_fragment(optim_state_key)
+
+
+def _autotp_layout_map(name, param, tp_world_size):
+    from deepspeed.module_inject.layers import _get_param_uc_conversion_meta
+
+    meta = _get_param_uc_conversion_meta(param)
+    if not meta:
+        # AutoTP leaves such a parameter whole on every tensor-parallel rank.
+        return replicated_map(tuple(getattr(param, 'ds_shape', param.shape)), tp_world_size)
+    if meta.get('unsupported_reason'):
+        raise NotImplementedError(f"AutoTP parameter '{name}' has no affine layout: {meta['unsupported_reason']}")
+    if meta.get('affine_map') is None:
+        raise NotImplementedError(f"AutoTP parameter '{name}' publishes no affine layout map.")
+    return ParamAffineMap.from_dict(meta['affine_map'])
+
+
+def autotp_storage_affine_maps(model, optimizer_states=False, tp_group=None):
+    """Describe what every process stores of each parameter of an AutoTP ``model`` under ZeRO.
+
+    Returns ``{name: map}`` over ``model.named_parameters()``. Each map nests the parameter's
+    AutoTP layout map with the ZeRO storage of every tensor-parallel shard, so it describes the
+    flattened parameter keyed by global rank, and each rank's shard is the one
+    ``zero_param_storage_shard`` returns. With ``optimizer_states`` the maps describe the fp32
+    master copy and optimizer states instead, matching ``zero_optimizer_storage_shard``, and a
+    parameter without them maps to ``None``. A parameter AutoTP did not partition is replicated
+    over the tensor-parallel group.
+
+    Collective: the tensor-parallel ranks exchange their shards' storage maps in one all-gather
+    over ``tp_group`` (the AutoTP group by default), and every rank must call this with the same
+    model. A piece split along a trailing axis, as a row-parallel weight is, becomes one piece
+    per row, which ``plan_transfer`` counts against its budget.
+    """
+    if tp_group is None:
+        from deepspeed.utils import groups
+        tp_group = groups.get_tensor_model_parallel_group()
+    tp_world_size = dist.get_world_size(group=tp_group)
+
+    # Some AutoTP layers publish their metadata only when asked.
+    for module in model.modules():
+        marker = getattr(module, '_mark_uc_metadata', None)
+        if marker is not None:
+            marker()
+
+    named_params = list(model.named_parameters())
+    params = [param for _, param in named_params]
+    if optimizer_states:
+        storage_maps = zero_optimizer_storage_affine_maps(params)
+    else:
+        storage_maps = [zero_param_storage_affine_map(param) for param in params]
+    local = [None if storage_map is None else storage_map.to_dict() for storage_map in storage_maps]
+    gathered = [None] * tp_world_size
+    dist.all_gather_object(gathered, local, group=tp_group)
+
+    maps = {}
+    for position, (name, param) in enumerate(named_params):
+        storage_by_tp_rank = [rank_maps[position] for rank_maps in gathered]
+        if all(storage is None for storage in storage_by_tp_rank):
+            maps[name] = None
+            continue
+        if any(storage is None for storage in storage_by_tp_rank):
+            raise ValueError(f"Parameter '{name}' has storage on some tensor-parallel ranks but not on others.")
+        layout = _autotp_layout_map(name, param, tp_world_size)
+        inner = {tp_rank: ParamAffineMap.from_dict(storage) for tp_rank, storage in enumerate(storage_by_tp_rank)}
+        maps[name] = nest_affine_maps(layout, inner)
+    return maps

@@ -11,9 +11,9 @@ import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.affine import contiguous_split_map, nest_affine_maps, replicated_map, sub_param_map
 from deepspeed.checkpoint.affine_transfer import PlanBudget, plan_transfer
-from deepspeed.checkpoint.zero_affine import (zero_optimizer_storage_affine_maps, zero_optimizer_storage_shard,
-                                              zero_param_storage_affine_map, zero_param_storage_shard,
-                                              zero_storage_affine_map)
+from deepspeed.checkpoint.zero_affine import (autotp_storage_affine_maps, zero_optimizer_storage_affine_maps,
+                                              zero_optimizer_storage_shard, zero_param_storage_affine_map,
+                                              zero_param_storage_shard, zero_storage_affine_map)
 from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_optimizer_state
 from unit.common import DistributedTest
 from unit.simple_model import random_dataloader
@@ -274,5 +274,122 @@ class TestZeroOptimizerStorageMaps(DistributedTest):
                 for piece in pieces:
                     expected[piece.source_offset:piece.source_offset + piece.shape[0]] = holder + 1
             assert torch.equal(written, expected)
+
+        engine.destroy()
+
+
+class ThreeLinears(torch.nn.Module):
+
+    def __init__(self, hidden_dim):
+        super().__init__()
+        self.linears = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(3)])
+
+    def forward(self, x, y):
+        for linear in self.linears:
+            x = linear(x)
+        return torch.nn.functional.cross_entropy(x, y)
+
+
+def _all_shards(shard):
+    gathered = [None] * dist.get_world_size()
+    dist.all_gather_object(gathered, shard.detach().cpu())
+    return dict(enumerate(gathered))
+
+
+def _one_holder_each(layout):
+    # Every layout rank is a process of its own, as a rollout engine without ZeRO would be.
+    inner = {
+        rank: zero_storage_affine_map(torch.Size(shape).numel(), [rank])
+        for rank, shape in layout.shard_shapes.items()
+    }
+    return nest_affine_maps(layout, inner)
+
+
+class TestAutoTPStorageMaps(DistributedTest):
+    world_size = 4
+    reuse_dist_env = False
+
+    @pytest.mark.parametrize('zero_stage', [1, 2, 3])
+    def test_maps_describe_live_storage_of_tp2_dp2(self, zero_stage):
+        if not get_accelerator().is_bf16_supported():
+            pytest.skip('requires bf16')
+        hidden_dim = 12
+        config = {
+            'train_micro_batch_size_per_gpu': 1,
+            'optimizer': {
+                'type': 'Adam',
+                'params': {
+                    'lr': 1e-2,
+                    'torch_adam': True
+                }
+            },
+            'bf16': {
+                'enabled': True
+            },
+            'zero_optimization': {
+                'stage': zero_stage
+            },
+            'tensor_parallel': {
+                'autotp_size': 2,
+                'partition_config': {
+                    'use_default_specs':
+                    False,
+                    'layer_specs': [
+                        {
+                            'patterns': [r'.*linears\.0\.weight$'],
+                            'partition_type': 'column'
+                        },
+                        {
+                            'patterns': [r'.*linears\.1\.weight$'],
+                            'partition_type': 'row'
+                        },
+                        {
+                            'patterns': [r'.*linears\.2\.weight$'],
+                            'partition_type': 'skip'
+                        },
+                    ],
+                },
+            },
+        }
+        torch.manual_seed(0)
+        model = ThreeLinears(hidden_dim)
+        # The weights before AutoTP and ZeRO touch them: the oracle for what each process stores.
+        reference = {name: param.detach().to(torch.bfloat16).reshape(-1) for name, param in model.named_parameters()}
+        shapes = {name: tuple(param.shape) for name, param in model.named_parameters()}
+        engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config)
+        params = dict(engine.module.named_parameters())
+        rank = dist.get_rank()
+
+        maps = autotp_storage_affine_maps(engine.module)
+
+        assert set(maps) == set(reference)
+        for name, affine_map in maps.items():
+            affine_map.validate_coverage()
+            assert torch.equal(zero_param_storage_shard(params[name]).cpu(), affine_map.extract(reference[name], rank))
+
+            # Plan from the live storage into four tensor-parallel ranks split along dim 0.
+            target = _one_holder_each(contiguous_split_map(shapes[name], [hidden_dim // 4] * 4, 0))
+            plan = plan_transfer(target, affine_map)
+            source_storage = _all_shards(zero_param_storage_shard(params[name]))
+            written = {r: torch.full(s, float('nan'), dtype=torch.bfloat16) for r, s in target.shard_shapes.items()}
+            for segment in plan.segments:
+                torch.as_strided(written[segment.target_rank], segment.shape, segment.target_strides,
+                                 segment.target_offset).copy_(
+                                     torch.as_strided(source_storage[segment.source_rank], segment.shape,
+                                                      segment.source_strides, segment.source_offset))
+            for target_rank, shard in written.items():
+                assert torch.equal(shard, target.extract(reference[name], target_rank))
+
+        for x, y in random_dataloader(engine, 2, hidden_dim, engine.device, torch.bfloat16):
+            engine.backward(engine(x, y))
+            engine.step()
+
+        optimizer_maps = autotp_storage_affine_maps(engine.module, optimizer_states=True)
+        for name, affine_map in optimizer_maps.items():
+            affine_map.validate_coverage()
+            # The trained low-precision parameter, rebuilt through its map, is the fp32 master copy rounded.
+            full_param = maps[name].rebuild(_all_shards(zero_param_storage_shard(params[name])))
+            master = zero_optimizer_storage_shard(params[name]).to(torch.bfloat16).cpu()
+            assert torch.equal(master, affine_map.extract(full_param, rank))
 
         engine.destroy()
