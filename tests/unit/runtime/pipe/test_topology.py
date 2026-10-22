@@ -224,3 +224,25 @@ def test_primes():
         assert _product(primes) == x
         for p in primes:
             assert _prime_factors(p) == [p]
+
+
+def test_topology_invalid_rank_and_p2p_groups():
+    topo = Topo(axes=['pipe', 'data', 'model'], dims=[4, 2, 2])
+    with pytest.raises(ValueError, match="rank 16 not found"):
+        topo.get_coord(16)
+
+    grid = object.__new__(Grid)
+    grid._topo = topo
+    grid.world_size = topo.world_size()
+    grid.pipe_parallel_size = topo.get_dim('pipe')
+    p2p_groups = grid._build_p2p_groups()
+
+    comm_lists = topo.get_axis_comm_lists('pipe')
+    expected = []
+    for rank in range(grid.world_size):
+        for l in comm_lists:
+            if rank in l:
+                idx = l.index(rank)
+                expected.append([rank, l[(idx + 1) % grid.pipe_parallel_size]])
+                break
+    assert p2p_groups == expected
