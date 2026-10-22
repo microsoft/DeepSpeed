@@ -379,6 +379,35 @@ class ZeROOptimizer(DeepSpeedOptimizer):
                     continue
                 param_group[key] = value
 
+        self._normalize_step_for_all_param_groups()
+
+    @staticmethod
+    def _normalize_step_tensor(step: Any, param: torch.Tensor, param_group: dict) -> torch.Tensor:
+        if step is None:
+            return None
+        if not torch.is_tensor(step):
+            step = torch.tensor(step, dtype=torch.float32)
+        elif not step.is_floating_point():
+            step = step.to(dtype=torch.float32)
+
+        if param is None:
+            return step
+
+        fused = bool(param_group.get('fused', False)) if param_group is not None else False
+        capturable = bool(param_group.get('capturable', False)) if param_group is not None else False
+
+        if fused or capturable:
+            return step.to(dtype=torch.float32, device=param.device)
+        else:
+            return step.to(device=torch.device('cpu'))
+
+    def _normalize_step_for_all_param_groups(self) -> None:
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                if param in self.optimizer.state and 'step' in self.optimizer.state[param]:
+                    self.optimizer.state[param]['step'] = self._normalize_step_tensor(
+                        self.optimizer.state[param]['step'], param, param_group)
+
     def report_ipg_memory_usage(self, tag, param_elems, dtype=None):
         dtypes = self.ipg_buckets.keys() if dtype is None else [dtype]
 
