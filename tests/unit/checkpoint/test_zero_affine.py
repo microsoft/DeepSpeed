@@ -15,6 +15,7 @@ from deepspeed.checkpoint.affine_transfer import PlanBudget, plan_transfer
 from deepspeed.checkpoint.zero_affine import (autotp_storage_affine_maps, zero_optimizer_storage_affine_maps,
                                               zero_optimizer_storage_shard, zero_param_storage_affine_map,
                                               zero_param_storage_shard, zero_storage_affine_map)
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_optimizer_state
 from unit.common import DistributedTest
 from unit.simple_model import random_dataloader
@@ -67,6 +68,20 @@ def test_rejects_quantized_zero3_parameter_storage(accessor):
     param.ds_tensor.ds_quant_scale = torch.ones(1)
 
     with pytest.raises(NotImplementedError, match='Quantized ZeRO-3 parameter storage'):
+        accessor(param)
+
+
+@pytest.mark.parametrize('accessor', [zero_param_storage_affine_map, zero_param_storage_shard])
+def test_rejects_nvme_offloaded_zero3_parameter_storage(accessor):
+    # A partition swapped out to NVMe leaves a one-element placeholder in memory.
+    param = torch.nn.Parameter(torch.zeros(8), requires_grad=False)
+    param.ds_id = 0
+    param.ds_numel = 8
+    param.ds_tensor = torch.zeros(1)
+    param.ds_tensor.ds_numel = 4
+    param.ds_tensor.final_location = OffloadDeviceEnum.nvme
+
+    with pytest.raises(NotImplementedError, match='NVMe-offloaded ZeRO-3 parameter storage'):
         accessor(param)
 
 
@@ -292,6 +307,12 @@ class TestZeroOptimizerStorageMaps(DistributedTest):
             engine.backward(engine(x, y))
             engine.step()
 
+        if zero_stage == 3:
+            # ZeRO-3 keeps small parameters gathered between steps; a write to the shard alone would be lost.
+            with pytest.raises(RuntimeError, match='empty_partition_cache'):
+                zero_param_storage_shard(engine.module.second.weight)
+            engine.empty_partition_cache()
+
         maps = zero_optimizer_storage_affine_maps(params)
         assert maps[0] is None and maps[1] is None
         assert zero_optimizer_storage_shard(engine.module.frozen.weight) is None
@@ -318,6 +339,15 @@ class TestZeroOptimizerStorageMaps(DistributedTest):
                 for piece in pieces:
                     expected[piece.source_offset:piece.source_offset + piece.shape[0]] = holder + 1
             assert torch.equal(written, expected)
+
+        # A write to the parameter's shard must reach the next forward.
+        zero_param_storage_shard(engine.module.second.weight).zero_()
+        outputs = []
+        hook = engine.module.second.register_forward_hook(lambda module, args, output: outputs.append(output))
+        for x, y in random_dataloader(engine, 1, hidden_dim, engine.device, torch.bfloat16):
+            engine(x, y)
+        hook.remove()
+        assert torch.all(outputs[0] == 0)
 
         engine.destroy()
 
@@ -353,8 +383,8 @@ class TestAutoTPStorageMaps(DistributedTest):
     world_size = 4
     reuse_dist_env = False
 
-    @pytest.mark.parametrize('zero_stage', [1, 2, 3])
-    def test_maps_describe_live_storage_of_tp2_dp2(self, zero_stage):
+    @pytest.mark.parametrize('zero_stage, zero_init', [(1, False), (2, False), (3, False), (3, True)])
+    def test_maps_describe_live_storage_of_tp2_dp2(self, zero_stage, zero_init):
         if not get_accelerator().is_bf16_supported():
             pytest.skip('requires bf16')
         hidden_dim = 12
@@ -396,10 +426,19 @@ class TestAutoTPStorageMaps(DistributedTest):
             },
         }
         torch.manual_seed(0)
-        model = ThreeLinears(hidden_dim)
-        # The weights before AutoTP and ZeRO touch them: the oracle for what each process stores.
-        reference = {name: param.detach().to(torch.bfloat16) for name, param in model.named_parameters()}
-        shapes = {name: tuple(param.shape) for name, param in model.named_parameters()}
+        if zero_init:
+            # zero.Init partitions every parameter over the whole world before AutoTP sees the model.
+            with deepspeed.zero.Init(config_dict_or_path=config):
+                model = ThreeLinears(hidden_dim)
+            # The weights before AutoTP and ZeRO touch them: the oracle for what each process stores.
+            reference = {
+                name: _full_param(param).cpu().view(param.ds_shape)
+                for name, param in model.named_parameters()
+            }
+        else:
+            model = ThreeLinears(hidden_dim)
+            reference = {name: param.detach().to(torch.bfloat16) for name, param in model.named_parameters()}
+        shapes = {name: tuple(full.shape) for name, full in reference.items()}
         engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config)
         params = dict(engine.module.named_parameters())
         rank = dist.get_rank()
@@ -427,6 +466,7 @@ class TestAutoTPStorageMaps(DistributedTest):
         for x, y in random_dataloader(engine, 2, hidden_dim, engine.device, torch.bfloat16):
             engine.backward(engine(x, y))
             engine.step()
+        engine.empty_partition_cache()
 
         optimizer_maps = autotp_storage_affine_maps(engine.module, optimizer_states=True)
         for name, affine_map in optimizer_maps.items():

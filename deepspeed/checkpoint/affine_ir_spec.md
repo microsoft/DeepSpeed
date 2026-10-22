@@ -618,7 +618,11 @@ matching `*_storage_shard` accessors return the flat views of ZeRO's own buffers
 plan's writes land in the optimizer. Offloaded states, MiCS and hpZ have no map yet.
 Both parameter storage accessors reject quantized ZeRO-3 storage (`ds_quant_scale`):
 its encoded values and separate quantization scales cannot be treated as ordinary
-parameter elements.
+parameter elements. They reject NVMe-offloaded ZeRO-3 storage too, whose partition is a
+placeholder while swapped out. `zero_param_storage_shard` also rejects a gathered ZeRO-3
+parameter: the forward reads the gathered copy, which persistent parameters keep between
+steps, so a write to the partition alone would be lost. `engine.empty_partition_cache()`
+releases every gathered copy first.
 
 ---
 
@@ -677,7 +681,9 @@ cannot be merged across those rows and keeps one piece per row. Callers:
 - `zero_param_storage_affine_map` and `zero_optimizer_storage_affine_maps` describe a dense
   parameter (no layout, so they are already the storage map).
 - `autotp_storage_affine_maps(model)` nests each parameter's published AutoTP layout map
-  with the storage of every TP shard.
+  with the storage of every TP shard. A parameter AutoTP leaves whole in a model built under
+  `zero.Init` stays partitioned over the whole world, so every TP rank reports the storage of
+  one shared copy; that storage describes the parameter on its own, without nesting.
 - AutoEP expert storage nests the placement's layout map with each EP rank's EDP storage.
 
 **10.4 Replica choice** stays with the planner (§2.4): every holder appears in `locations`,

@@ -106,6 +106,16 @@ def _global_ranks(group):
     return [dist.get_global_rank(group, rank) for rank in range(dist.get_world_size(group))]
 
 
+def _check_zero3_param_storage(param):
+    from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+
+    if hasattr(param.ds_tensor, 'ds_quant_scale'):
+        raise NotImplementedError('Quantized ZeRO-3 parameter storage has no affine storage map.')
+    # NVMe offload swaps a partition out of memory and leaves a placeholder in its place.
+    if getattr(param.ds_tensor, 'final_location', None) == OffloadDeviceEnum.nvme:
+        raise NotImplementedError('NVMe-offloaded ZeRO-3 parameter storage has no affine storage map.')
+
+
 def zero_param_storage_affine_map(param, replica_group=None):
     """Describe the storage of a live low-precision ``param`` across global ranks.
 
@@ -116,11 +126,10 @@ def zero_param_storage_affine_map(param, replica_group=None):
     tensor parallelism the map describes this rank's tensor-parallel shard, which its
     data-parallel peers hold too.
 
-    Quantized ZeRO-3 parameter storage is not supported.
+    Quantized and NVMe-offloaded ZeRO-3 parameter storage is not supported.
     """
     if hasattr(param, 'ds_id'):
-        if hasattr(param.ds_tensor, 'ds_quant_scale'):
-            raise NotImplementedError('Quantized ZeRO-3 parameter storage has no affine storage map.')
+        _check_zero3_param_storage(param)
         holders = _global_ranks(param.ds_process_group)
         return zero_storage_affine_map(param.ds_numel, holders, param.ds_tensor.ds_numel)
     if replica_group is None:
@@ -132,10 +141,19 @@ def zero_param_storage_affine_map(param, replica_group=None):
 
 
 def zero_param_storage_shard(param):
-    """This rank's shard of ``param`` as laid out by ``zero_param_storage_affine_map``: a flat view."""
+    """This rank's shard of ``param`` as laid out by ``zero_param_storage_affine_map``: a flat view.
+
+    A ZeRO-3 parameter must be partitioned. A gathered copy, which ZeRO-3 keeps for persistent
+    parameters between forwards, would go on serving the forward after the shard is written, so
+    release gathered copies with ``engine.empty_partition_cache()`` first.
+    """
     if hasattr(param, 'ds_id'):
-        if hasattr(param.ds_tensor, 'ds_quant_scale'):
-            raise NotImplementedError('Quantized ZeRO-3 parameter storage has no affine storage map.')
+        from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+
+        _check_zero3_param_storage(param)
+        if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
+            raise RuntimeError(f'ZeRO-3 parameter {param.ds_id} is gathered, so its shard is not its only copy; '
+                               'call engine.empty_partition_cache() first.')
         return param.ds_tensor.data.view(-1).narrow(0, 0, _zero3_local_numel(param))
     return param.data.view(-1)
 
@@ -249,7 +267,8 @@ def autotp_storage_affine_maps(model, optimizer_states=False, tp_group=None):
     ``zero_param_storage_shard`` returns. With ``optimizer_states`` the maps describe the fp32
     master copy and optimizer states instead, matching ``zero_optimizer_storage_shard``, and a
     parameter without them maps to ``None``. A parameter AutoTP did not partition is replicated
-    over the tensor-parallel group.
+    over the tensor-parallel group, unless it kept the partition over the whole world that
+    ``zero.Init`` gave it, which describes it on its own.
 
     Collective: the tensor-parallel ranks exchange their shards' storage maps in one all-gather
     over ``tp_group`` (the AutoTP group by default), and every rank must call this with the same
@@ -287,5 +306,12 @@ def autotp_storage_affine_maps(model, optimizer_states=False, tp_group=None):
             raise ValueError(f"Parameter '{name}' has storage on some tensor-parallel ranks but not on others.")
         layout = _autotp_layout_map(name, param, tp_world_size)
         inner = {tp_rank: ParamAffineMap.from_dict(storage) for tp_rank, storage in enumerate(storage_by_tp_rank)}
+        replicated = layout.to_dict() == replicated_map(layout.logical_shape, tp_world_size).to_dict()
+        shared = all(storage == storage_by_tp_rank[0] for storage in storage_by_tp_rank)
+        if tp_world_size > 1 and replicated and shared:
+            # A parameter AutoTP leaves whole in a model built under zero.Init keeps its partition over
+            # the whole world, so every tensor-parallel rank reports the storage of the same one copy.
+            layout = replicated_map(layout.logical_shape, 1)
+            inner = {0: inner[0]}
         maps[name] = nest_affine_maps(layout, inner)
     return maps
