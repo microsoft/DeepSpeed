@@ -1113,6 +1113,20 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     "zero.Init cannot reuse an existing ZeRO parameter parallel group with a different size: "
                     f"existing={dist.get_world_size(group=self.zero_param_process_group)}, requested={hpz_partition_size}"
                 )
+            elif self.dp_world_size != dist.get_world_size():
+                hpz_ranks = set(dist.get_all_ranks_from_group(self.zero_param_process_group))
+                dp_ranks = set(dist.get_all_ranks_from_group(self.ds_process_group))
+                incompatible_group = torch.tensor(
+                    [not hpz_ranks.issubset(dp_ranks)],
+                    dtype=torch.int,
+                    device=get_accelerator().device_name(os.environ["LOCAL_RANK"]),
+                )
+                # All DP ranks must reject before any of them enters parameter collectives.
+                dist.all_reduce(incompatible_group, op=dist.ReduceOp.MAX, group=self.ds_process_group)
+                if incompatible_group.item():
+                    raise RuntimeError(
+                        "zero.Init cannot reuse an existing ZeRO parameter parallel group with ranks outside "
+                        "its data parallel group")
 
         self.num_ranks_in_param_group = self.dp_world_size
         self.rank_in_group = self.rank
