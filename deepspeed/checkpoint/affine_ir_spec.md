@@ -647,20 +647,23 @@ actually holds, so its map must describe storage, not only the parallel layout.
 - *Layout map*: the parameter's N-D logical shape, keyed by ranks of the parallel group that
   defines the layout (TP, EP). The layer builds it from its own semantics, checkpoints persist
   it, and it remains the only geometry contract.
-- *Storage map*: the flattened parameter `(numel,)`, keyed by global rank; each shard is a
-  process's flat buffer (`param.data`, ZeRO-3 `ds_tensor`, an fp32 or optimizer-state
-  fragment). It exists at runtime only and is never persisted.
+- *Storage map*: keyed by global rank; each shard is a process's flat buffer (`param.data`,
+  ZeRO-3 `ds_tensor`, an fp32 or optimizer-state fragment). It exists at runtime only and is
+  never persisted. Built from a layout map (10.3), it keeps the layout's N-D logical shape;
+  without a layout it describes the flattened parameter `(numel,)`.
 
-Both satisfy P1–P5. A plan's endpoints must be the same kind. `plan_transfer` rejects
-different logical shapes, which separates the two kinds for every parameter of more than one
-axis; for a 1-D parameter, and for rank namespaces, matching them is the caller's job.
+Both satisfy P1–P5. A plan's endpoints must be the same kind and the same logical shape;
+`plan_transfer` rejects different logical shapes, so a flat storage map cannot be planned
+against an N-D one of the same parameter. Matching rank namespaces is the caller's job.
 
-**10.2 Why storage maps are flat.** `plan_transfer` addresses every shard as a row-major box
-of the same rank as the logical parameter. A ZeRO partition of an N-D layout shard is a
-contiguous interval of its flattened buffer, which is generally not a box of the N-D
-parameter. Flattening the logical shape makes every stored interval a 1-D box. The cost is
-that a layout piece is cut into its contiguous runs: a column of a row-major weight, such as
-a row-parallel shard, becomes one piece per row and counts against `PlanBudget`.
+**10.2 N-D boxes in flat storage.** A ZeRO partition of an N-D layout shard is a contiguous
+interval of its flattened buffer, which is generally not one box of the N-D parameter: it is
+a partial row, then whole rows, then a partial row, recursively over the axes, so at most
+`2 * ndim - 1` boxes. Each box is dense in the buffer (its storage strides are its own
+row-major strides). `plan_transfer` accepts such a piece in a 1-D shard and treats its
+storage as the interval `[dest_offset, dest_offset + numel)`; any other shard must have the
+logical parameter's rank. Describing the flattened parameter instead would cut a column of a
+row-major weight, such as a row-parallel shard, into one piece per row.
 
 **10.3 Derivation.** A storage map is derived, never hand-built:
 `storage = nest_affine_maps(layout, {layout rank: inner})`, where `inner` describes how one
@@ -668,7 +671,9 @@ flattened layout shard is stored over its data-parallel group (`zero_storage_aff
 replicas, or ZeRO-3 partitions `[d*n, (d+1)*n)` without padding). Nesting keeps P5: layout
 pieces that describe the same block on several layout ranks are one block whose holders are
 the union of every rank's holders, and the block is cut wherever any of those holders'
-storage begins or ends. Callers:
+storage begins or ends; each resulting interval becomes the boxes of 10.2. A layout piece
+that is not dense within its layout shard, such as a block narrower than the shard's rows,
+cannot be merged across those rows and keeps one piece per row. Callers:
 - `zero_param_storage_affine_map` and `zero_optimizer_storage_affine_maps` describe a dense
   parameter (no layout, so they are already the storage map).
 - `autotp_storage_affine_maps(model)` nests each parameter's published AutoTP layout map

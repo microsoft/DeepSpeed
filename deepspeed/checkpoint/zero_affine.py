@@ -11,7 +11,7 @@ Each map comes with an accessor for the matching local shard, which is a view of
 so it can be read as a transfer source or written as a transfer target.
 
 Under AutoTP these maps describe one tensor-parallel shard; ``autotp_storage_affine_maps`` nests
-them in each parameter's AutoTP layout to describe the whole parameter.
+them in each parameter's AutoTP layout to describe the whole parameter in its own shape.
 """
 
 import torch
@@ -244,7 +244,7 @@ def autotp_storage_affine_maps(model, optimizer_states=False, tp_group=None):
 
     Returns ``{name: map}`` over ``model.named_parameters()``. Each map nests the parameter's
     AutoTP layout map with the ZeRO storage of every tensor-parallel shard, so it describes the
-    flattened parameter keyed by global rank, and each rank's shard is the one
+    parameter in its own shape keyed by global rank, and each rank's shard is the one
     ``zero_param_storage_shard`` returns. With ``optimizer_states`` the maps describe the fp32
     master copy and optimizer states instead, matching ``zero_optimizer_storage_shard``, and a
     parameter without them maps to ``None``. A parameter AutoTP did not partition is replicated
@@ -252,8 +252,8 @@ def autotp_storage_affine_maps(model, optimizer_states=False, tp_group=None):
 
     Collective: the tensor-parallel ranks exchange their shards' storage maps in one all-gather
     over ``tp_group`` (the AutoTP group by default), and every rank must call this with the same
-    model. A piece split along a trailing axis, as a row-parallel weight is, becomes one piece
-    per row, which ``plan_transfer`` counts against its budget.
+    model. A rank's storage of a layout piece that is dense in its shard is at most
+    ``2 * ndim - 1`` boxes; any other layout piece keeps one piece per row.
     """
     if tp_group is None:
         from deepspeed.utils import groups

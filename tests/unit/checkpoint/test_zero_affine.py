@@ -95,11 +95,11 @@ def _nested(layout, holders_by_layout_rank, partition_by_layout_rank=None):
 def _check_storage(affine_map, full, stored):
     # validate_coverage also proves every piece names exactly the processes that store its elements.
     affine_map.validate_coverage()
-    assert affine_map.logical_shape == (full.numel(), )
+    assert affine_map.logical_shape == tuple(full.shape)
     assert affine_map.shard_shapes == {rank: tuple(shard.shape) for rank, shard in stored.items()}
     for rank, shard in stored.items():
-        torch.testing.assert_close(affine_map.extract(full.reshape(-1), rank), shard, rtol=0, atol=0)
-    torch.testing.assert_close(affine_map.rebuild(stored), full.reshape(-1), rtol=0, atol=0)
+        torch.testing.assert_close(affine_map.extract(full, rank), shard, rtol=0, atol=0)
+    torch.testing.assert_close(affine_map.rebuild(stored), full, rtol=0, atol=0)
 
 
 # Uneven column split of a 4 x 8 weight over two tensor-parallel ranks, the layout of a row-parallel
@@ -116,6 +116,22 @@ def test_nest_describes_zero_storage_of_a_column_split(partition):
     affine_map = _nested(layout, _HOLDERS, partition)
 
     _check_storage(affine_map, _FULL, _stored_by_rank(_COLUMNS, _HOLDERS, partition))
+
+
+def test_nest_describes_a_contiguous_storage_run_as_a_few_boxes():
+    # A process stores one contiguous run of its layout shard: whole rows between two partial rows.
+    # One piece per row would make planning a large row-parallel weight slow, so the run must stay
+    # at most three boxes however many rows it spans.
+    full = torch.arange(64 * 48, dtype=torch.float32).reshape(64, 48)
+    layout = contiguous_split_map(full.shape, [20, 28], partition_dim=1)
+    holders = {0: [0, 1, 2], 1: [3, 4]}
+    partition = {0: 450, 1: 900}
+
+    affine_map = _nested(layout, holders, partition)
+
+    _check_storage(affine_map, full, _stored_by_rank({0: full[:, :20], 1: full[:, 20:]}, holders, partition))
+    for rank in range(5):
+        assert len(affine_map.pieces_by_rank[rank]) <= 3
 
 
 def test_nest_merges_holders_of_replicated_layout_shards_split_at_different_places():
@@ -354,7 +370,7 @@ class TestAutoTPStorageMaps(DistributedTest):
         torch.manual_seed(0)
         model = ThreeLinears(hidden_dim)
         # The weights before AutoTP and ZeRO touch them: the oracle for what each process stores.
-        reference = {name: param.detach().to(torch.bfloat16).reshape(-1) for name, param in model.named_parameters()}
+        reference = {name: param.detach().to(torch.bfloat16) for name, param in model.named_parameters()}
         shapes = {name: tuple(param.shape) for name, param in model.named_parameters()}
         engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config)
         params = dict(engine.module.named_parameters())
