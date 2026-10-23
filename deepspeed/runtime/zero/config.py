@@ -147,20 +147,12 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     and callers do not use ``get_global_grad_norm()``.
     """
 
-    load_from_fp32_weights: bool = True
+    load_from_fp32_weights: bool = Field(True, json_schema_extra={"deprecated": True})
     """
-    Controls whether fp32 master weights are initialized from the fp32 copies in
-    the checkpoint (no precision loss) or from the model's fp16/bf16 copies (with
-    precision loss). ``True`` copies the saved fp32 masters, while ``False`` rebuilds
-    them from the loaded model weights.
-
-    On ZeRO stages 1 and 2, ``DeepSpeedEngine.load_checkpoint(load_fp32_weights=...)``
-    can override this setting during that call. If the argument is omitted or
-    ``None``, this setting remains in effect. ``load_module_only=True`` always
-    rebuilds the masters from the loaded model weights.
-
-    ZeRO stage 3 and the ZeRO stage 1 BF16 optimizer do not support the method
-    override and always use this setting.
+    Deprecated and ignored by ``DeepSpeedEngine.load_checkpoint``. Full ZeRO
+    checkpoint loads always restore saved fp32 master weights. Module-only loads
+    rebuild ZeRO-1/2 fp32 master weights from the loaded model weights, while
+    ZeRO-3 still reads fp32 weights.
     """
 
     elastic_checkpoint: bool = False

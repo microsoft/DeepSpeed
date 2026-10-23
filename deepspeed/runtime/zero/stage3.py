@@ -3539,9 +3539,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _rigid_load_state_dict(self, state_dict, load_optimizer_states=True):
         # I think it should actually be ok to reload the optimizer before the model.
-        self.loss_scaler = state_dict[LOSS_SCALER]
-        self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
-        self.overflow = state_dict['overflow']
+        if load_optimizer_states:
+            self.loss_scaler = state_dict[LOSS_SCALER]
+            self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
+            self.overflow = state_dict['overflow']
         saved_partition_groups = state_dict.get('ds_zero_partition_groups')
         if saved_partition_groups is not None and saved_partition_groups != self._zero3_partition_group_metadata():
             raise RuntimeError("AutoEP ZeRO-3 checkpoints can only be loaded with the same parameter placement "
@@ -3648,7 +3649,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if load_optimizer_states:
             self.load_hp_checkpoint_state_from_checkpoint_dir_stage3(checkpoint_folder)
         else:
-            self.load_module_checkpoint_state_from_checkpoint_dir_stage3(checkpoint_folder, load_from_fp32_weights)
+            self.load_module_checkpoint_state_from_checkpoint_dir_stage3(checkpoint_folder, True)
 
     def load_hp_checkpoint_state_from_checkpoint_dir_stage3(self, checkpoint_dir):
         """ Load optimizer and model states from the checkpoint directory. """
