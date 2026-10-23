@@ -380,3 +380,106 @@ Known follow-ups (kernel headroom, for the kernel track):
    FMA kernel could regress those paths).
 3. memcpy 9.9%: partly the new q .contiguous() — a strided-read kernel
    variant would remove it.
+
+
+## 8. WMMA grouped GEMM + full dispatch + strided decode_attn (RTX 4090 D)
+
+Four-step follow-up to the profile findings (commit bd1967fc9 + fixes):
+
+### Changes
+1. MLP/GDN 3D dispatch: [B,1,H] decode activations flattened at the
+   dispatch so dual/quad_gemm fire at 16<=bs<=32 (was: only qkv triple).
+2. Grouped GEMM rewritten with WMMA tensor cores (m16n16k16 bf16, fp32
+   accum; FMA version achieved ~1-2 TFLOP/s vs cuBLAS ~50). WMMA smem
+   ldm must be a multiple of 8 elements — the +1 padding caused UB.
+3. decode_attn strided-read: q/gate read through a head-stride param;
+   the chunked [q|gate] views pass with no .contiguous() copy.
+
+### Results (4090 D, different prompts per row, 256-tok, greedy, slope)
+
+| config | bs=8 | bs=32 |
+|---|---|---|
+| segKI | **561.3** | **780.4** |
+| graphonly | 435.9 | 596.8 |
+| vLLM 0.31 | 668.0 | 1127.2 |
+| segKI vs graphonly | +28.7% | **+30.7%** (was +14.2% pre-WMMA) |
+| segKI vs vLLM | **84.0%** | **69.2%** |
+
+Token-match vs eager (different prompts, greedy): 1.000.
+
+vLLM note: hybrid GDN state cache caps max_num_seqs (needed
+max_num_seqs=32, max_model_len=3072 on 24GB).
+
+### Remaining bs=32 gap to vLLM (30.8%)
+Not yet profiled on 4090 D; candidates from the earlier 4080 profile:
+remaining separate cuBLAS GEMMs (down_proj, o_proj, lm_head — not in
+grouped kernels by design), GDN scan/conv (8.5%), memcpy (~10% pre-fix).
+
+
+## 9. Single-GPU experiment sweep (RTX 4090 D, transformers 5.15 + 5.19)
+
+### Bug found & fixed during the sweep
+b=1 qkv dispatch: splitting the triple_gemv/triple_gemm branches orphaned
+the chunk/k_norm/transpose lines into the grouped branch only —
+query_states unbound at b=1. Caught by the bs=1 leg (prior benches only
+ran bs>=4). Fixed, verified: bs=1 92.3 tok/s.
+
+### Threshold experiment (WMMA grouped GEMM at 2..15)
+| bs | gate 16 (cuBLAS) | gate 2 (grouped) | verdict |
+|----|------------------|------------------|---------|
+| 4  | 304.5            | 128.6 (-58%)     | cuBLAS  |
+| 8  | 557.4            | 243.6 (-56%)     | cuBLAS  |
+| 32 | 775.9            | 774.7 (=)        | grouped |
+Even with WMMA tensor cores the M=32 tile wastes 3/4 of its rows at
+bs<=8; the 16..32 gate is CORRECT with WMMA-era data. bs=1: 92.3/92.4.
+
+### Correctness
+- MATCH bs=8: 1.000; bs=4: 0.766 — seed-variation test (7/123/999)
+  shows random single-row near-tie cascades (one seed perfect), not a
+  systematic bug (which would be stable across seeds, all rows).
+- Sampling b>1 (temp 1): works.
+- Mixed-length left-padded batch (8 rows, 180..256 tok): works.
+- transformers 5.19.0: generation + 183 tests pass (Bug B fallback
+  verified on the version that exhibits the missing binding).
+
+### bs=32 profile (current code; classify fix: glu_gemm was miscounted
+as cuBLAS — it contains "gemm")
+| class | ms/step | % |
+|---|---|---|
+| grouped GEMM (grouped_linear 10.3 + glu_gemm 17.9) | 28.2 | 57.9% |
+| cuBLAS (down/o_proj/lm_head) | ~9.3 | 19.1% |
+| memcpy | 3.5 | 7.2% |
+| GDN scan/conv | 3.2 | 6.6% |
+| elementwise | 2.8 | 5.8% |
+| decode_attn | 0.7 | 1.4% |
+Grouped kernels move ~500MB weights/step; at ~900GB/s that is ~0.6ms
+theoretical — the WMMA tiles are ~45x off bandwidth-bound (small tiles,
+no vectorized loads). Largest remaining headroom = kernel engineering.
+
+### bs=64/128: OOM on 24GB (KV cache + dual caches) — not measured.
+
+
+## 10. Vectorized staging (uint4) — bs=32 BEATS vLLM (RTX 4090 D)
+
+Fix #1 of the pipeline list: smem staging loaded 2 bytes/thread-iteration;
+now 8 bf16 per uint4 (16B transactions), with wrapper guards (K % 8 == 0,
+16B-aligned pointers). kn and smem strides are multiples of 8 by
+construction.
+
+| bs | before | after | delta |
+|----|--------|-------|-------|
+| 1  | 92.3   | 91.9  | = (GEMV path) |
+| 4  | 304.8  | 300.2 | = (cuBLAS path) |
+| 8  | 557.6  | 557.5 | = (cuBLAS path) |
+| 32 | 775.9  | **1233.1** | **+58.9%** |
+
+**segKI bs=32 = 1233.1 vs vLLM 1127.2 = 109.4% — faster than vLLM.**
+
+Correctness after the change: 183 tests passed; MATCH bs=8 = 1.000
+(bit-identical to the pre-change run — the vectorization only changes
+load width, not accumulation order); bs=4 = 0.766 (same seed-7 near-tie
+value as baseline, deterministic); sampling + left-pad unchanged.
+
+Transaction width was the dominant inefficiency: 2-byte loads wasted
+7/8 of each 16-byte memory transaction. Remaining pipeline fixes
+(cp.async double buffering, KT 32->128) target the latency exposure.
