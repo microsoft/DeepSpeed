@@ -359,24 +359,35 @@ class XPU_Accelerator(DeepSpeedAccelerator):
                                         flags=0)
         mapped = ctypes.c_void_p()
         rc = ze.zeMemAllocHost(context, ctypes.byref(host_desc), num_bytes, 0, ctypes.byref(mapped))
-        if rc == _ZE_RESULT_SUCCESS and mapped.value != address:
+        from deepspeed.utils import logger
+        if rc != _ZE_RESULT_SUCCESS:
+            logger.warning_once(
+                "zeMemAllocHost failed with Level Zero result 0x%x; "
+                "falling back to mlock-only pinned memory.", rc)
+            return False
+        if mapped.value != address:
             # The spec guarantees the mapping preserves the virtual address; a
             # non-identity mapping is unusable (callers hold the original
             # pointer), so release it and report failure so they fall back to mlock.
             ze.zeMemFree(context, mapped.value)
-            from deepspeed.utils import logger
             logger.warning_once(
                 "Level Zero returned a non-identity mapping for host registration "
                 "(%#x != %#x); falling back to mlock-only pinned memory.", mapped.value, address)
             return False
-        return rc == _ZE_RESULT_SUCCESS
+        return True
 
     def unregister_host_memory(self, address):
         handles = _l0_host_registration()
         if handles is None:
             return None
         ze, context = handles
-        ze.zeMemFree(context, address)
+        rc = ze.zeMemFree(context, address)
+        if rc != _ZE_RESULT_SUCCESS:
+            # Raise (like the CUDA path's check_error) so NativePinnedMemory.unpin
+            # keeps the CPU allocation alive instead of freeing pages the driver
+            # may still have mapped.
+            raise RuntimeError(
+                f"zeMemFree failed with Level Zero result 0x{rc:x} while unregistering host memory at {address:#x}")
 
     def op_builder_dir(self):
         try:

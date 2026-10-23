@@ -262,6 +262,34 @@ def test_xpu_registration_rejects_changed_address(monkeypatch):
     assert freed == [0xDEAD0000]
 
 
+def test_xpu_registration_alloc_failure_returns_false(monkeypatch):
+    """A Level Zero allocation failure must degrade to mlock-only, not raise."""
+
+    class _FakeLoader:
+
+        def zeMemAllocHost(self, context, host_desc, size, alignment, out):
+            return 0x78000001  # ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: (_FakeLoader(), "ctx"))
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+    assert accelerator.register_host_memory(1234, 4096) is False
+
+
+def test_xpu_unregister_failure_raises(monkeypatch):
+    """A failed unmap must raise so the caller keeps the CPU allocation alive
+    (the driver may still hold a mapping for those pages)."""
+
+    class _FakeLoader:
+
+        def zeMemFree(self, context, address):
+            return 0x78000001
+
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: (_FakeLoader(), "ctx"))
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+    with pytest.raises(RuntimeError, match="zeMemFree failed"):
+        accelerator.unregister_host_memory(1234)
+
+
 def test_xpu_device_registration_without_level_zero(monkeypatch):
     """Missing loader or extension must degrade to mlock-only, not raise."""
     monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: None)
