@@ -271,6 +271,9 @@ class NPU_Accelerator(DeepSpeedAccelerator):
 
         return probe_triton_kernel(key=f"triton_kernel:{kernel}", run=probe)
 
+    def triton_ops_dir(self):
+        return "deepspeed.ops.triton_ops.npu"
+
     # Graph operations
     def create_graph(self):
         return torch.npu.NPUGraph()
