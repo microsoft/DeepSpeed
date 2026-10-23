@@ -258,6 +258,27 @@ void decode_step_graph(at::Tensor logits,
 // then applies silu(a)*b.  Memory-bound at b=1; coalesced reads achieve
 // near-peak HBM bandwidth with zero tiling or tensor-core complexity.
 
+// Lane-local partial dot product of hidden[0..n) with a weight row;
+// 8 bf16 per 16-byte load per lane (n and the pointers are multiples of
+// 8 / 16B-aligned, enforced by the wrappers). The caller reduces across
+// the warp.
+__device__ __forceinline__ float dot_partial_v8(const __nv_bfloat16* __restrict__ hidden,
+                                                const __nv_bfloat16* __restrict__ w_row,
+                                                int n,
+                                                int lane)
+{
+    float acc = 0.0f;
+    for (int i = lane * 8; i < n; i += 256) {
+        uint4 hv = *reinterpret_cast<const uint4*>(hidden + i);
+        uint4 wv = *reinterpret_cast<const uint4*>(w_row + i);
+        const __nv_bfloat16* h8 = reinterpret_cast<const __nv_bfloat16*>(&hv);
+        const __nv_bfloat16* w8 = reinterpret_cast<const __nv_bfloat16*>(&wv);
+#pragma unroll
+        for (int e = 0; e < 8; e++) acc += __bfloat162float(h8[e]) * __bfloat162float(w8[e]);
+    }
+    return acc;
+}
+
 __global__ void dual_gemv_silu_mul_kernel(const __nv_bfloat16* __restrict__ hidden,
                                           const __nv_bfloat16* __restrict__ gate_w,
                                           const __nv_bfloat16* __restrict__ up_w,
@@ -272,13 +293,9 @@ __global__ void dual_gemv_silu_mul_kernel(const __nv_bfloat16* __restrict__ hidd
     const __nv_bfloat16* gate_row = gate_w + (long)warp_id * in_features;
     const __nv_bfloat16* up_row = up_w + (long)warp_id * in_features;
 
-    // Each lane accumulates every 32nd element (coalesced across lanes).
-    float gate_acc = 0.0f, up_acc = 0.0f;
-    for (int i = lane; i < in_features; i += 32) {
-        float h = __bfloat162float(hidden[i]);
-        gate_acc += h * __bfloat162float(gate_row[i]);
-        up_acc += h * __bfloat162float(up_row[i]);
-    }
+    // 8 bf16 per lane per 16-byte load; 32 lanes cover 256 elements/iter
+    float gate_acc = dot_partial_v8(hidden, gate_row, in_features, lane);
+    float up_acc = dot_partial_v8(hidden, up_row, in_features, lane);
 
     // Warp-level reduction for both dot products simultaneously.
     for (int offset = 16; offset > 0; offset >>= 1) {
@@ -294,6 +311,8 @@ __global__ void dual_gemv_silu_mul_kernel(const __nv_bfloat16* __restrict__ hidd
 
 void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, at::Tensor out)
 {
+    TORCH_CHECK(hidden.size(-1) % 8 == 0, "in_features must be a multiple of 8");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(hidden.data_ptr()) & 15) == 0, "hidden must be 16B aligned");
     TORCH_CHECK(hidden.is_cuda() && hidden.scalar_type() == at::ScalarType::BFloat16,
                 "hidden must be CUDA bf16");
     TORCH_CHECK(gate_w.is_contiguous() && up_w.is_contiguous(), "weights must be contiguous");
@@ -354,10 +373,7 @@ __global__ void quad_gemv_kernel(const __nv_bfloat16* __restrict__ hidden,
         row = w3 + (long)row_idx * in_features;
     }
 
-    float acc = 0.0f;
-    for (int i = lane; i < in_features; i += 32) {
-        acc += __bfloat162float(hidden[i]) * __bfloat162float(row[i]);
-    }
+    float acc = dot_partial_v8(hidden, row, in_features, lane);
     for (int offset = 16; offset > 0; offset >>= 1) {
         acc += __shfl_down_sync(0xffffffff, acc, offset);
     }
@@ -376,6 +392,8 @@ void quad_gemv(at::Tensor hidden,
     TORCH_CHECK(
         w0.is_contiguous() && w1.is_contiguous() && w2.is_contiguous() && w3.is_contiguous(),
         "weights must be contiguous");
+    TORCH_CHECK(w0.size(1) % 8 == 0, "in_features must be a multiple of 8");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(hidden.data_ptr()) & 15) == 0, "hidden must be 16B aligned");
     int rows0 = (int)w0.size(0), rows1 = (int)w1.size(0);
     int rows2 = (int)w2.size(0), rows3 = (int)w3.size(0);
     int in_f = (int)w0.size(1);
@@ -876,9 +894,7 @@ __global__ void triple_gemv_kernel(const __nv_bfloat16* __restrict__ hidden,
             row = warp_id - q_out_f - kv_out_f;
         }
 
-        float acc = 0.0f;
-        for (int i = lane; i < in_f; i += 32)
-            acc += __bfloat162float(hidden[i]) * __bfloat162float(w_ptr[(long)row * in_f + i]);
+        float acc = dot_partial_v8(hidden, w_ptr + (long)row * in_f, in_f, lane);
         for (int offset = 16; offset > 0; offset >>= 1)
             acc += __shfl_down_sync(0xffffffff, acc, offset);
         if (lane == 0) out_ptr[row] = __float2bfloat16_rn(acc);
@@ -896,6 +912,8 @@ std::vector<at::Tensor> triple_gemv(at::Tensor hidden,
                 "weights must be contiguous");
     TORCH_CHECK(q_w.size(1) == k_w.size(1) && k_w.size(1) == v_w.size(1),
                 "in_features must match across q/k/v");
+    TORCH_CHECK(q_w.size(1) % 8 == 0, "in_features must be a multiple of 8");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(hidden.data_ptr()) & 15) == 0, "hidden must be 16B aligned");
     int q_out_f = (int)q_w.size(0);
     int kv_out_f = (int)k_w.size(0);
     TORCH_CHECK(v_w.size(0) == kv_out_f, "v/k weight shapes must match");
