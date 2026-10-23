@@ -535,62 +535,74 @@ def _decode_attn_forward(self,
     # projections as-is.
     batch = hidden_states.shape[0]
     qkv_op = getattr(self, "_ki_qkv_op", None) if (batch == 1 or 16 <= batch <= 32) else None
+    # every branch yields the raw (pre-norm, pre-rope) flat K/V so the
+    # fused-K path can hand them to the kernel
     if qkv_op is not None and batch == 1:
         # One GEMV launch over q/k/v weights directly — replaces the
         # three separate F.linear launches. q_proj keeps its 2x-wide
         # query|gate layout, so the gate split below is unchanged from HF.
-        q_out, k_out, v_out = qkv_op.triple_gemv(hidden_states.view(-1), self.q_proj.weight, self.k_proj.weight,
-                                                 self.v_proj.weight)
+        q_out, k_flat, v_flat = qkv_op.triple_gemv(hidden_states.view(-1), self.q_proj.weight, self.k_proj.weight,
+                                                   self.v_proj.weight)
         query_states, gate = torch.chunk(q_out.view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
-        key_states = self.k_norm(k_out.view(hidden_shape)).transpose(1, 2)
-        value_states = v_out.view(hidden_shape).transpose(1, 2)
     elif qkv_op is not None:
-        q_out, k_out, v_out = qkv_op.triple_gemm(hidden_states.reshape(-1, hidden_states.shape[-1]),
-                                                 self.q_proj.weight, self.k_proj.weight, self.v_proj.weight)
+        q_out, k_flat, v_flat = qkv_op.triple_gemm(hidden_states.reshape(-1, hidden_states.shape[-1]),
+                                                   self.q_proj.weight, self.k_proj.weight, self.v_proj.weight)
         query_states, gate = torch.chunk(q_out.view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
-        key_states = self.k_norm(k_out.view(hidden_shape)).transpose(1, 2)
-        value_states = v_out.view(hidden_shape).transpose(1, 2)
     else:
         query_states, gate = torch.chunk(self.q_proj(hidden_states).view(*input_shape, -1, self.head_dim * 2),
                                          2,
                                          dim=-1)
-        key_states = self.k_norm(self.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-
-    # K keeps the eager norm + RoPE (the cache stores post-rope keys from
-    # prefill, so the kernel cannot re-derive them); the q side's norm,
-    # partial RoPE, and output gate are fused into the decode_attn kernel.
-    # The model uses partial RoPE (rotary_dim < head_dim), so K rides the
-    # upstream helper verbatim — only its output is kept.
-    cos, sin = position_embeddings
-    _, key_states = self._ki_rope(query_states, key_states, cos, sin)
-
-    key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx)
+        k_flat = self.k_proj(hidden_states).reshape(batch, -1)
+        v_flat = self.v_proj(hidden_states).reshape(batch, -1)
 
     num_q_heads, num_kv_heads, head_dim = self._ki_num_q_heads, self._ki_num_kv_heads, self.head_dim
     batch = hidden_states.shape[0]
     out = torch.empty(batch, num_q_heads, head_dim, dtype=hidden_states.dtype, device=hidden_states.device)
     fuse_q = getattr(self, "_ki_q_norm_w", None) is not None
+    fuse_k = fuse_q and getattr(self, "_ki_k_norm_w", None) is not None
+    if fuse_k:
+        # The kernel norms + ropes K and writes both K/V cache slots itself;
+        # skip the eager k_norm, rope helper, and cache update. Cache tensors
+        # are taken directly (update() would only copy what the kernel writes).
+        slot = past_key_values._layers[self.layer_idx]
+        key_states = slot.keys
+        value_states = slot.values
+    else:
+        key_states = self.k_norm(k_flat.view(hidden_shape)).transpose(1, 2)
+        value_states = v_flat.view(hidden_shape).transpose(1, 2)
+        # K keeps the eager norm + RoPE (the cache stores post-rope keys from
+        # prefill, so the kernel cannot re-derive them); the q side's norm,
+        # partial RoPE, and output gate are fused into the decode_attn kernel.
+        # The model uses partial RoPE (rotary_dim < head_dim), so K rides the
+        # upstream helper verbatim — only its output is kept.
+        cos, sin = position_embeddings
+        _, key_states = self._ki_rope(query_states, key_states, cos, sin)
+        key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx)
+
     if fuse_q:
         # chunk() leaves query strided ([q|gate] interleaved layout); the
         # kernel indexes packed memory, so materialize it explicitly
         query_states = query_states.reshape(batch, num_q_heads, head_dim)
         gate = gate.reshape(batch, num_q_heads, head_dim)
-        self._ki_attn_op.decode_attn(query_states,
-                                     key_states,
-                                     value_states,
-                                     self._ki_write_pos,
-                                     out,
-                                     num_q_heads,
-                                     num_kv_heads,
-                                     head_dim,
-                                     key_states.shape[2],
-                                     q_norm_w=self._ki_q_norm_w,
-                                     cos_t=self._ki_cos_t,
-                                     sin_t=self._ki_sin_t,
-                                     gate=gate,
-                                     eps=self.q_norm.eps,
-                                     rope_dim=self._ki_cos_t.shape[-1])
+        self._ki_attn_op.decode_attn(
+            query_states,
+            key_states,
+            value_states,
+            self._ki_write_pos,
+            out,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            key_states.shape[2],
+            q_norm_w=self._ki_q_norm_w,
+            cos_t=self._ki_cos_t,
+            sin_t=self._ki_sin_t,
+            gate=gate,
+            k_raw=(k_flat.reshape(batch, num_kv_heads, head_dim) if fuse_k else key_states.new_empty(0)),
+            v_raw=(v_flat.reshape(batch, num_kv_heads, head_dim) if fuse_k else key_states.new_empty(0)),
+            k_norm_w=(self._ki_k_norm_w if fuse_k else key_states.new_empty(0)),
+            eps=self.q_norm.eps,
+            rope_dim=self._ki_cos_t.shape[-1])
     else:
         self._ki_attn_op.decode_attn(query_states.reshape(batch, num_q_heads, head_dim), key_states, value_states,
                                      self._ki_write_pos, out, num_q_heads, num_kv_heads, head_dim, key_states.shape[2])
@@ -650,6 +662,8 @@ def install_decode_attention(model: torch.nn.Module,
         # so replays stay graph-safe). Missing tables disable the fusion.
         module._ki_q_norm_w = (1.0 +
                                module.q_norm.weight.detach().float()).contiguous() if cos_table is not None else None
+        module._ki_k_norm_w = (1.0 +
+                               module.k_norm.weight.detach().float()).contiguous() if cos_table is not None else None
         module._ki_cos_t = cos_table
         module._ki_sin_t = sin_table
         module._ki_attn_op = kernel_op

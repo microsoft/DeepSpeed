@@ -112,6 +112,9 @@ class TestKernelReferenceConsistency:
                           cos_t=cos_t,
                           sin_t=sin_t,
                           gate=gate,
+                          k_raw=torch.empty(0, device=DEV),
+                          v_raw=torch.empty(0, device=DEV),
+                          k_norm_w=torch.empty(0, device=DEV),
                           eps=1e-6,
                           rope_dim=hd)
 
@@ -154,6 +157,9 @@ class TestKernelReferenceConsistency:
                           cos_t=cos_t,
                           sin_t=sin_t,
                           gate=gate,
+                          k_raw=torch.empty(0, device=DEV),
+                          v_raw=torch.empty(0, device=DEV),
+                          k_norm_w=torch.empty(0, device=DEV),
                           eps=1e-6,
                           rope_dim=rope_dim)
         qf = q_raw.float()

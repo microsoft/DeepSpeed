@@ -429,8 +429,8 @@ void quad_gemv(at::Tensor hidden,
 template <int HEAD_DIM>
 __global__ void __launch_bounds__(512)
     decode_attn_kernel(const __nv_bfloat16* __restrict__ q,
-                       const __nv_bfloat16* __restrict__ K,
-                       const __nv_bfloat16* __restrict__ V,
+                       __nv_bfloat16* __restrict__ K,
+                       __nv_bfloat16* __restrict__ V,
                        const int64_t* __restrict__ write_pos,
                        __nv_bfloat16* __restrict__ out,
                        int num_q_heads,
@@ -442,7 +442,10 @@ __global__ void __launch_bounds__(512)
                        const float* __restrict__ q_norm_w,      // [HEAD_DIM], pre-scaled (1+w)
                        const float* __restrict__ cos_t,         // [max_len, rope_dim]
                        const float* __restrict__ sin_t,         // [max_len, rope_dim]
-                       const __nv_bfloat16* __restrict__ gate,  // q layout
+                       const __nv_bfloat16* __restrict__ gate,   // q layout
+                       const __nv_bfloat16* __restrict__ k_raw,    // this step's K, pre-norm/rope
+                       const __nv_bfloat16* __restrict__ v_raw,    // this step's V
+                       const float* __restrict__ k_norm_w,         // [HEAD_DIM], pre-scaled (1+w)
                        float eps,
                        int rope_dim)
 {
@@ -464,8 +467,8 @@ __global__ void __launch_bounds__(512)
     // is 0, one per row otherwise
     const int pos = (int)write_pos[row * pos_stride];
 
-    const __nv_bfloat16* Kg = K + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
-    const __nv_bfloat16* Vg = V + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
+    __nv_bfloat16* Kg = K + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
+    __nv_bfloat16* Vg = V + ((long)(row * num_kv_heads + kv_head)) * max_len * HEAD_DIM;
     const __nv_bfloat16* q_row = q + (long)row * num_q_heads * q_hs + (long)q_head * q_hs;
     const __nv_bfloat16* g_row = gate + (long)row * num_q_heads * q_hs + (long)q_head * q_hs;
 
@@ -507,6 +510,50 @@ __global__ void __launch_bounds__(512)
 #pragma unroll
             for (int e = 0; e < EPL; e++)
                 q_reg[e] = q_reg[e] * crow[e] + (first_half ? -pair[e] : pair[e]) * srow[e];
+        }
+    }
+
+    if (k_norm_w != nullptr) {
+        // Fused K-side preprocessing (mirror of the q side): per-head RMSNorm,
+        // partial RoPE, and the cache-slot write for this position. Each lane
+        // writes exactly the elements it reads back at idx == pos, so
+        // same-thread visibility holds without fences; the sibling q-head
+        // blocks of this kv head redundantly write identical values.
+        float k_reg[EPL];
+        const __nv_bfloat16* k_in_row = k_raw + ((long)(row * num_kv_heads + kv_head)) * HEAD_DIM;
+#pragma unroll
+        for (int e = 0; e < EPL; e++) k_reg[e] = __bfloat162float(k_in_row[lane * EPL + e]);
+        float kss = 0.0f;
+#pragma unroll
+        for (int e = 0; e < EPL; e++) kss += k_reg[e] * k_reg[e];
+#pragma unroll
+        for (int off = 16; off > 0; off >>= 1) kss += __shfl_down_sync(0xffffffff, kss, off);
+        const float k_inv = rsqrtf(__shfl_sync(0xffffffff, kss, 0) / HEAD_DIM + eps);
+#pragma unroll
+        for (int e = 0; e < EPL; e++) k_reg[e] = k_reg[e] * k_inv * k_norm_w[lane * EPL + e];
+        const int kj0 = lane * EPL;
+        const int khalf_lanes = rope_dim > 0 ? (rope_dim / 2) / EPL : 0;
+        const int kpartner = (kj0 < rope_dim / 2) ? lane + khalf_lanes
+                            : (kj0 < rope_dim)   ? lane - khalf_lanes
+                                                 : lane;
+        float kpair[EPL];
+#pragma unroll
+        for (int e = 0; e < EPL; e++) kpair[e] = __shfl_sync(0xffffffff, k_reg[e], kpartner);
+        if (kj0 < rope_dim) {
+            const bool kfirst = kj0 < rope_dim / 2;
+            const float* kcrow = cos_t + (long)pos * rope_dim + kj0;
+            const float* ksrow = sin_t + (long)pos * rope_dim + kj0;
+#pragma unroll
+            for (int e = 0; e < EPL; e++)
+                k_reg[e] = k_reg[e] * kcrow[e] + (kfirst ? -kpair[e] : kpair[e]) * ksrow[e];
+        }
+        __nv_bfloat16* k_slot = Kg + (long)pos * HEAD_DIM;
+        __nv_bfloat16* v_slot = Vg + (long)pos * HEAD_DIM;
+        const __nv_bfloat16* v_in_row = v_raw + ((long)(row * num_kv_heads + kv_head)) * HEAD_DIM;
+#pragma unroll
+        for (int e = 0; e < EPL; e++) {
+            k_slot[lane * EPL + e] = __float2bfloat16_rn(k_reg[e]);
+            v_slot[lane * EPL + e] = v_in_row[lane * EPL + e];
         }
     }
 
@@ -604,6 +651,9 @@ void decode_attn(at::Tensor q,
                  at::Tensor cos_t,
                  at::Tensor sin_t,
                  at::Tensor gate,
+                 at::Tensor k_raw,
+                 at::Tensor v_raw,
+                 at::Tensor k_norm_w,
                  double eps,
                  int64_t rope_dim)
 {
@@ -646,6 +696,10 @@ void decode_attn(at::Tensor q,
     // q's layout. Nullptr tensors disable each piece.
     const bool fuse_q = q_norm_w.defined() && q_norm_w.numel() == head_dim;
     const bool use_gate = gate.defined() && gate.numel() == q.numel();
+    const bool fuse_k = k_raw.defined() && k_raw.numel() > 0 && k_norm_w.defined();
+    TORCH_CHECK(!fuse_k || (k_raw.is_contiguous() && v_raw.is_contiguous()),
+                "k_raw/v_raw must be contiguous");
+    TORCH_CHECK(!fuse_k || (fuse_q), "fused K requires the fused Q path (shared cos/sin)");
     // gate rides the same strided [b,H,hd] layout as q (checked above)
     TORCH_CHECK(
         !fuse_q || (cos_t.defined() && sin_t.defined() &&
@@ -657,9 +711,12 @@ void decode_attn(at::Tensor q,
     float scale = 1.0f / sqrtf((float)head_dim);
     auto stream = at::cuda::getCurrentCUDAStream();
     auto q_ptr = reinterpret_cast<const __nv_bfloat16*>(q.data_ptr<at::BFloat16>());
-    auto k_ptr = reinterpret_cast<const __nv_bfloat16*>(K.data_ptr<at::BFloat16>());
-    auto v_ptr = reinterpret_cast<const __nv_bfloat16*>(V.data_ptr<at::BFloat16>());
+    auto k_ptr = reinterpret_cast<__nv_bfloat16*>(K.data_ptr<at::BFloat16>());
+    auto v_ptr = reinterpret_cast<__nv_bfloat16*>(V.data_ptr<at::BFloat16>());
     auto o_ptr = reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>());
+    auto k_raw_ptr = fuse_k ? reinterpret_cast<const __nv_bfloat16*>(k_raw.data_ptr<at::BFloat16>()) : nullptr;
+    auto v_raw_ptr = fuse_k ? reinterpret_cast<const __nv_bfloat16*>(v_raw.data_ptr<at::BFloat16>()) : nullptr;
+    auto k_norm_ptr = fuse_k ? k_norm_w.data_ptr<float>() : nullptr;
     auto qn_ptr = fuse_q ? q_norm_w.data_ptr<float>() : nullptr;
     auto cos_ptr = fuse_q ? cos_t.data_ptr<float>() : nullptr;
     auto sin_ptr = fuse_q ? sin_t.data_ptr<float>() : nullptr;
@@ -684,6 +741,9 @@ void decode_attn(at::Tensor q,
                 cos_ptr,
                 sin_ptr,
                 g_ptr,
+                k_raw_ptr,
+                v_raw_ptr,
+                k_norm_ptr,
                 (float)eps,
                 (int)rope_dim);
             break;
@@ -705,6 +765,9 @@ void decode_attn(at::Tensor q,
                     cos_ptr,
                     sin_ptr,
                     g_ptr,
+                    k_raw_ptr,
+                    v_raw_ptr,
+                    k_norm_ptr,
                     (float)eps,
                     (int)rope_dim);
             break;
@@ -726,6 +789,9 @@ void decode_attn(at::Tensor q,
                     cos_ptr,
                     sin_ptr,
                     g_ptr,
+                    k_raw_ptr,
+                    v_raw_ptr,
+                    k_norm_ptr,
                     (float)eps,
                     (int)rope_dim);
             break;
@@ -1280,6 +1346,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                                {},
                                {},
                                {},
+                               {},
+                               {},
+                               {},
                                1e-6,
                                0);
         },
@@ -1330,6 +1399,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           py::arg("cos_t"),
           py::arg("sin_t"),
           py::arg("gate"),
+          py::arg("k_raw"),
+          py::arg("v_raw"),
+          py::arg("k_norm_w"),
           py::arg("eps"),
           py::arg("rope_dim"));
     m.def("decode_step", &decode_step, "fused decode step update (CUDA)");
