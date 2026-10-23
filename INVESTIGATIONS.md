@@ -498,3 +498,39 @@ loop was already warp-coalesced (32 lanes reading 32 consecutive bf16 =
 mostly utilized; vectorization only cuts instruction count, and at bs=1
 there are enough warps in flight to hide the issue latency. The grouped
 kernels' per-thread scattered 2-byte staging was the pathological case.
+
+
+## 12. K-side fusion + deeper grouped tiles — final results (RTX 4090 D)
+
+### Item 2: K norm + partial RoPE + cache write fused into decode_attn
+Kernel normalizes/ropes this step's K in registers, writes K/V cache
+slots itself (each lane writes exactly the elements it reads back at
+idx==pos: same-thread visibility, no fences; sibling q-head blocks
+write identical values). Skips k_norm, rope helper, cache-update copy.
+
+### Item 1 (step A): grouped tiles KT 32->128, N 32->64 (2 wmma/warp)
+4x fewer k-chunk barriers; partial tails zero-filled. Warp layout bug
+(cols 48-63 uncovered) caught by the kernel test, fixed.
+
+Step B (cp.async double buffering) deferred: KT=128 double buffers need
+~96KB smem > the 48KB static limit — requires dynamic-smem refactor,
+tracked for the kernel-engineering follow-up.
+
+### Results (different prompts/row, greedy, slope)
+| bs | session start | K-fusion | +tiles | total gain | vs vLLM |
+|----|---------------|----------|--------|------------|---------|
+| 1  | 92.3          | 95.4     | 95.8   | +3.8%      | -       |
+| 4  | 304.8         | 309.6    | 310.8  | +2.0%      | -       |
+| 8  | 557.6         | 567.4    | 566.7  | +1.6%      | 84.8% (668.0) |
+| 32 | 775.9         | 1246.4*  | 1322.0 | +70.4%     | **117.3%** (1127.2) |
+(*includes the uint4 vectorization step recorded separately)
+
+Correctness after every item: 183 tests + MATCH 1.000 at bs=4/8
+(K-fusion also resolved the seed-7 bs=4 near-tie).
+
+### Final bs=32 profile (31.2ms GPU busy, corrected classes)
+grouped (ours) 11.0ms 35% | cuBLAS (down/o/lm_head) 9.3ms 30% |
+memcpy 3.5ms 11% | GDN scan 3.2ms 10% | elementwise 2.6ms 8%
+(calls 746->580/st via K fusion) | decode_attn 0.7ms 2%
+Grouped bandwidth now glu 429 / linear 226 GB/s (cuBLAS ref 840) —
+remaining pipeline headroom documented for the kernel track.
