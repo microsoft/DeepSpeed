@@ -183,9 +183,14 @@ jobs:
         run: |
           # The nightly pytest prints failures as "FAILED unit/v1/..." (its working
           # directory is tests/), so re-prefix each unique file with tests/.
+          # gh >= 2.92 passes `gh run view --log` through its ASCII sanitizer
+          # even when piped, rewriting the ESC byte as the literal two chars
+          # "^["; older gh emits the raw ESC byte. Strip both forms so the
+          # FAILED lines below parse with any gh version.
           gh run view "$NIGHTLY_RUN_ID" --log \
-            | grep -o 'FAILED unit/v1/[^ \t]*\.py' | sort -u \
-            | sed 's|^|tests/|' > failing-tests.txt
+            | sed -E 's/(\x1b|\^\[)\[[0-9;]*m//g' \
+            | grep -oE 'FAILED unit/v1/[^[:space:]]*\.py' | sort -u \
+            | sed 's|^FAILED |tests/|' > failing-tests.txt
           if [ ! -s failing-tests.txt ]; then
             echo "no FAILED test files found in the nightly log" >&2
             exit 1
