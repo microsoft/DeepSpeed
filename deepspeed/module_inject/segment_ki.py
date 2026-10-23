@@ -541,6 +541,9 @@ def _decode_attn_forward(self,
         # query|gate layout, so the gate split below is unchanged from HF.
         q_out, k_out, v_out = qkv_op.triple_gemv(hidden_states.view(-1), self.q_proj.weight, self.k_proj.weight,
                                                  self.v_proj.weight)
+        query_states, gate = torch.chunk(q_out.view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
+        key_states = self.k_norm(k_out.view(hidden_shape)).transpose(1, 2)
+        value_states = v_out.view(hidden_shape).transpose(1, 2)
     elif qkv_op is not None:
         q_out, k_out, v_out = qkv_op.triple_gemm(hidden_states.reshape(-1, hidden_states.shape[-1]),
                                                  self.q_proj.weight, self.k_proj.weight, self.v_proj.weight)
