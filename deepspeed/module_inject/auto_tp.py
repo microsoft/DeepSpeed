@@ -229,12 +229,14 @@ class AutoTP():
 
         self.mp_size = None
         self.mp_group = None
-        # None keeps the legacy behavior of following the process-wide AutoTP mode.
-        if training_mode is None:
-            training_mode = is_autotp_training_mode()
         # Per-model TP metadata threaded through every layer / helper so each AutoTP instance
         # shards by its own model's kv-head / grain values and keeps its own training mode.
+        # None is kept in the layers so they keep following set_autotp_mode, as before.
         self.tp_meta = AutoTPMeta.from_model_config(model_config, tp_grain_size, training=training_mode)
+        # Construction-time routing needs a concrete mode, so None resolves to the current
+        # process-wide AutoTP mode here only.
+        if training_mode is None:
+            training_mode = is_autotp_training_mode()
         self.linear_layer_setting = linear_layer_setting
         self.orig_layer_impl = orig_layer_impl
         self.linear_policies = None

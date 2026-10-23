@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import pytest
 import torch
 import deepspeed.comm as dist
 import deepspeed
@@ -305,17 +306,29 @@ class TestTPPlanEndToEnd(DistributedTest):
         engine.step()
 
 
-def test_layer_without_tp_meta_follows_set_autotp_mode():
-    # Direct callers build layers without tp_meta and switch modes later with set_autotp_mode. A layer
-    # stuck in the inference mode it was built in adds its bias in place on the RowParallel output,
-    # which autograd rejects once training starts.
+@pytest.mark.parametrize("built_by", ["no_tp_meta", "default_autotp"])
+def test_layer_without_explicit_mode_follows_set_autotp_mode(built_by):
+    # Direct callers build layers without tp_meta, or with an AutoTP left at training_mode=None, and
+    # switch modes later with set_autotp_mode. A layer stuck in the inference mode it was built in adds
+    # its bias in place on the RowParallel output, which autograd rejects once training starts.
+    from deepspeed.module_inject.auto_tp import AutoTP
     from deepspeed.module_inject.layers import LinearAllreduce, is_autotp_training_mode, set_autotp_mode
 
     previous_mode = is_autotp_training_mode()
     set_autotp_mode(training=False)
     try:
         device = get_accelerator().current_device_name()
-        layer = LinearAllreduce(torch.nn.Linear(8, 4, bias=True), mp_group=None, name="proj").to(device)
+        linear = torch.nn.Linear(8, 4, bias=True)
+        kwargs = {}
+        if built_by == "default_autotp":
+            autotp = AutoTP(module=linear,
+                            all_reduce_linears=[],
+                            prefix="",
+                            state_dict=None,
+                            linear_layer_setting=None,
+                            orig_layer_impl=None)
+            kwargs["tp_meta"] = autotp.tp_meta
+        layer = LinearAllreduce(linear, mp_group=None, name="proj", **kwargs).to(device)
         layer.requires_grad_(True)
         set_autotp_mode(training=True)
         layer(torch.randn(2, 8, device=device)).sum().backward()
