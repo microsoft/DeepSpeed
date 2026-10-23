@@ -3662,7 +3662,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self._load_legacy_checkpoint(state_dict_list, load_optimizer_states, load_from_fp32_weights)
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
-        self.load_hp_checkpoint_state_from_checkpoint_dir("bit16_groups", checkpoint_folder)
+        self.load_hp_checkpoint_state_from_checkpoint_dir("bit16_groups",
+                                                          checkpoint_folder,
+                                                          load_optimizer_states=load_optimizer_states)
 
     def _load_global_state(self, sd):
         self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)

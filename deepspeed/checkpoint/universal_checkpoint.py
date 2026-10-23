@@ -233,7 +233,7 @@ def _resolve_autotp_partition(current_param, ckpt_dict, full_hp_param, tp_rank, 
     return slice_tensor.flatten()
 
 
-def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size, ep_rank=0, ep_size=1):
+def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size, ep_rank=0, ep_size=1, load_optimizer_states=True):
     hp_mapping = self._hp_mapping
     hp_mapping.optim_fragment = {}
 
@@ -244,6 +244,8 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size, ep_rank=0, ep
         match = re.search(pattern, file)
         if match:
             hp_keys.append(match.group(1))
+    if not load_optimizer_states:
+        hp_keys = [key for key in hp_keys if key == FP32_WEIGHT_KEY]
 
     step = None
     for key in hp_keys:
