@@ -4412,11 +4412,12 @@ class DeepSpeedEngine(Module):
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
             load_module_only: Optional. Boolean to load only the model weights from the checkpoint. Ex. warmstarting.
             custom_load_fn: Optional. Custom model load function.
-            load_fp32_weights: Optional. Boolean to restore the fp32 master weights from the checkpoint.
-                ``None`` uses ``zero_optimization.load_from_fp32_weights``. ``False`` rebuilds the masters
-                from the loaded bf16/fp16 weights. ``load_module_only=True`` rebuilds them either way.
-                This is currently honored for ZeRO stage 1 and 2. ZeRO stage 3 and the ZeRO stage 1
-                BF16 optimizer still use the config value.
+            load_fp32_weights: Optional. Whether to restore saved fp32 master weights during checkpoint loading.
+                On ZeRO stages 1 and 2, ``True`` copies the fp32 masters from the checkpoint and ``False``
+                rebuilds them from the loaded bf16/fp16 model weights. If omitted or ``None``, the behavior is
+                controlled by ``zero_optimization.load_from_fp32_weights``. ``load_module_only=True`` always
+                rebuilds the masters from the loaded model weights. ZeRO stage 3 and the ZeRO stage 1 BF16
+                optimizer do not support this override and continue to use the config setting.
 
         Returns:
             A tuple of ``load_path`` and ``client_state``.

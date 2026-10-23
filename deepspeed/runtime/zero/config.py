@@ -149,12 +149,18 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     load_from_fp32_weights: bool = True
     """
-    Boolean indicating whether to initialize fp32 master weights from fp32
-    copies in checkpoint (no precision loss) or from model's fp16 copies (with
-    precision loss). For ZeRO stage 1 and 2, ``DeepSpeedEngine.load_checkpoint(...,
-    load_fp32_weights=...)`` overrides this for one load; ``None`` uses this value.
-    ``load_module_only=True`` rebuilds the masters from the loaded model weights.
-    ZeRO stage 3 and the ZeRO stage 1 BF16 optimizer still use this config value.
+    Controls whether fp32 master weights are initialized from the fp32 copies in
+    the checkpoint (no precision loss) or from the model's fp16/bf16 copies (with
+    precision loss). ``True`` copies the saved fp32 masters, while ``False`` rebuilds
+    them from the loaded model weights.
+
+    On ZeRO stages 1 and 2, ``DeepSpeedEngine.load_checkpoint(load_fp32_weights=...)``
+    can override this setting during that call. If the argument is omitted or
+    ``None``, this setting remains in effect. ``load_module_only=True`` always
+    rebuilds the masters from the loaded model weights.
+
+    ZeRO stage 3 and the ZeRO stage 1 BF16 optimizer do not support the method
+    override and always use this setting.
     """
 
     elastic_checkpoint: bool = False
