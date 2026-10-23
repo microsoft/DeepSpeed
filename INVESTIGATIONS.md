@@ -483,3 +483,18 @@ value as baseline, deterministic); sampling + left-pad unchanged.
 Transaction width was the dominant inefficiency: 2-byte loads wasted
 7/8 of each 16-byte memory transaction. Remaining pipeline fixes
 (cp.async double buffering, KT 32->128) target the latency exposure.
+
+
+## 11. GEMV vectorization (b=1 path) — +1.2% at bs=1
+
+Same uint4 treatment for the b=1 GEMV kernels (dual/triple/quad) via a
+shared dot_partial_v8 helper. bs=1: 92.3 -> 93.4 tok/s (+1.2%); other
+batch sizes unchanged (they do not run GEMV). Correctness: 183 tests,
+MATCH bs=8 = 1.000, all e2e sections bit-identical.
+
+Why the gain is small here (vs +59% for the grouped kernels): the GEMV
+loop was already warp-coalesced (32 lanes reading 32 consecutive bf16 =
+64B contiguous per warp instruction), so the memory transactions were
+mostly utilized; vectorization only cuts instruction count, and at bs=1
+there are enough warps in flight to hide the issue latency. The grouped
+kernels' per-thread scattered 2-byte staging was the pathological case.
