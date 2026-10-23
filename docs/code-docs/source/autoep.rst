@@ -649,8 +649,8 @@ Planning expert placement transfers
 -----------------------------------
 
 An ``AutoEPMoELayer`` can describe where its live expert weights are, and plan
-the copies that would move them to another expert placement, for example to
-rebalance experts or to change the EP size. Planning moves no data, does not
+the copies that would move them to another expert placement, for example one
+with a different EP size. Planning moves no data, does not
 plan optimizer states, and does not change the placement the layer runs with.
 
 .. code-block:: python
