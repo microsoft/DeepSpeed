@@ -1006,15 +1006,20 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
 
     for (int k0 = 0; k0 < K; k0 += GRP_KT) {
         int kn = min(GRP_KT, K - k0);
-        for (int idx = tid; idx < M * kn; idx += GRP_TPB) {
-            int m = idx / kn, c = idx % kn;
-            xs[m][c] = x[(long)m * K + k0 + c];
+        // 8 bf16 per 16-byte transaction; kn and smem strides are multiples of 8
+        int kn8 = kn >> 3;
+        for (int idx = tid; idx < M * kn8; idx += GRP_TPB) {
+            int m = idx / kn8, j = idx % kn8;
+            *reinterpret_cast<uint4*>(&xs[m][j * 8]) =
+                *reinterpret_cast<const uint4*>(&x[(long)m * K + k0 + (long)j * 8]);
         }
-        for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
-            int r = idx / kn, c = idx % kn;
+        for (int idx = tid; idx < GRP_NT * kn8; idx += GRP_TPB) {
+            int r = idx / kn8, j = idx % kn8;
             if (n0 + r < total_out) {
                 GrpSeg g = seg_tab[r];
-                ws[r][c] = wgs_ptr(g.mat, w0, w1, w2, w3)[(long)g.lrow * K + k0 + c];
+                *reinterpret_cast<uint4*>(&ws[r][j * 8]) =
+                    *reinterpret_cast<const uint4*>(&wgs_ptr(g.mat, w0, w1, w2, w3)[(long)g.lrow * K + k0 +
+                                                                                       (long)j * 8]);
             }
         }
         __syncthreads();
@@ -1081,17 +1086,23 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
     wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
+    // 8 bf16 per 16-byte transaction; kn and smem strides are multiples of 8
     for (int k0 = 0; k0 < K; k0 += GRP_KT) {
         int kn = min(GRP_KT, K - k0);
-        for (int idx = tid; idx < M * kn; idx += GRP_TPB) {
-            int m = idx / kn, c = idx % kn;
-            xs[m][c] = x[(long)m * K + k0 + c];
+        int kn8 = kn >> 3;
+        for (int idx = tid; idx < M * kn8; idx += GRP_TPB) {
+            int m = idx / kn8, j = idx % kn8;
+            *reinterpret_cast<uint4*>(&xs[m][j * 8]) =
+                *reinterpret_cast<const uint4*>(&x[(long)m * K + k0 + (long)j * 8]);
         }
         __syncthreads();
         // gate tile
-        for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
-            int r = idx / kn, c = idx % kn;
-            if (n0 + r < N) ws[r][c] = g_w[(long)(n0 + r) * K + k0 + c];
+        for (int idx = tid; idx < GRP_NT * kn8; idx += GRP_TPB) {
+            int r = idx / kn8, j = idx % kn8;
+            if (n0 + r < N) {
+                *reinterpret_cast<uint4*>(&ws[r][j * 8]) =
+                    *reinterpret_cast<const uint4*>(&g_w[(long)(n0 + r) * K + k0 + (long)j * 8]);
+            }
         }
         __syncthreads();
         for (int kk = 0; kk < kn; kk += 16) {
@@ -1101,9 +1112,12 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
         }
         __syncthreads();
         // up tile reuses the smem buffer
-        for (int idx = tid; idx < GRP_NT * kn; idx += GRP_TPB) {
-            int r = idx / kn, c = idx % kn;
-            if (n0 + r < N) ws[r][c] = u_w[(long)(n0 + r) * K + k0 + c];
+        for (int idx = tid; idx < GRP_NT * kn8; idx += GRP_TPB) {
+            int r = idx / kn8, j = idx % kn8;
+            if (n0 + r < N) {
+                *reinterpret_cast<uint4*>(&ws[r][j * 8]) =
+                    *reinterpret_cast<const uint4*>(&u_w[(long)(n0 + r) * K + k0 + (long)j * 8]);
+            }
         }
         __syncthreads();
         for (int kk = 0; kk < kn; kk += 16) {
@@ -1141,10 +1155,14 @@ std::vector<at::Tensor> grouped_gemm_impl(at::Tensor x,
     TORCH_CHECK(x.dim() == 2 && x.size(0) > 1 && x.size(0) <= GRP_MT, "batch must be 2..32");
     int M = (int)x.size(0), K = (int)x.size(1);
     at::Tensor ws[4] = {w0, w1, w2, w3};
+    // the vectorized smem staging does 16-byte transactions
+    TORCH_CHECK(K % 8 == 0, "K must be a multiple of 8");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(x.data_ptr()) & 15) == 0, "x pointer must be 16B aligned");
     for (int i = 0; i < n_mat; i++) {
         TORCH_CHECK(ws[i].is_cuda() && ws[i].scalar_type() == at::ScalarType::BFloat16, "weights must be CUDA bf16");
         TORCH_CHECK(ws[i].is_contiguous(), "weights must be contiguous");
         TORCH_CHECK(ws[i].size(1) == K, "weight K mismatch");
+        TORCH_CHECK((reinterpret_cast<uintptr_t>(ws[i].data_ptr()) & 15) == 0, "weight pointer must be 16B aligned");
     }
     int fs[4] = {0, 0, 0, 0};
     int total = 0;
@@ -1199,6 +1217,11 @@ at::Tensor dual_gemm_silu_mul(at::Tensor x, at::Tensor gate_w, at::Tensor up_w)
     TORCH_CHECK(x.is_contiguous() && gate_w.is_contiguous() && up_w.is_contiguous(), "inputs must be contiguous");
     TORCH_CHECK(x.dim() == 2 && x.size(0) > 1 && x.size(0) <= GRP_MT, "batch must be 2..32");
     int M = (int)x.size(0), K = (int)x.size(1), N = (int)gate_w.size(0);
+    TORCH_CHECK(K % 8 == 0, "K must be a multiple of 8");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(x.data_ptr()) & 15) == 0
+                    && (reinterpret_cast<uintptr_t>(gate_w.data_ptr()) & 15) == 0
+                    && (reinterpret_cast<uintptr_t>(up_w.data_ptr()) & 15) == 0,
+                "inputs must be 16B aligned");
     TORCH_CHECK(up_w.size(0) == N && gate_w.size(1) == K && up_w.size(1) == K, "shape mismatch");
     auto out = at::empty({M, N}, x.options());
     auto stream = at::cuda::getCurrentCUDAStream();
