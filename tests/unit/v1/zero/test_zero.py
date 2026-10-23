@@ -1974,6 +1974,9 @@ class TestZero3OffloadPinnedCopyBack(DistributedTest):
         return params, used_staging
 
     def test(self, ratio):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("optimizer offload copies the master weights back to an accelerator; on the CPU accelerator "
+                        "they never leave the host")
         direct, direct_used_staging = self._train(pin_memory=False, ratio=ratio)
         staged, staged_used_staging = self._train(pin_memory=True, ratio=ratio)
         assert not direct_used_staging
