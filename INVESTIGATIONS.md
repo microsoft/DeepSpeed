@@ -690,3 +690,46 @@ implemented in _sample_from_logits.
 | 16 | 321.0 (35%) | 659.2 (71%) | 1064.2 (115%)| 926.8 |
 | 32 | 628.2 (56%) | 876.8 (78%) | 1567.3 (139%)| 1128.7 |
 Sampling costs <1.5% for every engine (within noise of greedy).
+
+
+## 17. TP=2 with the grouped-GEMM generation (2x 4080 SUPER, auto-watcher run)
+
+Watcher grabbed the dual-GPU machine at 01:02; automated pipeline ran
+tests -> bench -> profile. All 184 tests pass under torchrun TP=2.
+
+### Bench (256-token distinct prompts, greedy, slope)
+| config | bs=8 | bs=32 |
+|---|---|---|
+| segKI + graph | 533.2 | **1120.5** (first TP=2 bs=32 measurement) |
+| graphonly | 451.9 | 823.1 |
+| segKI delta | +18.0% | **+36.1%** |
+
+### Profile (rank0, b=8, both ranks profiled to keep NCCL in sync)
+| class | ms/step | calls/step | % |
+|---|---|---|---|
+| NCCL communication | 27.43 | 166.1 | 55.3% |
+| GEMM (cuBLAS) | 13.31 | 232.3 | 26.8% |
+| elementwise | 4.93 | 1137.9 | 9.9% |
+| GDN scan/conv | 1.29 | 49.7 | 2.6% |
+| decode_attn (ours) | 0.81 | 8.2 | 1.6% |
+| other/reduce/memcpy | 1.9 | — | 3.9% |
+| TOTAL GPU busy | 49.6 | | |
+
+### KEY FINDING: grouped GEMM (and fused norm/gates) did NOT engage at TP=2
+The profile shows no grouped_linear/glu_gemm/fused norm kernels — only
+decode_attn engaged. The segKI gain over graphonly (+18/+36%) is from
+decode_attn + whatever partial installs applied. The AutoTP-wrapped
+module tree apparently fails the MLP/GDN install checks (candidates:
+projection wrapper attributes, grad-path branching, or the fused-norm
+install's layer detection). This is optimization item #1 for TP.
+
+### TP=2 optimization list (by expected impact)
+1. Make grouped_linear engage under AutoTP wrappers (diagnose install
+   checks; expected recovery = the same kernel gains as TP=1: GEMM is
+   26.8% cuBLAS + elementwise 9.9% partially fusable)
+2. NCCL 55.3% (27.4ms) — the #8877 AllGather pattern (Qwen3.5 tp_plan
+   colwise_gather_output on the GDN block) + o/down_proj AllReduces;
+   the custom-partition-config workaround (GDN replicate) remains
+   untested
+3. Graph-splitting / communication overlap (multi-graph architecture
+   from the earlier design discussion)
