@@ -1016,7 +1016,7 @@ std::vector<at::Tensor> triple_gemv(at::Tensor hidden,
 static constexpr int GRP_MT = 32;   // max batch rows
 static constexpr int GRP_NT = 64;   // output columns per block (2 WMMA tiles per warp)
 static constexpr int GRP_KT = 128;  // k-chunk staged through smem
-static constexpr int GRP_TPB = 128;      // threads per block (4 warps, 16x16 tiles)
+static constexpr int GRP_TPB = 256;      // threads per block (8 warps, one 16x16 tile each)
 static constexpr int GRP_KT_GLU = 64;   // GLU stages gate+up tiles: smaller KT fits 99KB
 
 constexpr int GRP_SMEM_BYTES = (2 * GRP_MT * (GRP_KT + 8) + 2 * GRP_NT * (GRP_KT + 8)) * 2 +
@@ -1088,13 +1088,11 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
     }
     __syncthreads();
 
-    int mtile = GRP_MT / 2;
-    int m0w = (warp & 1) * mtile;
-    int n0w = (warp >> 1) * (GRP_NT / 2);  // warps 0/1: cols 0..31, warps 2/3: cols 32..63
+    int m0w = (warp >> 2) * (GRP_MT / 2);
+    int n0w = (warp & 3) * 16;  // one 16x16 tile per warp (8 warps = 2x4 grid)
 
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc[2];
-    wmma::fill_fragment(acc[0], 0.f);
-    wmma::fill_fragment(acc[1], 0.f);
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc;
+    wmma::fill_fragment(acc, 0.f);
     wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
@@ -1146,17 +1144,13 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
 #pragma unroll 4
         for (int kk = 0; kk < GRP_KT; kk += 16) {
             wmma::load_matrix_sync(fa, xbuf + m0w * XS_STRIDE + kk, XS_STRIDE);
-#pragma unroll
-            for (int t = 0; t < 2; t++) {
-                wmma::load_matrix_sync(fb, wbuf + (n0w + 16 * t) * XS_STRIDE + kk, XS_STRIDE);
-                wmma::mma_sync(acc[t], fa, fb, acc[t]);
-            }
+            wmma::load_matrix_sync(fb, wbuf + n0w * XS_STRIDE + kk, XS_STRIDE);
+            wmma::mma_sync(acc, fa, fb, acc);
         }
         __syncthreads();
     }
 
-    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w, acc[0], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w + 16, acc[1], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w, acc, GRP_NT + 8, wmma::mem_row_major);
     __syncthreads();
 
     __nv_bfloat16* ogs[4] = {o0, o1, o2, o3};
@@ -1202,15 +1196,12 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
     int warp = tid >> 5;
     int n0 = blockIdx.x * GRP_NT;
     if (n0 >= N) return;
-    int mtile = GRP_MT / 2;
-    int m0w = (warp & 1) * mtile;
-    int n0w = (warp >> 1) * (GRP_NT / 2);
+    int m0w = (warp >> 2) * (GRP_MT / 2);
+    int n0w = (warp & 3) * 16;
 
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> accg[2], accu[2];
-    wmma::fill_fragment(accg[0], 0.f);
-    wmma::fill_fragment(accg[1], 0.f);
-    wmma::fill_fragment(accu[0], 0.f);
-    wmma::fill_fragment(accu[1], 0.f);
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> accg, accu;
+    wmma::fill_fragment(accg, 0.f);
+    wmma::fill_fragment(accu, 0.f);
     wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
@@ -1263,28 +1254,20 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
 #pragma unroll 4
         for (int kk = 0; kk < GRP_KT_GLU; kk += 16) {
             wmma::load_matrix_sync(fa, xbuf + m0w * XS_STRIDE + kk, XS_STRIDE);
-#pragma unroll
-            for (int t = 0; t < 2; t++) {
-                wmma::load_matrix_sync(fb, gw_buf + (n0w + 16 * t) * XS_STRIDE + kk, XS_STRIDE);
-                wmma::mma_sync(accg[t], fa, fb, accg[t]);
-            }
+            wmma::load_matrix_sync(fb, gw_buf + n0w * XS_STRIDE + kk, XS_STRIDE);
+            wmma::mma_sync(accg, fa, fb, accg);
         }
 #pragma unroll 4
         for (int kk = 0; kk < GRP_KT_GLU; kk += 16) {
             wmma::load_matrix_sync(fa, xbuf + m0w * XS_STRIDE + kk, XS_STRIDE);
-#pragma unroll
-            for (int t = 0; t < 2; t++) {
-                wmma::load_matrix_sync(fb, uw_buf + (n0w + 16 * t) * XS_STRIDE + kk, XS_STRIDE);
-                wmma::mma_sync(accu[t], fa, fb, accu[t]);
-            }
+            wmma::load_matrix_sync(fb, uw_buf + n0w * XS_STRIDE + kk, XS_STRIDE);
+            wmma::mma_sync(accu, fa, fb, accu);
         }
         __syncthreads();
     }
 
-    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w, accg[0], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w + 16, accg[1], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(out_u + m0w * (GRP_NT + 8) + n0w, accu[0], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(out_u + m0w * (GRP_NT + 8) + n0w + 16, accu[1], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w, accg, GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_u + m0w * (GRP_NT + 8) + n0w, accu, GRP_NT + 8, wmma::mem_row_major);
     __syncthreads();
 
     for (int idx = tid; idx < M * GRP_NT; idx += GRP_TPB) {
