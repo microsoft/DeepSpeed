@@ -534,3 +534,42 @@ memcpy 3.5ms 11% | GDN scan 3.2ms 10% | elementwise 2.6ms 8%
 (calls 746->580/st via K fusion) | decode_attn 0.7ms 2%
 Grouped bandwidth now glu 429 / linear 226 GB/s (cuBLAS ref 840) —
 remaining pipeline headroom documented for the kernel track.
+
+
+## 13. cp.async double buffering — bs=32 = 136% of vLLM (RTX 4090 D)
+
+Grouped GEMMs now stage through cp.async into double buffers on dynamic
+shared memory (grouped: KT=128, 61KB; GLU: gate+up tiles staged together
+at KT=64, 65KB; one-time cudaFuncSetAttribute opt-in past the 48KB
+static limit). Chunk n+1 loads while chunk n computes.
+
+Two bugs during bring-up, both caught by the kernel test:
+1. GLU out_s offset used 2*NT ws rows but the layout needs 4*NT
+   (2 slots x gate+up) — outputs ran past the smem allocation.
+2. GLU stage lambda computed k0 = c * GRP_KT (128) but the chunk size
+   is GRP_KT_GLU (64) — chunk 1 staged nothing, half the dot product
+   silently missing (mixed right/wrong values).
+
+### Results (different prompts/row, greedy, slope)
+| bs | tiles | +cp.async | session total | vs vLLM |
+|----|-------|-----------|---------------|---------|
+| 1  | 95.8  | 95.8      | +3.8%         | -       |
+| 4  | 310.8 | 310.7     | +2.0%         | -       |
+| 8  | 566.7 | 568.5     | +2.0%         | 85.1%   |
+| 32 | 1322.0| **1533.7**| **+97.7%**    | **136.1%** |
+
+Correctness: 183 tests + MATCH 1.000 at bs=4/8 after the fix.
+
+### Final bs=32 profile (27.8ms GPU busy; corrected classes)
+| class | ms | % |
+|---|---|---|
+| grouped (ours): glu 4.9 + linear 2.6 | 7.6 | 27.2% |
+| cuBLAS (down/o_proj/lm_head) | 9.3 | 33.5% |
+| memcpy | 3.5 | 12.6% |
+| GDN scan/conv | 3.1 | 11.3% |
+| elementwise | 2.6 | 9.3% |
+| decode_attn | 0.75 | 2.7% |
+
+Grouped bandwidth now glu 608 / linear 345 GB/s (cuBLAS ref 840) —
+within 1.4x of cuBLAS; remaining headroom = cuBLAS GEMMs, memcpy,
+GDN scan.
