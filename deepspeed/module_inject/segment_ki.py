@@ -133,7 +133,7 @@ class DualWeightGluGEMV(torch.autograd.Function):
                 out = torch.empty(gate_w.shape[0], dtype=hidden.dtype, device=hidden.device)
                 kernel_op.dual_gemv_silu_mul(hidden, gate_w, up_w, out)
                 return out
-            if hidden.dim() == 2 and 16 <= hidden.shape[0] <= 32:
+            if hidden.dim() == 2 and 1 < hidden.shape[0] <= 32:
                 return kernel_op.dual_gemm_silu_mul(hidden, gate_w, up_w)
         from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul
         return dual_gemv_silu_mul(hidden, gate_w, up_w)
@@ -181,11 +181,11 @@ class GDNInputProj(torch.autograd.Function):
                 out = torch.empty(total, dtype=hidden.dtype, device=hidden.device)
                 kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
                 return out
-            if hidden.dim() == 3 and hidden.shape[1] == 1 and 16 <= hidden.shape[0] <= 32:
+            if hidden.dim() == 3 and hidden.shape[1] == 1 and 1 < hidden.shape[0] <= 32:
                 # decode activations arrive [B,1,H]; flatten for the grouped kernel
                 out = kernel_op.quad_gemm(hidden.reshape(hidden.shape[0], -1), w_qkv, w_z, w_b, w_a)
                 return out.view(hidden.shape[0], 1, -1)
-            if hidden.dim() == 2 and 16 <= hidden.shape[0] <= 32:
+            if hidden.dim() == 2 and 1 < hidden.shape[0] <= 32:
                 return kernel_op.quad_gemm(hidden, w_qkv, w_z, w_b, w_a)
         from deepspeed.module_inject.kernel_reference import gdn_input_proj
         return gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a)
@@ -228,7 +228,7 @@ def _dual_weight_glu_forward(self, input):
     if input.numel() == input.shape[-1] and getattr(self, "_ki_dual_op", None) is not None:
         out = DualWeightGluGEMV.apply(input.reshape(-1), self.gate_proj.weight, self.up_proj.weight, self._ki_dual_op)
         return self.down_proj(out.reshape(*input.shape[:-1], -1))
-    if 16 <= m <= 32 and getattr(self, "_ki_dual_op", None) is not None:
+    if 1 < m <= 32 and getattr(self, "_ki_dual_op", None) is not None:
         out = DualWeightGluGEMV.apply(input.reshape(m, -1), self.gate_proj.weight, self.up_proj.weight,
                                       self._ki_dual_op)
         return self.down_proj(out.reshape(*input.shape[:-1], -1))
@@ -550,7 +550,7 @@ def _decode_attn_forward(self,
     # grouped kernel (same weights, one launch); larger batches use the
     # projections as-is.
     batch = hidden_states.shape[0]
-    qkv_op = getattr(self, "_ki_qkv_op", None) if (batch == 1 or 16 <= batch <= 32) else None
+    qkv_op = getattr(self, "_ki_qkv_op", None) if batch <= 32 else None
     # every branch yields the raw (pre-norm, pre-rope) flat K/V so the
     # fused-K path can hand them to the kernel
     if qkv_op is not None and batch == 1:
