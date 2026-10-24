@@ -46,6 +46,44 @@ class TestZeROCheckpoint(DistributedTest):
 
         checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_module_only=True)
 
+    @pytest.mark.parametrize("local_size_variable",
+                             ["LOCAL_WORLD_SIZE", "LOCAL_SIZE", "OMPI_COMM_WORLD_LOCAL_SIZE", None])
+    def test_serial_checkpoint_with_launcher_topology(self, tmpdir, monkeypatch, local_size_variable):
+        config = {
+            "train_micro_batch_size_per_gpu": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "torch_adam": True
+                }
+            },
+            "zero_optimization": {
+                "stage": 3,
+                "pipeline_loading_checkpoint": True
+            },
+        }
+        model = SimpleModel(10, empty_grad=False)
+        saved, _, _, _ = deepspeed.initialize(config=config, model=model, model_parameters=model.parameters())
+        for batch in random_dataloader(model=saved,
+                                       total_samples=2,
+                                       hidden_dim=10,
+                                       device=saved.device,
+                                       dtype=torch.float32):
+            saved.backward(saved(batch[0], batch[1]))
+            saved.step()
+        saved.save_checkpoint(tmpdir, tag="serial")
+        model = SimpleModel(10, empty_grad=False)
+        loaded, _, _, _ = deepspeed.initialize(config=config, model=model, model_parameters=model.parameters())
+        # Change launcher metadata after device setup: this still uses single-host GPU transport.
+        for name in ["LOCAL_WORLD_SIZE", "LOCAL_SIZE", "OMPI_COMM_WORLD_LOCAL_SIZE"]:
+            monkeypatch.delenv(name, raising=False)
+        if local_size_variable is not None:
+            monkeypatch.setenv("LOCAL_RANK", "0")
+            monkeypatch.setenv(local_size_variable, "1")
+        loaded.load_checkpoint(tmpdir, tag="serial")
+        compare_model_states(saved, loaded)
+        compare_optimizer_states(saved, loaded, 10)
+
     @pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer', [(0, False, 'Adam'), (1, False, 'Adam'),
                                                                              (2, False, 'Adam'),
                                                                              (2, True, 'deepspeed_adam'),
