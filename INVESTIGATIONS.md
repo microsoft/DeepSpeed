@@ -624,3 +624,11 @@ grouped-linear NT tuning deferred (compile-time tile change, uncertain).
 |---|---|---|---|
 | 1 | 95.8 | 101.6 | 94.3% |
 | 4 | 310.6 | 351.1 | 88.5% |
+
+
+### bs=16 comparison (grouped-GEMM lower boundary, M=16 = half-full tile)
+segKI 1041.2 vs vLLM 929.0 = **112.1%** — already faster than vLLM at the
+gate's lower edge. Full curve: 1: 94.3% / 4: 88.5% / 8: 85.1% /
+16: 112.1% / 32: 136%. The crossover sits exactly at the grouped-GEMM
+threshold (16..32); below it segKI rides cuBLAS composite and vLLM's
+fused kernels win.
