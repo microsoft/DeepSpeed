@@ -4,6 +4,8 @@
 # DeepSpeed Team
 
 import copy
+import gc
+import weakref
 
 import pytest
 import torch
@@ -183,6 +185,51 @@ class TestAutoTPSequenceShardingReplicatedMLP(DistributedTest):
             reference_optimizer.zero_grad()
 
             torch.testing.assert_close(loss.detach(), reference_loss.detach(), rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("zero_stage", [1, 3])
+class TestAutoTPSequenceShardingUnreadColumn(DistributedTest):
+    """A column-parallel linear inside a block that the block never calls with its input (MLA attention that reads
+    kv_b_proj.weight directly, for example) must not keep the gathered block input alive after the step: one copy
+    per decoder layer of the whole sequence's hidden states."""
+    world_size = 2
+
+    def test_gathered_input_is_freed(self, zero_stage):
+        skip_on_device()
+        pytest.importorskip("transformers")
+
+        config, model = build_qwen3_model()
+        for layer in model.model.layers:
+            layer.self_attn.unused_proj = torch.nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+            layer.self_attn.unused_proj.weight.requires_grad_(False)
+        ds_config = build_config(zero_stage, "overlap")
+        partition = copy.deepcopy(ATTENTION_ONLY_PARTITION)
+        partition["layer_specs"][1]["patterns"].append(r".*\.self_attn\.unused_proj\.weight$")
+        ds_config["tensor_parallel"]["partition_config"] = partition
+        engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=ds_config)
+
+        gathered = []
+        lengths = []
+
+        def keep_gathered_input(module, args, kwargs):
+            gathered.append(weakref.ref(kwargs["hidden_states"]))
+            lengths.append(kwargs["hidden_states"].shape[1])
+
+        for layer in engine.module.model.layers:
+            # Registered after sequence sharding's own pre-hook, so it sees the gathered input.
+            layer.self_attn.register_forward_pre_hook(keep_gathered_input, with_kwargs=True)
+
+        input_ids = tp_shared_input_ids(config.vocab_size, 16, 0)
+        loss = engine(input_ids=input_ids, labels=input_ids).loss
+        engine.backward(loss)
+        engine.step()
+        del loss
+        gc.collect()
+
+        # The whole sequence: the hook watched the gathered input, not this rank's half.
+        assert lengths == [16] * config.num_hidden_layers, lengths
+        alive = [ref() is not None for ref in gathered]
+        assert not any(alive), alive
 
 
 class TestAutoTPSequenceShardingRejects(DistributedTest):

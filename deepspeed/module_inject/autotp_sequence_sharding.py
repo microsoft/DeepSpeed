@@ -335,6 +335,15 @@ def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True, zero_s
 
         return hook
 
+    def make_release_hook(state):
+        # A column-parallel linear that never read the gathered block input (it reads another tensor of the block,
+        # or the block uses its weight without calling it) still holds that input; drop it with the block.
+        def hook(module, args, output):
+            for layer in state.columns:
+                layer._ds_sequence_sharding_pending = None
+
+        return hook
+
     passes = [0]
 
     def count_pass(module, args):
@@ -347,7 +356,9 @@ def apply_autotp_sequence_sharding(model, group, seq_dim=1, overlap=True, zero_s
             m for name, m in block.named_modules(prefix=block_name)
             if isinstance(m, LinearLayer) and getattr(m, "sequence_sharding", False)
         ]
-        block.register_forward_pre_hook(make_gather_hook(_BlockState(columns, passes)), with_kwargs=True)
+        state = _BlockState(columns, passes)
+        block.register_forward_pre_hook(make_gather_hook(state), with_kwargs=True)
+        block.register_forward_hook(make_release_hook(state))
 
     def enter(module, args, kwargs):
         return _replace_hidden_states(args, kwargs, lambda x: ScatterToSequenceShards.apply(x, group, seq_dim),
