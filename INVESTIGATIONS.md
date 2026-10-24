@@ -573,3 +573,25 @@ Correctness: 183 tests + MATCH 1.000 at bs=4/8 after the fix.
 Grouped bandwidth now glu 608 / linear 345 GB/s (cuBLAS ref 840) —
 within 1.4x of cuBLAS; remaining headroom = cuBLAS GEMMs, memcpy,
 GDN scan.
+
+
+## 14. memcpy investigation — GDN recurrent-state copy is by-design (HF)
+
+The 3.5ms/st DtoD memcpy (29.4 calls, avg 0.12ms = ~60MB each) traced to:
+1. **GDN recurrent-state copy per step** (~24 layers x 33MB): HF's
+   cache_utils.update_recurrent_state does
+   `self.recurrent_states[idx].copy_(recurrent_states)` after every scan,
+   explicitly "to preserve the static address for cudagraphs" — the FLA
+   scan returns a NEW tensor; the copy moves it back into the stable
+   cache buffer the captured graph reads. Cannot be removed by rebinding
+   (Python runs once at capture; replays re-read the same buffer).
+   Fix = an in-place recurrent-update kernel (read state, apply 1-token
+   delta rule, write state in place) — kernel-track item.
+2. Prefill cache-management copies amortized into per-step accounting
+   (per-row KV copies at lines ~717) — one-time per generate.
+3. The decode loop's own glue is tiny (~7 small ops/step: token copy,
+   fill, mask set, argmax, eos).
+
+elementwise follow-up: the GDN q/k repeat_interleave (v_heads/k_heads=2)
+at decode materializes duplicated heads — the scan kernel could take the
+GQA ratio instead; kernel-track item.
