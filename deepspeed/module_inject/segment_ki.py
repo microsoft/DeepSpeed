@@ -611,6 +611,34 @@ def _decode_attn_forward(self,
     return self.o_proj(attn_output), None
 
 
+def install_lm_head(model: torch.nn.Module, kernel_op) -> int:
+    """Route lm_head decode batches of 16..32 through the grouped kernel.
+
+    cuBLAS reaches only ~490 GB/s on the M=32, N=vocab lm_head shape; the
+    grouped kernel's weight-streaming tiles do better. Weights are read
+    in place (no copies); the grad path keeps the original Linear.
+    """
+    lm = getattr(model, "lm_head", None)
+    if lm is None or not hasattr(lm, "weight"):
+        return 0
+    if kernel_op is None or not hasattr(kernel_op, "single_gemm"):
+        return 0
+    if lm.weight.dtype is not torch.bfloat16 or lm.bias is not None:
+        return 0
+
+    def _lm_forward(self, hidden_states):
+        b = hidden_states.shape[0]
+        if (not torch.is_grad_enabled() and hidden_states.dim() == 3 and hidden_states.shape[1] == 1 and 16 <= b <= 32
+                and hidden_states.is_contiguous()):
+            out = self._ki_gemm_op.single_gemm(hidden_states.reshape(b, -1), self.weight)
+            return out.view(b, 1, -1)
+        return torch.nn.functional.linear(hidden_states, self.weight, self.bias)
+
+    lm._ki_gemm_op = kernel_op
+    lm.forward = _lm_forward.__get__(lm, type(lm))
+    return 1
+
+
 def install_decode_attention(model: torch.nn.Module,
                              write_pos: torch.Tensor,
                              kernel_op,

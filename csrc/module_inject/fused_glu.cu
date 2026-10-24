@@ -1360,6 +1360,11 @@ std::vector<at::Tensor> grouped_gemm_impl(at::Tensor x,
     return outs;
 }
 
+at::Tensor single_gemm(at::Tensor x, at::Tensor w)
+{
+    return grouped_gemm_impl(x, w, w, w, w, 1, true)[0];
+}
+
 std::vector<at::Tensor> triple_gemm(at::Tensor x, at::Tensor qw, at::Tensor kw, at::Tensor vw)
 {
     return grouped_gemm_impl(x, qw, kw, vw, qw, 3, true);
@@ -1442,6 +1447,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         py::arg("num_kv_heads"),
         py::arg("head_dim"),
         py::arg("max_len"));
+    m.def("single_gemm",
+          &single_gemm,
+          "single-matrix GEMM on the grouped kernel (small batches)",
+          py::arg("x"),
+          py::arg("w"));
     m.def("triple_gemm",
           &triple_gemm,
           "grouped q/k/v GEMM for small batches (2..32), no weight copies",
