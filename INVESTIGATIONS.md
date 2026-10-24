@@ -595,3 +595,25 @@ The 3.5ms/st DtoD memcpy (29.4 calls, avg 0.12ms = ~60MB each) traced to:
 elementwise follow-up: the GDN q/k repeat_interleave (v_heads/k_heads=2)
 at decode materializes duplicated heads — the scan kernel could take the
 GQA ratio instead; kernel-track item.
+
+
+## 15. Remaining kernel-track items — two done, one negative result
+
+### lm_head on the grouped kernel (+0.3%, noise-level)
+single_gemm entry + install_lm_head decode routing (16<=b<=32). Neutral
+in practice; kept (principled routing, no risk). MATCH 1.000.
+
+### In-place GDN recurrent step: honest negative result
+gdn_recurrent_step mirrors FLA T=1 exactly (in-kernel l2norm eps 1e-6,
+q scaled K^-0.5, precomputed beta/g), state in smem, updated in place —
+half the state traffic on paper (4 passes -> 2). Measured:
+- bs=32: NEUTRAL (1538.8 vs 1538.3) — the HF copy-back it removes was
+  fully overlapped by cross-layer pipelining; GPU-busy time is not wall
+  time at high occupancy.
+- bs=1: -8% (B*H=32 blocks starve 128 SMs; FLA's tiling wins).
+Gated to B>=16 (kept for large batches / bandwidth-starved GPUs where
+the overlap argument weakens). Correctness: MATCH 1.000 everywhere.
+Lesson recorded: profile shares flag candidates; overlap decides wins.
+
+### Skipped: scan GQA-ratio fusion (in-graph launches already cheap);
+grouped-linear NT tuning deferred (compile-time tile change, uncertain).
