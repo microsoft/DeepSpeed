@@ -32,7 +32,7 @@ from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStateTypeEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 import deepspeed.runtime.zenflow.engine_stage3 as zf_engine_stage3
-from deepspeed.runtime.zero.utils import get_mapping_to_flat_buffer, defragment, get_norm_dtype
+from deepspeed.runtime.zero.utils import ZeRORuntimeException, get_mapping_to_flat_buffer, defragment, get_norm_dtype
 from deepspeed.runtime.zero.offload_states import (offload_adam_states, reload_adam_states,
                                                    unpin_offloaded_optimizer_states)
 from deepspeed.ops.adam import DeepSpeedCPUAdam
@@ -3768,7 +3768,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         rank = dist.get_rank(group=partition_group)
 
         # Load tensors from files and reshape them to flat vectors
-        ckpt_dict = torch.load(os.path.join(folder, f"{key}.pt"), weights_only=False)
+        ckpt_path = os.path.join(folder, f"{key}.pt")
+        if not os.path.isfile(ckpt_path):
+            if key == "fp32":
+                raise ZeRORuntimeException(f"Saved fp32 weights are required but {ckpt_path} is missing.")
+            raise ZeRORuntimeException(f"Universal checkpoint state {ckpt_path} is missing.")
+        ckpt_dict = torch.load(ckpt_path, weights_only=False)
         loaded_checkpoint_state = ckpt_dict
         if isinstance(ckpt_dict, dict):
             if ckpt_dict.get(EP_IS_EXPERT_PARAM, False):
