@@ -489,8 +489,8 @@ reduction and offload ordering and is not covered; a warning is logged.
 <i>**load_from_fp32_weights**</i>: [boolean]
 
 | Description                                                                                                                                                                                                                          | Default |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Initialize fp32 master weights from fp32 copies in checkpoint (no precision loss) or from model's fp16 copies (with precision loss). This can be used to initialize optimizer state even when checkpoint is missing optimizer state. | `True`  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Deprecated and ignored by `DeepSpeedEngine.load_checkpoint`. Full ZeRO checkpoint loads always restore saved fp32 master weights. Module-only loads rebuild ZeRO-1/2 fp32 master weights from the loaded model weights, while ZeRO-3 still reads fp32 weights because its model checkpoint is empty. | `True`  |
 
 ***round_robin_gradients***: [boolean]
 
