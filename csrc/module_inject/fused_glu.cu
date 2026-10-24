@@ -12,6 +12,7 @@
 #include <cooperative_groups.h>
 #include <cuda_bf16.h>
 #include <mma.h>
+#include <cuda_pipeline.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 #include <algorithm>
@@ -1015,7 +1016,13 @@ std::vector<at::Tensor> triple_gemv(at::Tensor hidden,
 static constexpr int GRP_MT = 32;   // max batch rows
 static constexpr int GRP_NT = 64;   // output columns per block (2 WMMA tiles per warp)
 static constexpr int GRP_KT = 128;  // k-chunk staged through smem
-static constexpr int GRP_TPB = 128; // threads per block (4 warps, 16x16 tiles)
+static constexpr int GRP_TPB = 128;      // threads per block (4 warps, 16x16 tiles)
+static constexpr int GRP_KT_GLU = 64;   // GLU stages gate+up tiles: smaller KT fits 99KB
+
+constexpr int GRP_SMEM_BYTES = (2 * GRP_MT * (GRP_KT + 8) + 2 * GRP_NT * (GRP_KT + 8)) * 2 +
+                               GRP_MT * (GRP_NT + 8) * 4;
+constexpr int GRP_GLU_SMEM_BYTES = (2 * GRP_MT * (GRP_KT_GLU + 8) + 4 * GRP_NT * (GRP_KT_GLU + 8)) * 2 +
+                                   2 * GRP_MT * (GRP_NT + 8) * 4;
 
 struct GrpSeg {
     int mat;  // which weight matrix
@@ -1062,8 +1069,12 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
                                       int concat_mode)
 {
     using namespace nvcuda;
-    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 8];
-    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 8];
+    // dynamic smem: xs[2][MT][KT+8] | ws[2][NT][KT+8] | out_s[MT][NT+8]
+    extern __shared__ char smem_raw[];
+    const int XS_STRIDE = GRP_KT + 8;
+    __nv_bfloat16* xs = reinterpret_cast<__nv_bfloat16*>(smem_raw);
+    __nv_bfloat16* ws = xs + 2 * GRP_MT * XS_STRIDE;
+    float* out_s = reinterpret_cast<float*>(ws + 2 * GRP_NT * XS_STRIDE);
     __shared__ GrpSeg seg_tab[GRP_NT];
 
     int tid = threadIdx.x;
@@ -1077,8 +1088,6 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
     }
     __syncthreads();
 
-    // warp tile: rows [16*(warp&1), +16), cols [16*(warp>>1), +16) and the
-    // adjacent 16-wide column tile (GRP_NT/16 = 4 column tiles, 2 per warp)
     int mtile = GRP_MT / 2;
     int m0w = (warp & 1) * mtile;
     int n0w = (warp >> 1) * (GRP_NT / 2);  // warps 0/1: cols 0..31, warps 2/3: cols 32..63
@@ -1086,67 +1095,77 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc[2];
     wmma::fill_fragment(acc[0], 0.f);
     wmma::fill_fragment(acc[1], 0.f);
-
     wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
-    for (int k0 = 0; k0 < K; k0 += GRP_KT) {
+    const int nchunks = (K + GRP_KT - 1) / GRP_KT;
+    // async-stage chunk c into buffer slot c&1; compute overlaps the next load
+    auto stage = [&](int c) {
+        int k0 = c * GRP_KT;
         int kn = min(GRP_KT, K - k0);
-        // 8 bf16 per 16-byte transaction; kn and smem strides are multiples of 8
         int kn8 = kn >> 3;
+        __nv_bfloat16* xbuf = xs + (long)(c & 1) * GRP_MT * XS_STRIDE;
+        __nv_bfloat16* wbuf = ws + (long)(c & 1) * GRP_NT * XS_STRIDE;
         for (int idx = tid; idx < M * kn8; idx += GRP_TPB) {
             int m = idx / kn8, j = idx % kn8;
-            *reinterpret_cast<uint4*>(&xs[m][j * 8]) =
-                *reinterpret_cast<const uint4*>(&x[(long)m * K + k0 + (long)j * 8]);
+            __pipeline_memcpy_async(xbuf + (long)m * XS_STRIDE + j * 8, x + (long)m * K + k0 + (long)j * 8, 16);
         }
         for (int idx = tid; idx < GRP_NT * kn8; idx += GRP_TPB) {
             int r = idx / kn8, j = idx % kn8;
             if (n0 + r < total_out) {
                 GrpSeg g = seg_tab[r];
-                *reinterpret_cast<uint4*>(&ws[r][j * 8]) =
-                    *reinterpret_cast<const uint4*>(&wgs_ptr(g.mat, w0, w1, w2, w3)[(long)g.lrow * K + k0 +
-                                                                                       (long)j * 8]);
+                __pipeline_memcpy_async(wbuf + (long)r * XS_STRIDE + j * 8,
+                                        wgs_ptr(g.mat, w0, w1, w2, w3) + (long)g.lrow * K + k0 + (long)j * 8, 16);
             }
         }
-        // zero-fill the tail so partial chunks (K % KT not a multiple of 16)
-        // contribute zeros through the wmma steps
-        for (int idx = tid; idx < GRP_NT * GRP_KT; idx += GRP_TPB) {
-            int r = idx / GRP_KT, c = idx % GRP_KT;
-            if (c >= kn && n0 + r < total_out) ws[r][c] = __float2bfloat16_rn(0.f);
-        }
-        for (int idx = tid; idx < GRP_MT * GRP_KT; idx += GRP_TPB) {
-            int r = idx / GRP_KT, c = idx % GRP_KT;
-            if (c >= kn && r < M) xs[r][c] = __float2bfloat16_rn(0.f);
-        }
+        __pipeline_commit();
+    };
+
+    stage(0);
+    for (int c = 0; c < nchunks; c++) {
+        if (c + 1 < nchunks) stage(c + 1);
+        __pipeline_wait_prior(c + 1 < nchunks ? 1 : 0);
         __syncthreads();
-#pragma unroll 2
+        int kn = min(GRP_KT, K - c * GRP_KT);
+        if (kn < GRP_KT) {
+            // partial final chunk: zero the tail so wmma sees zeros
+            __nv_bfloat16* xbuf = xs + (long)(c & 1) * GRP_MT * XS_STRIDE;
+            __nv_bfloat16* wbuf = ws + (long)(c & 1) * GRP_NT * XS_STRIDE;
+            for (int idx = tid; idx < GRP_MT * GRP_KT; idx += GRP_TPB) {
+                int r = idx / GRP_KT, cc = idx % GRP_KT;
+                if (cc >= kn && r < M) xbuf[r * XS_STRIDE + cc] = __float2bfloat16_rn(0.f);
+            }
+            for (int idx = tid; idx < GRP_NT * GRP_KT; idx += GRP_TPB) {
+                int r = idx / GRP_KT, cc = idx % GRP_KT;
+                if (cc >= kn && n0 + r < total_out) wbuf[r * XS_STRIDE + cc] = __float2bfloat16_rn(0.f);
+            }
+            __syncthreads();
+        }
+        __nv_bfloat16* xbuf = xs + (long)(c & 1) * GRP_MT * XS_STRIDE;
+        __nv_bfloat16* wbuf = ws + (long)(c & 1) * GRP_NT * XS_STRIDE;
+#pragma unroll 4
         for (int kk = 0; kk < GRP_KT; kk += 16) {
-            wmma::load_matrix_sync(fa, &xs[m0w][kk], GRP_KT + 8);
+            wmma::load_matrix_sync(fa, xbuf + m0w * XS_STRIDE + kk, XS_STRIDE);
 #pragma unroll
             for (int t = 0; t < 2; t++) {
-                wmma::load_matrix_sync(fb, &ws[n0w + 16 * t][kk], GRP_KT + 8);
+                wmma::load_matrix_sync(fb, wbuf + (n0w + 16 * t) * XS_STRIDE + kk, XS_STRIDE);
                 wmma::mma_sync(acc[t], fa, fb, acc[t]);
             }
         }
         __syncthreads();
     }
 
-    // stage acc to smem then scatter (segmented outputs, bounds-checked)
-    __shared__ float out_s[GRP_MT][GRP_NT + 8];
-    wmma::store_matrix_sync(&out_s[m0w][n0w], acc[0], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(&out_s[m0w][n0w + 16], acc[1], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w, acc[0], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w + 16, acc[1], GRP_NT + 8, wmma::mem_row_major);
     __syncthreads();
 
-    GrpSeg my = seg_tab[n0w];  // warp-uniform anchor; per-thread col below
-    const __nv_bfloat16* wgs[4] = {w0, w1, w2, w3};
-    (void)wgs;
     __nv_bfloat16* ogs[4] = {o0, o1, o2, o3};
     int fs2[4] = {f0, f1, f2, f3};
     for (int idx = tid; idx < M * GRP_NT; idx += GRP_TPB) {
         int m = idx / GRP_NT, c = idx % GRP_NT;
         if (n0 + c >= total_out) continue;
         GrpSeg g = seg_tab[c];
-        float v = out_s[m][c];
+        float v = out_s[m * (GRP_NT + 8) + c];
         __nv_bfloat16* o = ogs[g.mat];
         if (concat_mode) {
             int base = 0;
@@ -1158,8 +1177,9 @@ __global__ void grouped_linear_kernel(const __nv_bfloat16* __restrict__ x,
     }
 }
 
-// Paired-matrix GLU GEMM: out = silu(x@g^T) * (x@u^T); both weight tiles
-// streamed per block so each element is read exactly once overall.
+// Paired-matrix GLU GEMM: out = silu(x@g^T) * (x@u^T). cp.async tile
+// stream: per k-chunk two weight tiles (gate, up) flow through a double
+// buffer while the x tile rides its own pair; compute overlaps loads.
 __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
                                 const __nv_bfloat16* __restrict__ g_w,
                                 const __nv_bfloat16* __restrict__ u_w,
@@ -1169,9 +1189,14 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
                                 int K)
 {
     using namespace nvcuda;
-    __shared__ __nv_bfloat16 xs[GRP_MT][GRP_KT + 8];
-    __shared__ __nv_bfloat16 ws[GRP_NT][GRP_KT + 8];
-    __shared__ float out_s[GRP_MT][GRP_NT + 8];
+    // dynamic smem: xs[2][MT][KT+8] | ws[2][NT][KT+8] | out_s, out_u [MT][NT+8]
+    extern __shared__ char smem_raw[];
+    const int XS_STRIDE = GRP_KT_GLU + 8;
+    __nv_bfloat16* xs = reinterpret_cast<__nv_bfloat16*>(smem_raw);
+    __nv_bfloat16* ws = xs + 2 * GRP_MT * XS_STRIDE;
+    // ws holds 2 slots x (gate,up) tiles = 4*NT rows before the outputs
+    float* out_s = reinterpret_cast<float*>(ws + 4 * GRP_NT * XS_STRIDE);
+    float* out_u = out_s + GRP_MT * (GRP_NT + 8);
 
     int tid = threadIdx.x;
     int warp = tid >> 5;
@@ -1179,7 +1204,7 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
     if (n0 >= N) return;
     int mtile = GRP_MT / 2;
     int m0w = (warp & 1) * mtile;
-    int n0w = (warp >> 1) * (GRP_NT / 2);  // warps 0/1: cols 0..31, warps 2/3: cols 32..63
+    int n0w = (warp >> 1) * (GRP_NT / 2);
 
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> accg[2], accu[2];
     wmma::fill_fragment(accg[0], 0.f);
@@ -1189,76 +1214,83 @@ __global__ void glu_gemm_kernel(const __nv_bfloat16* __restrict__ x,
     wmma::fragment<wmma::matrix_a, 16, 16, 16, __nv_bfloat16, wmma::row_major> fa;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, __nv_bfloat16, wmma::col_major> fb;
 
-    // 8 bf16 per 16-byte transaction; kn and smem strides are multiples of 8
-    for (int k0 = 0; k0 < K; k0 += GRP_KT) {
-        int kn = min(GRP_KT, K - k0);
+    const int nchunks = (K + GRP_KT_GLU - 1) / GRP_KT_GLU;
+    // stage chunk c: x into xs[c&1], gate tile into ws[0], up tile into ws[1]
+    // (both weight tiles for the chunk issue together; the slot pair rotates
+    // per chunk so chunk c+1 lands while chunk c computes)
+    auto stage = [&](int c) {
+        int k0 = c * GRP_KT_GLU;
+        int kn = min(GRP_KT_GLU, K - k0);
         int kn8 = kn >> 3;
+        __nv_bfloat16* xbuf = xs + (long)(c & 1) * GRP_MT * XS_STRIDE;
+        __nv_bfloat16* gw_buf = ws + (long)(c & 1) * 2 * GRP_NT * XS_STRIDE;
+        __nv_bfloat16* uw_buf = gw_buf + (long)GRP_NT * XS_STRIDE;
         for (int idx = tid; idx < M * kn8; idx += GRP_TPB) {
             int m = idx / kn8, j = idx % kn8;
-            *reinterpret_cast<uint4*>(&xs[m][j * 8]) =
-                *reinterpret_cast<const uint4*>(&x[(long)m * K + k0 + (long)j * 8]);
+            __pipeline_memcpy_async(xbuf + (long)m * XS_STRIDE + j * 8, x + (long)m * K + k0 + (long)j * 8, 16);
         }
-        __syncthreads();
-        // gate tile
         for (int idx = tid; idx < GRP_NT * kn8; idx += GRP_TPB) {
             int r = idx / kn8, j = idx % kn8;
             if (n0 + r < N) {
-                *reinterpret_cast<uint4*>(&ws[r][j * 8]) =
-                    *reinterpret_cast<const uint4*>(&g_w[(long)(n0 + r) * K + k0 + (long)j * 8]);
+                __pipeline_memcpy_async(gw_buf + (long)r * XS_STRIDE + j * 8,
+                                        g_w + (long)(n0 + r) * K + k0 + (long)j * 8, 16);
+                __pipeline_memcpy_async(uw_buf + (long)r * XS_STRIDE + j * 8,
+                                        u_w + (long)(n0 + r) * K + k0 + (long)j * 8, 16);
             }
         }
-        // zero-fill the tail (partial final chunk contributes zeros)
-        for (int idx = tid; idx < GRP_NT * GRP_KT; idx += GRP_TPB) {
-            int r = idx / GRP_KT, c = idx % GRP_KT;
-            if (c >= kn && n0 + r < N) ws[r][c] = __float2bfloat16_rn(0.f);
+        if (kn < GRP_KT_GLU) {
+            // partial chunk: zero tails (plain stores; synced below)
+            for (int idx = tid; idx < GRP_MT * GRP_KT_GLU; idx += GRP_TPB) {
+                int r = idx / GRP_KT_GLU, cc = idx % GRP_KT_GLU;
+                if (cc >= kn && r < M) xbuf[r * XS_STRIDE + cc] = __float2bfloat16_rn(0.f);
+            }
+            for (int idx = tid; idx < 2 * GRP_NT * GRP_KT_GLU; idx += GRP_TPB) {
+                int r = idx / GRP_KT_GLU, cc = idx % GRP_KT_GLU;
+                if (cc >= kn && n0 + (r % GRP_NT) < N) gw_buf[r * XS_STRIDE + cc] = __float2bfloat16_rn(0.f);
+            }
         }
-        for (int idx = tid; idx < GRP_MT * GRP_KT; idx += GRP_TPB) {
-            int r = idx / GRP_KT, c = idx % GRP_KT;
-            if (c >= kn && r < M) xs[r][c] = __float2bfloat16_rn(0.f);
-        }
+        __pipeline_commit();
+    };
+
+    stage(0);
+    for (int c = 0; c < nchunks; c++) {
+        if (c + 1 < nchunks) stage(c + 1);
+        __pipeline_wait_prior(c + 1 < nchunks ? 1 : 0);
         __syncthreads();
+        __nv_bfloat16* xbuf = xs + (long)(c & 1) * GRP_MT * XS_STRIDE;
+        __nv_bfloat16* gw_buf = ws + (long)(c & 1) * 2 * GRP_NT * XS_STRIDE;
+        __nv_bfloat16* uw_buf = gw_buf + (long)GRP_NT * XS_STRIDE;
 #pragma unroll 4
-        for (int kk = 0; kk < GRP_KT; kk += 16) {
-            wmma::load_matrix_sync(fa, &xs[m0w][kk], GRP_KT + 8);
+        for (int kk = 0; kk < GRP_KT_GLU; kk += 16) {
+            wmma::load_matrix_sync(fa, xbuf + m0w * XS_STRIDE + kk, XS_STRIDE);
 #pragma unroll
             for (int t = 0; t < 2; t++) {
-                wmma::load_matrix_sync(fb, &ws[n0w + 16 * t][kk], GRP_KT + 8);
+                wmma::load_matrix_sync(fb, gw_buf + (n0w + 16 * t) * XS_STRIDE + kk, XS_STRIDE);
                 wmma::mma_sync(accg[t], fa, fb, accg[t]);
             }
         }
-        __syncthreads();
-        // up tile reuses the smem buffer
-        for (int idx = tid; idx < GRP_NT * kn8; idx += GRP_TPB) {
-            int r = idx / kn8, j = idx % kn8;
-            if (n0 + r < N) {
-                *reinterpret_cast<uint4*>(&ws[r][j * 8]) =
-                    *reinterpret_cast<const uint4*>(&u_w[(long)(n0 + r) * K + k0 + (long)j * 8]);
-            }
-        }
-        __syncthreads();
 #pragma unroll 4
-        for (int kk = 0; kk < GRP_KT; kk += 16) {
-            wmma::load_matrix_sync(fa, &xs[m0w][kk], GRP_KT + 8);
+        for (int kk = 0; kk < GRP_KT_GLU; kk += 16) {
+            wmma::load_matrix_sync(fa, xbuf + m0w * XS_STRIDE + kk, XS_STRIDE);
 #pragma unroll
             for (int t = 0; t < 2; t++) {
-                wmma::load_matrix_sync(fb, &ws[n0w + 16 * t][kk], GRP_KT + 8);
+                wmma::load_matrix_sync(fb, uw_buf + (n0w + 16 * t) * XS_STRIDE + kk, XS_STRIDE);
                 wmma::mma_sync(accu[t], fa, fb, accu[t]);
             }
         }
         __syncthreads();
     }
 
-    wmma::store_matrix_sync(&out_s[m0w][n0w], accg[0], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(&out_s[m0w][n0w + 16], accg[1], GRP_NT + 8, wmma::mem_row_major);
-    __shared__ float out_u[GRP_MT][GRP_NT + 8];
-    wmma::store_matrix_sync(&out_u[m0w][n0w], accu[0], GRP_NT + 8, wmma::mem_row_major);
-    wmma::store_matrix_sync(&out_u[m0w][n0w + 16], accu[1], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w, accg[0], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_s + m0w * (GRP_NT + 8) + n0w + 16, accg[1], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_u + m0w * (GRP_NT + 8) + n0w, accu[0], GRP_NT + 8, wmma::mem_row_major);
+    wmma::store_matrix_sync(out_u + m0w * (GRP_NT + 8) + n0w + 16, accu[1], GRP_NT + 8, wmma::mem_row_major);
     __syncthreads();
 
     for (int idx = tid; idx < M * GRP_NT; idx += GRP_TPB) {
         int m = idx / GRP_NT, c = idx % GRP_NT;
         if (n0 + c < N) {
-            float v = silu_f(out_s[m][c]) * out_u[m][c];
+            float v = silu_f(out_s[m * (GRP_NT + 8) + c]) * out_u[m * (GRP_NT + 8) + c];
             out[(long)m * N + n0 + c] = __float2bfloat16_rn(v);
         }
     }
@@ -1308,7 +1340,12 @@ std::vector<at::Tensor> grouped_gemm_impl(at::Tensor x,
         outs.push_back(o0);
     }
     at::Tensor dummy = o0.defined() ? o0 : x;  // unused slots point at a live buffer
-    grouped_linear_kernel<<<blocks, GRP_TPB, 0, stream.stream()>>>(
+        static bool grp_attr_set = false;
+    if (!grp_attr_set) {
+        cudaFuncSetAttribute(grouped_linear_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, GRP_SMEM_BYTES);
+        grp_attr_set = true;
+    }
+    grouped_linear_kernel<<<blocks, GRP_TPB, GRP_SMEM_BYTES, stream.stream()>>>(
         (const __nv_bfloat16*)x.data_ptr(),
         (const __nv_bfloat16*)(n_mat > 0 ? w0 : dummy).data_ptr(),
         (const __nv_bfloat16*)(n_mat > 1 ? w1 : dummy).data_ptr(),
@@ -1348,7 +1385,12 @@ at::Tensor dual_gemm_silu_mul(at::Tensor x, at::Tensor gate_w, at::Tensor up_w)
     auto out = at::empty({M, N}, x.options());
     auto stream = at::cuda::getCurrentCUDAStream();
     int blocks = (N + GRP_NT - 1) / GRP_NT;
-    glu_gemm_kernel<<<blocks, GRP_TPB, 0, stream.stream()>>>((const __nv_bfloat16*)x.data_ptr(),
+        static bool glu_attr_set = false;
+    if (!glu_attr_set) {
+        cudaFuncSetAttribute(glu_gemm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, GRP_GLU_SMEM_BYTES);
+        glu_attr_set = true;
+    }
+    glu_gemm_kernel<<<blocks, GRP_TPB, GRP_GLU_SMEM_BYTES, stream.stream()>>>((const __nv_bfloat16*)x.data_ptr(),
                                                              (const __nv_bfloat16*)gate_w.data_ptr(),
                                                              (const __nv_bfloat16*)up_w.data_ptr(),
                                                              (__nv_bfloat16*)out.data_ptr(), M, N, K);
