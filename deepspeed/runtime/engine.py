@@ -4732,6 +4732,15 @@ class DeepSpeedEngine(Module):
 
     def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
 
+        # All ranks must validate the topology before waiting for the serial-load token.
+        if (not self.load_universal_checkpoint() and load_optimizer_states
+                and self.seq_dp_world_size != self.loaded_checkpoint_dp_world_size):
+            raise ZeRORuntimeException("The checkpoint being loaded used a DP "
+                                       f"world size of {self.loaded_checkpoint_dp_world_size} but the "
+                                       f"current world size is {self.seq_dp_world_size}. Automatic adjustment "
+                                       "of ZeRO's optimizer state partitioning with a new world size is not "
+                                       "currently supported.")
+
         load_serial = None
         # When use loading checkpoint serial, checkpoint loading start from local rank 0,
         # all other local rank would be paused, waiting for its rank-1 peer ready and its notification.
@@ -4745,12 +4754,6 @@ class DeepSpeedEngine(Module):
             zero_sd_list = None
             checkpoint_folder = f'{os.path.join(load_dir, tag)}'
         else:
-            if load_optimizer_states and self.seq_dp_world_size != self.loaded_checkpoint_dp_world_size:
-                raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
-                    f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
-                    f"current world size is {self.seq_dp_world_size}. Automatic adjustment " \
-                    "of ZeRO's optimizer state partitioning with a new world size is not " \
-                    "currently supported.")
             checkpoint_folder = None
             zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
             if zero_sd_list is None:
