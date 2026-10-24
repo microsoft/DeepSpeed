@@ -413,9 +413,10 @@ def _install_gdn_segment(seg: GDNSegment) -> bool:
         # no HF copy-back, half the state traffic
         step_op = getattr(parent, "_ki_gdn_op", None)
         if (init_state is not None and query.shape[1] == 1 and step_op is not None
-                and hasattr(step_op, "gdn_recurrent_step") and not torch.is_grad_enabled() and query.is_contiguous()
-                and key.is_contiguous() and value.is_contiguous() and init_state.is_contiguous()
-                and init_state.dtype is torch.float32):
+                and hasattr(step_op, "gdn_recurrent_step") and not torch.is_grad_enabled()
+                and query.shape[0] >= 16  # below that our block count starves vs FLA's tiling
+                and query.is_contiguous() and key.is_contiguous() and value.is_contiguous()
+                and init_state.is_contiguous() and init_state.dtype is torch.float32):
             b_sz, _, h, dk = query.shape
             dv = value.shape[-1]
             out = torch.empty(b_sz, 1, h, dv, dtype=query.dtype, device=query.device)
