@@ -122,8 +122,3 @@ def fused_add_norm(hidden, residual, weight, eps=1e-5):
     combined = hidden.float() + residual.float()
     rms = torch.rsqrt(combined.pow(2).mean(dim=-1, keepdim=True) + eps)
     return (combined * rms * weight.float()).to(hidden.dtype)
-
-
-def decode_step(logits, vocab_size):
-    """Argmax over logits (greedy decode)."""
-    return torch.argmax(logits).item()

@@ -641,6 +641,10 @@ def install_lm_head(model: torch.nn.Module, kernel_op) -> int:
         return 0
     if lm.weight.dtype is not torch.bfloat16 or lm.bias is not None:
         return 0
+    # vocab-parallel lm_head wrappers carry gather/allreduce semantics in
+    # their forward; a plain-GEMM patch would silently drop the collective
+    if carries_collective(lm):
+        return 0
 
     def _lm_forward(self, hidden_states):
         b = hidden_states.shape[0]
