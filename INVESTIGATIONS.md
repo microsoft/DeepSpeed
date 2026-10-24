@@ -678,3 +678,15 @@ Sampler correctness: 2000 independent draws from a fixed logit row;
 top-10 empirical frequencies vs softmax probabilities max |dev| = 1.9%
 (~2 sigma at n=2000, binomial-consistent). Temperature/top-k/top-p
 implemented in _sample_from_logits.
+
+
+### Full sampling table (temperature=1.0, all engines, fresh cells)
+| bs | HF eager | HF+graph | segKI+graph | vLLM 0.31 |
+|----|---------|----------|-------------|-----------|
+| 1  | 20.8 (20%)  | 79.4 (78%)  | 94.6 (93%)   | 101.5 |
+| 2  | 40.7 (22%)  | 139.1 (77%) | 163.3 (90%)  | 181.5 |
+| 4  | 80.5 (23%)  | 256.5 (73%) | 311.9 (89%)  | 351.4 |
+| 8  | 163.5 (25%) | 417.5 (63%) | 569.6 (86%)  | 663.0 |
+| 16 | 321.0 (35%) | 659.2 (71%) | 1064.2 (115%)| 926.8 |
+| 32 | 628.2 (56%) | 876.8 (78%) | 1567.3 (139%)| 1128.7 |
+Sampling costs <1.5% for every engine (within noise of greedy).
