@@ -662,3 +662,19 @@ vs vLLM full curve after: 1: 94.3% / 4: 91.6% / 8: 88.7% / 16: 114.1%
 | 8  | 169.8   | 417.8    | 566.8       | 668.0     |
 | 16 | 336.8   | 657.2    | 1055.0      | 929.0     |
 | 32 | 661.9   | 876.0    | 1563.7      | 1127.2    |
+
+
+### Sampling (temperature=1) — free for both engines, RL/OPD-ready
+| bs | segKI greedy | segKI temp1 | vLLM greedy | vLLM temp1 |
+|----|--------------|-------------|-------------|------------|
+| 1  | 95.8         | 94.4        | 101.6       | 101.5      |
+| 8  | 567.3        | 569.6       | 663.3       | 663.0      |
+| 32 | 1564.8       | 1568.7      | 1127.5      | 1128.7     |
+Sampling runs outside the graph (softmax+multinomial on [BS, 248K]
+fp32 logits); cost is within noise at every batch size for both
+engines (vLLM fuses it; ours is eager but amortized).
+
+Sampler correctness: 2000 independent draws from a fixed logit row;
+top-10 empirical frequencies vs softmax probabilities max |dev| = 1.9%
+(~2 sigma at n=2000, binomial-consistent). Temperature/top-k/top-p
+implemented in _sample_from_logits.
