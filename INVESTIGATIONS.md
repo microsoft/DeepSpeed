@@ -651,3 +651,14 @@ tile is underfilled.
 vs vLLM full curve after: 1: 94.3% / 4: 91.6% / 8: 88.7% / 16: 114.1%
 / 32: 138.7%. Near-tie at bs=8 (0.934) verified benign across seeds
 (7/999 perfect, 123 single-row mid-sequence flip); 183 tests pass.
+
+
+### Full comparison table (fresh run, all cells same-session, RTX 4090 D)
+| bs | HF eager | HF+graph | segKI+graph | vLLM 0.31 |
+|----|---------|----------|-------------|-----------|
+| 1  | 21.7    | 80.5     | 95.9        | 101.6     |
+| 2  | 41.5    | 138.5    | 162.8       | 181.7     |
+| 4  | 84.7    | 255.4    | 310.4       | 351.1     |
+| 8  | 169.8   | 417.8    | 566.8       | 668.0     |
+| 16 | 336.8   | 657.2    | 1055.0      | 929.0     |
+| 32 | 661.9   | 876.0    | 1563.7      | 1127.2    |
