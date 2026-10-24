@@ -1451,6 +1451,21 @@ void gdn_recurrent_step(at::Tensor q,
     C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
+
+py::dict segki_capabilities()
+{
+    py::dict d;
+    d["version"] = 1;
+    d["dtypes"] = py::make_tuple("bf16");
+    d["max_grouped_batch"] = GRP_MT;  // above this the dispatcher routes to aten
+    d["fused_glu_epilogue"] = true;
+    d["fused_rope_q"] = true;
+    d["fused_rope_k"] = true;
+    d["fused_cache_write"] = true;
+    d["inplace_recurrent"] = true;
+    return d;
+}
+
 at::Tensor single_gemm(at::Tensor x, at::Tensor w)
 {
     return grouped_gemm_impl(x, w, w, w, w, 1, true)[0];
@@ -1493,6 +1508,69 @@ at::Tensor dual_gemm_silu_mul(at::Tensor x, at::Tensor gate_w, at::Tensor up_w)
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return out;
 }
+
+// Portable segKI interface: one dispatcher routes by weight count and
+// batch size to this backend's private kernels (gemv / WMMA grouped /
+// aten composite), so other accelerators can expose the same entry with
+// an entirely different internal split.
+std::vector<at::Tensor> grouped_linear(at::Tensor x, std::vector<at::Tensor> weights, bool glu_epilogue)
+{
+    const size_t n = weights.size();
+    TORCH_CHECK(n >= 1 && n <= 4, "grouped_linear takes 1..4 weight matrices");
+    const int64_t K = weights[0].size(1);
+    // M == 1 rides the flat GEMV kernels (1-D input or a single row)
+    if (x.numel() == K) {
+        at::Tensor flat = x.reshape({-1});
+        if (glu_epilogue && n == 2) {
+            auto out = at::empty({weights[0].size(0)}, x.options());
+            dual_gemv_silu_mul(flat, weights[0], weights[1], out);
+            return {out};
+        }
+        if (!glu_epilogue && n == 3) return triple_gemv(flat, weights[0], weights[1], weights[2]);
+        if (!glu_epilogue && n == 4) {
+            auto out = at::empty({weights[0].size(0) + weights[1].size(0) + weights[2].size(0) + weights[3].size(0)},
+                                 x.options());
+            quad_gemv(flat, weights[0], weights[1], weights[2], weights[3], out);
+            return {out};
+        }
+        // n == 1 or n == 2 without epilogue: aten composite
+        std::vector<at::Tensor> outs;
+        for (auto& w : weights) outs.push_back(at::matmul(flat, w.t()));
+        if (glu_epilogue && n == 2) {
+            at::Tensor g = at::silu(outs[0].to(at::kFloat)).to(outs[0].scalar_type());
+            outs = {g * outs[1]};
+        }
+        if (!glu_epilogue && n == 4) outs = {at::cat(outs, -1)};  // quad contract: concatenated
+        return outs;
+    }
+    at::Tensor x2 = x.reshape({-1, K});
+    const int64_t M = x2.size(0);
+    if (M > GRP_MT) {
+        // large batches: cuBLAS/aten composite (this backend's measured choice)
+        std::vector<at::Tensor> outs;
+        for (auto& w : weights) outs.push_back(at::matmul(x2, w.t()));
+        if (glu_epilogue && n == 2) {
+            at::Tensor g = at::silu(outs[0].to(at::kFloat)).to(outs[0].scalar_type());
+            outs = {g * outs[1]};
+        }
+        if (!glu_epilogue && n == 4) outs = {at::cat(outs, -1)};  // quad contract: concatenated
+        return outs;
+    }
+    TORCH_CHECK(x2.is_contiguous(), "grouped_linear needs a contiguous [M,K] view");
+    if (glu_epilogue && n == 2) return {dual_gemm_silu_mul(x2, weights[0], weights[1])};
+    if (!glu_epilogue && n == 3) return triple_gemm(x2, weights[0], weights[1], weights[2]);
+    if (!glu_epilogue && n == 4) return {quad_gemm(x2, weights[0], weights[1], weights[2], weights[3])};
+    if (!glu_epilogue && n == 1) return {single_gemm(x2, weights[0])};
+    // glu with n != 2 or multi-output without epilogue at n == 2: composite
+    std::vector<at::Tensor> outs;
+    for (auto& w : weights) outs.push_back(at::matmul(x2, w.t()));
+    if (glu_epilogue && n == 2) {
+            at::Tensor g = at::silu(outs[0].to(at::kFloat)).to(outs[0].scalar_type());
+            outs = {g * outs[1]};
+        }
+    return outs;
+}
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -1538,6 +1616,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         py::arg("num_kv_heads"),
         py::arg("head_dim"),
         py::arg("max_len"));
+    m.def("grouped_linear",
+          &grouped_linear,
+          "portable segKI projection: 1..4 original weight matrices, one "
+          "launch per group, GLU epilogue optional; routes internally by "
+          "batch to gemv / grouped WMMA / aten composite",
+          py::arg("x"),
+          py::arg("weights"),
+          py::arg("glu_epilogue") = false);
+    m.def("capabilities", &segki_capabilities, "segKI backend capability report");
     m.def("gdn_recurrent_step",
           &gdn_recurrent_step,
           "in-place single-token gated-delta-rule recurrent update",

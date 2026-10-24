@@ -550,10 +550,16 @@ def _decode_attn_forward(self,
     # grouped kernel (same weights, one launch); larger batches use the
     # projections as-is.
     batch = hidden_states.shape[0]
-    qkv_op = getattr(self, "_ki_qkv_op", None) if batch <= 32 else None
+    qkv_op = getattr(self, "_ki_qkv_op", None)
     # every branch yields the raw (pre-norm, pre-rope) flat K/V so the
     # fused-K path can hand them to the kernel
-    if qkv_op is not None and batch == 1:
+    if qkv_op is not None and hasattr(qkv_op, "grouped_linear"):
+        # single dispatcher entry; the backend routes by batch internally
+        q_out, k_flat, v_flat = qkv_op.grouped_linear(hidden_states.reshape(-1, hidden_states.shape[-1]),
+                                                      [self.q_proj.weight, self.k_proj.weight, self.v_proj.weight],
+                                                      False)
+        query_states, gate = torch.chunk(q_out.view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
+    elif qkv_op is not None and batch == 1:
         # One GEMV launch over q/k/v weights directly — replaces the
         # three separate F.linear launches. q_proj keeps its 2x-wide
         # query|gate layout, so the gate split below is unchanged from HF.

@@ -482,3 +482,54 @@ class TestRolloutTrainRollout:
         w = _rand_bf16(32, 64)
         with _pytest.raises(RuntimeError):
             _op().dual_gemm_silu_mul(x, w, w)
+
+    def test_grouped_linear_dispatcher(self):
+        """The portable interface entry: weight count x batch routing vs the
+        reference for every combination (gemv / grouped / aten composite)."""
+        from deepspeed.module_inject import kernel_reference as ref
+        op = _op()
+        K = 128
+        for M in (1, 8, 32, 64):
+            x = _rand_bf16(M, K) if M > 1 else _rand_bf16(K)
+            w1 = _rand_bf16(64, K)
+            out = op.grouped_linear(x, [w1], False)
+            if M > op.capabilities()["max_grouped_batch"]:
+                # composite route: bf16 matmul (same rounding as the route)
+                exp = torch.matmul(x.reshape(-1, K) if M > 1 else x, w1.t())
+            else:
+                exp = torch.matmul(x.float().reshape(-1, K), w1.float().t())
+            torch.testing.assert_close(out[0].float(), exp.float().reshape(out[0].shape), atol=5e-2, rtol=5e-2)
+
+            gw, uw = _rand_bf16(64, K), _rand_bf16(64, K)
+            out = op.grouped_linear(x, [gw, uw], True)
+            # batches above the grouped range route to the composite, whose
+            # matmul output rounds to bf16 before the epilogue (matching HF
+            # eager semantics); the fp32 reference skips that rounding, so
+            # anchor large batches on the same-dtype reference instead
+            if M > op.capabilities()["max_grouped_batch"]:
+                ref_glu = ref.dual_gemm_silu_mul(x if M > 1 else x, gw, uw)
+                torch.testing.assert_close(out[0].float(), ref_glu.float().reshape(out[0].shape), atol=5e-2, rtol=5e-2)
+            else:
+                ref_glu = ref.dual_gemm_silu_mul(x.float().reshape(-1, K) if M > 1 else x.float(), gw.float(),
+                                                 uw.float())
+                torch.testing.assert_close(out[0].float(), ref_glu.reshape(out[0].shape), atol=5e-2, rtol=5e-2)
+
+            kw, vw = _rand_bf16(32, K), _rand_bf16(32, K)
+            q, k, v = op.grouped_linear(x, [w1, kw, vw], False)
+            if M > op.capabilities()["max_grouped_batch"]:
+                rq = torch.matmul(x.reshape(-1, K) if M > 1 else x, w1.t())  # composite: bf16 matmul
+            else:
+                rq = torch.matmul(x.float().reshape(-1, K), w1.float().t())
+            torch.testing.assert_close(q.float(), rq.float().reshape(q.shape), atol=5e-2, rtol=5e-2)
+
+            z, b, a = _rand_bf16(48, K), _rand_bf16(16, K), _rand_bf16(16, K)
+            cat = op.grouped_linear(x, [w1, z, b, a], False)[0]
+            xq = x.reshape(-1, K) if M > 1 else x
+            if M > op.capabilities()["max_grouped_batch"]:
+                rc = ref.quad_gemm(xq, w1, z, b, a).float()  # composite: bf16 matmul
+                torch.testing.assert_close(cat.float(), rc.reshape(cat.shape), atol=5e-2, rtol=5e-2)
+            else:
+                rc = ref.quad_gemm(xq.float(), w1.float(), z.float(), b.float(), a.float())
+                torch.testing.assert_close(cat.float(), rc.reshape(cat.shape), atol=5e-2, rtol=5e-2)
+        caps = op.capabilities()
+        assert caps["max_grouped_batch"] >= 32 and "bf16" in list(caps["dtypes"])
