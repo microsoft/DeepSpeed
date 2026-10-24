@@ -1360,6 +1360,114 @@ std::vector<at::Tensor> grouped_gemm_impl(at::Tensor x,
     return outs;
 }
 
+
+// Single-token gated-delta-rule recurrent update, IN PLACE on the cache
+// state. Mirrors FLA's fused_recurrent_gated_delta_rule for T=1 with
+// precomputed beta/g and in-kernel qk-l2norm; the state rides in shared
+// memory so the four passes (FLA read+write, HF copy-back read+write)
+// collapse to one read + one write.
+__global__ void gdn_recurrent_step_kernel(const __nv_bfloat16* __restrict__ q,
+                                          const __nv_bfloat16* __restrict__ k,
+                                          const __nv_bfloat16* __restrict__ v,
+                                          const __nv_bfloat16* __restrict__ g,
+                                          const __nv_bfloat16* __restrict__ beta,
+                                          float* __restrict__ state,
+                                          __nv_bfloat16* __restrict__ out,
+                                          int K,
+                                          int V)
+{
+    extern __shared__ float smem[];  // state [K*V], then q[K], k[K], v[V]
+    float* h = smem;
+    float* qs = h + (long)K * V;
+    float* ks = qs + K;
+    float* vs = ks + K;
+
+    const int bh = blockIdx.x;  // (batch, v-head) flattened
+    const int tid = threadIdx.x;
+    const float scale = rsqrtf((float)K);
+    float* g_state = state + (long)bh * K * V;
+    for (int idx = tid; idx < K * V; idx += blockDim.x) h[idx] = g_state[idx];
+    for (int i = tid; i < K; i += blockDim.x) {
+        qs[i] = __bfloat162float(q[(long)bh * K + i]);
+        ks[i] = __bfloat162float(k[(long)bh * K + i]);
+    }
+    for (int i = tid; i < V; i += blockDim.x) vs[i] = __bfloat162float(v[(long)bh * V + i]);
+    __syncthreads();
+
+    // l2-normalize q (scaled) and k; eps matches FLA
+    __shared__ float s_red[2];
+    if (tid == 0) {
+        s_red[0] = 0.f;
+        s_red[1] = 0.f;
+    }
+    __syncthreads();
+    float sq = 0.f, sk = 0.f;
+    for (int i = tid; i < K; i += blockDim.x) {
+        sq += qs[i] * qs[i];
+        sk += ks[i] * ks[i];
+    }
+    atomicAdd(&s_red[0], sq);
+    atomicAdd(&s_red[1], sk);
+    __syncthreads();
+    const float inv_qq = rsqrtf(s_red[0] + 1e-6f) * scale;
+    const float inv_kk = rsqrtf(s_red[1] + 1e-6f);
+    __syncthreads();
+
+    const float decay = __expf(__bfloat162float(g[bh]));
+    const float b_beta = __bfloat162float(beta[bh]);
+
+    // one thread per state column j: kv = k^T (decay*h), then the
+    // outer-add update and the output dot in a second pass
+    if (tid < V) {
+        const int j = tid;
+        float kv = 0.f;
+        for (int i = 0; i < K; i++) kv += ks[i] * h[i * V + j];
+        kv *= decay * inv_kk;
+        const float bvj = b_beta * (vs[j] - kv);
+        float o = 0.f;
+        for (int i = 0; i < K; i++) {
+            const float khat = ks[i] * inv_kk;
+            const float hij = decay * h[i * V + j] + khat * bvj;
+            h[i * V + j] = hij;
+            o += qs[i] * inv_qq * hij;
+        }
+        out[(long)bh * V + j] = __float2bfloat16_rn(o);
+    }
+    __syncthreads();
+    for (int idx = tid; idx < K * V; idx += blockDim.x) g_state[idx] = h[idx];
+}
+
+void gdn_recurrent_step(at::Tensor q,
+                        at::Tensor k,
+                        at::Tensor v,
+                        at::Tensor g,
+                        at::Tensor beta,
+                        at::Tensor state,
+                        at::Tensor out)
+{
+    TORCH_CHECK(q.is_cuda() && q.scalar_type() == at::ScalarType::BFloat16, "q must be CUDA bf16");
+    TORCH_CHECK(q.is_contiguous() && k.is_contiguous() && v.is_contiguous(), "q/k/v must be contiguous");
+    TORCH_CHECK(state.is_contiguous() && state.scalar_type() == at::ScalarType::Float, "state must be fp32 contiguous");
+    const int B = (int)q.size(0), H = (int)q.size(1), K = (int)q.size(2), V = (int)v.size(2);
+    TORCH_CHECK(k.sizes() == q.sizes() && v.size(0) == B && v.size(1) == H && v.size(2) == V, "shape mismatch");
+    TORCH_CHECK(state.size(0) == B && state.size(1) == H && state.size(2) == K && state.size(3) == V,
+                "state must be [B,H,K,V]");
+    TORCH_CHECK(V <= 1024, "V must fit one-thread-per-column");
+    const int smem = (K * V + 2 * K + V) * 4;
+    static bool attr_set = false;
+    if (!attr_set) {
+        cudaFuncSetAttribute(gdn_recurrent_step_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
+        attr_set = true;
+    }
+    auto stream = at::cuda::getCurrentCUDAStream();
+    gdn_recurrent_step_kernel<<<B * H, (V + 31) / 32 * 32, smem, stream.stream()>>>(
+        (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k.data_ptr(),
+        (const __nv_bfloat16*)v.data_ptr(), (const __nv_bfloat16*)g.data_ptr(),
+        (const __nv_bfloat16*)beta.data_ptr(), (float*)state.data_ptr(),
+        (__nv_bfloat16*)out.data_ptr(), K, V);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
 at::Tensor single_gemm(at::Tensor x, at::Tensor w)
 {
     return grouped_gemm_impl(x, w, w, w, w, 1, true)[0];
@@ -1447,6 +1555,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         py::arg("num_kv_heads"),
         py::arg("head_dim"),
         py::arg("max_len"));
+    m.def("gdn_recurrent_step",
+          &gdn_recurrent_step,
+          "in-place single-token gated-delta-rule recurrent update",
+          py::arg("q"),
+          py::arg("k"),
+          py::arg("v"),
+          py::arg("g"),
+          py::arg("beta"),
+          py::arg("state"),
+          py::arg("out"));
     m.def("single_gemm",
           &single_gemm,
           "single-matrix GEMM on the grouped kernel (small batches)",

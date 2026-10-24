@@ -360,7 +360,7 @@ def _fused_gdn_forward(self, hidden_states, *args, **kwargs):
     if cu_seqlens is not None:
         scan_kwargs["cu_seqlens"] = cu_seqlens
     core_attn_out, last_recurrent_state = self._ki_gdn_scan(query, key, value, **scan_kwargs)
-    if cache_params is not None:
+    if cache_params is not None and last_recurrent_state is not None:
         cache_params.update_recurrent_state(last_recurrent_state, self.layer_idx)
 
     core_attn_out = core_attn_out.reshape(-1, self.head_v_dim)
@@ -407,6 +407,21 @@ def _install_gdn_segment(seg: GDNSegment) -> bool:
                        seq_idx=kw.get("seq_idx"))
 
     def scan(query, key, value, **kw):
+        init_state = kw.get("initial_state")
+        # decode (single token) with a live state: the in-place recurrent
+        # kernel updates the cache buffer directly — no FLA output tensor,
+        # no HF copy-back, half the state traffic
+        step_op = getattr(parent, "_ki_gdn_op", None)
+        if (init_state is not None and query.shape[1] == 1 and step_op is not None
+                and hasattr(step_op, "gdn_recurrent_step") and not torch.is_grad_enabled() and query.is_contiguous()
+                and key.is_contiguous() and value.is_contiguous() and init_state.is_contiguous()
+                and init_state.dtype is torch.float32):
+            b_sz, _, h, dk = query.shape
+            dv = value.shape[-1]
+            out = torch.empty(b_sz, 1, h, dv, dtype=query.dtype, device=query.device)
+            step_op.gdn_recurrent_step(query.squeeze(1), key.squeeze(1), value.squeeze(1), kw["g"], kw["beta"],
+                                       init_state, out.squeeze(1))
+            return out, None
         # Route through the block's own instance-bound kernels: transformers
         # binds the FLA fused implementations onto the module when available
         # (recurrent_gated_delta_rule/chunk_gated_delta_rule) and only falls
