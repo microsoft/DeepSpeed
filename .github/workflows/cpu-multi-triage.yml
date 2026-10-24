@@ -178,14 +178,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NIGHTLY_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          # The nightly pytest prints failures as "FAILED unit/..." (its working
-          # directory is tests/), so re-prefix each unique file with tests/.
-          # gh >= 2.92 passes `gh run view --log` through its ASCII sanitizer
-          # even when piped, rewriting the ESC byte as the literal two chars
-          # "^["; older gh emits the raw ESC byte. Strip both forms so the
-          # FAILED lines below parse with any gh version.
+          # The nightly runs pytest with --color=no, so failures print as
+          # plain "FAILED unit/..." lines (its working directory is tests/);
+          # re-prefix each unique file with tests/.
           gh run view "$NIGHTLY_RUN_ID" --log \
-            | sed -E 's/(\x1b|\^\[)\[[0-9;]*m//g' \
             | grep -oE 'FAILED unit/[^[:space:]]*\.py' | sort -u \
             | sed 's|^FAILED |tests/|' > failing-tests.txt
           if [ ! -s failing-tests.txt ]; then
