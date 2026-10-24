@@ -632,3 +632,22 @@ gate's lower edge. Full curve: 1: 94.3% / 4: 88.5% / 8: 85.1% /
 16: 112.1% / 32: 136%. The crossover sits exactly at the grouped-GEMM
 threshold (16..32); below it segKI rides cuBLAS composite and vLLM's
 fused kernels win.
+
+
+## 16. One wmma tile per warp + gate lowered to 2..32 — sub-16 now WINS
+
+8 warps (TPB 256), each exclusively owning one 16x16 output tile instead
+of iterating two serially. At M<16 the old layout made half-idle warps
+walk two tiles; the fix doubles in-block parallelism exactly where the
+tile is underfilled.
+
+| bs | cuBLAS composite (old gate) | 8-warp grouped (gate 2..32) | delta |
+|----|------------------------------|------------------------------|-------|
+| 4  | 310.6                        | 321.7                        | +3.6% |
+| 8  | 568.1                        | 592.6                        | +4.3% |
+| 16 | 1041.2                       | 1059.3                       | +1.7% |
+| 32 | 1538                         | 1563.9                       | +1.7% |
+
+vs vLLM full curve after: 1: 94.3% / 4: 91.6% / 8: 88.7% / 16: 114.1%
+/ 32: 138.7%. Near-tie at bs=8 (0.934) verified benign across seeds
+(7/999 perfect, 123 single-row mid-sequence flip); 183 tests pass.
