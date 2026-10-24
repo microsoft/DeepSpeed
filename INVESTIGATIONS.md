@@ -617,3 +617,10 @@ Lesson recorded: profile shares flag candidates; overlap decides wins.
 
 ### Skipped: scan GQA-ratio fusion (in-graph launches already cheap);
 grouped-linear NT tuning deferred (compile-time tile change, uncertain).
+
+
+### vLLM small-batch baselines (same GPU, same prompts, added later)
+| bs | segKI | vLLM | segKI % |
+|---|---|---|---|
+| 1 | 95.8 | 101.6 | 94.3% |
+| 4 | 310.6 | 351.1 | 88.5% |
